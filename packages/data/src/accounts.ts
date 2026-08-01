@@ -9,6 +9,25 @@ import type { Couple, Locale, Profile } from '@couple/core';
 import type { AppSupabaseClient } from './client';
 import { toCouple, toProfile } from './mappers';
 
+/** Why a redemption did not go through. Rendered via `pair.error.*` keys. */
+export const JOIN_FAILURES = [
+  'invalid_code',
+  'couple_full',
+  'already_paired',
+  'rate_limited',
+  'unknown',
+] as const;
+export type JoinFailure = (typeof JOIN_FAILURES)[number];
+
+export type JoinCoupleResult = { ok: true; coupleId: string } | { ok: false; reason: JoinFailure };
+
+/** An unrecognised reason renders as a generic message rather than leaking a raw token. */
+function toJoinFailure(reason: string): JoinFailure {
+  return (JOIN_FAILURES as readonly string[]).includes(reason)
+    ? (reason as JoinFailure)
+    : 'unknown';
+}
+
 /**
  * Narrow a PostgREST response to its payload.
  *
@@ -35,7 +54,7 @@ export interface AccountRepository {
   setPushToken(id: string, token: string | null): Promise<void>;
   getCouple(): Promise<Couple | null>;
   createCouple(timezone: string): Promise<Couple>;
-  joinCouple(inviteCode: string): Promise<string>;
+  joinCouple(inviteCode: string): Promise<JoinCoupleResult>;
   leaveCouple(profileId: string): Promise<void>;
 }
 
@@ -96,10 +115,17 @@ export function createAccountRepository(client: AppSupabaseClient): AccountRepos
     async joinCouple(inviteCode) {
       // Pairing goes through an RPC so invite codes are never exposed to
       // enumeration through the table API.
+      //
+      // Expected outcomes come back as reason codes rather than exceptions:
+      // a raise would roll back the rate-limit counter recording the attempt,
+      // and its English message would reach a partner reading Spanish.
       const { data, error } = await client.rpc('join_couple', {
         p_code: inviteCode.trim().toUpperCase(),
       });
-      return unwrap(data, error);
+      const result = unwrap(data, error);
+      return result.ok
+        ? { ok: true as const, coupleId: result.couple_id }
+        : { ok: false as const, reason: toJoinFailure(result.reason) };
     },
 
     async leaveCouple(profileId) {

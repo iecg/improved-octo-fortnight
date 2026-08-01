@@ -76,7 +76,8 @@ export interface Plan {
   startsAt: string | null;
   endsAt: string | null;
   status: PlanStatus;
-  createdBy: string;
+  /** Null only when the author deleted their account; the plan survives. */
+  createdBy: string | null;
   completedAt: string | null;
   /**
    * Map of `profileId -> device calendar event id`. Each partner's phone

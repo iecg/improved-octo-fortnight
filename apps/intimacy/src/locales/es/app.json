@@ -1,5 +1,9 @@
 {
-  "tabs": { "today": "Hoy", "plans": "Planes", "settings": "Ajustes" },
+  "tabs": {
+    "today": "Hoy",
+    "plans": "Planes",
+    "settings": "Ajustes"
+  },
   "auth": {
     "title": "Nosotros",
     "subtitle": "Un lugar tranquilo para hacerse tiempo.",
@@ -22,7 +26,14 @@
     "shareHint": "Compártelo con tu pareja. Deja de funcionar en cuanto se una.",
     "joinAction": "Unirme",
     "waiting": "Esperando a que tu pareja se una.",
-    "joined": "Ya están conectados."
+    "joined": "Ya están conectados.",
+    "error": {
+      "invalid_code": "Ese código no coincide. Revísalo e inténtalo de nuevo.",
+      "couple_full": "Ese código pertenece a una pareja que ya está completa.",
+      "already_paired": "Ya estás conectado con alguien.",
+      "rate_limited": "Demasiados intentos. Espera unos minutos e inténtalo de nuevo.",
+      "unknown": "Eso no funcionó. Inténtalo de nuevo en un momento."
+    }
   },
   "today": {
     "greeting": "Hoy",

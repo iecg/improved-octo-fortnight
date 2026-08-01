@@ -39,6 +39,23 @@ async function currentInviteCode(userId: string, coupleId: string): Promise<stri
   });
 }
 
+interface JoinResult {
+  ok: boolean;
+  reason?: string;
+  couple_id?: string;
+}
+
+/** join_couple returns a result rather than raising, so a failed attempt can be counted. */
+async function joinCouple(userId: string, code: string): Promise<JoinResult> {
+  return asUser(pool, userId, async (client) => {
+    const { rows } = await client.query<{ join_couple: JoinResult }>(
+      'select public.join_couple($1) as join_couple',
+      [code],
+    );
+    return rows[0]!.join_couple;
+  });
+}
+
 async function seedPlan(userId: string, coupleId: string, domain: string): Promise<string> {
   return asUser(pool, userId, async (client) => {
     const { rows } = await client.query<{ id: string }>(
@@ -62,11 +79,11 @@ beforeAll(async () => {
 
   const a = await createCouple(alice);
   coupleA = a.id;
-  await asUser(pool, bob, (c) => c.query('select public.join_couple($1)', [a.inviteCode]));
+  expect((await joinCouple(bob, a.inviteCode)).ok).toBe(true);
 
   const b = await createCouple(carol);
   coupleB = b.id;
-  await asUser(pool, dave, (c) => c.query('select public.join_couple($1)', [b.inviteCode]));
+  expect((await joinCouple(dave, b.inviteCode)).ok).toBe(true);
 }, 60_000);
 
 afterAll(async () => {
@@ -88,9 +105,7 @@ describe('pairing', () => {
     const couple = await createCouple(fresh);
     const partner = await createUser(pool, `rotate-partner-${Date.now()}@example.test`);
 
-    await asUser(pool, partner, (c) =>
-      c.query('select public.join_couple($1)', [couple.inviteCode]),
-    );
+    expect((await joinCouple(partner, couple.inviteCode)).ok).toBe(true);
     const after = await currentInviteCode(fresh, couple.id);
 
     // A forwarded link or a screenshot in a camera roll must not be replayable.
@@ -99,19 +114,14 @@ describe('pairing', () => {
 
   it('refuses a third person', async () => {
     const code = await currentInviteCode(alice, coupleA);
-    const error = await expectRejected(
-      asUser(pool, eve, (c) => c.query('select public.join_couple($1)', [code])),
-    );
-
-    expect(error.message).toMatch(/couple is full/i);
+    expect(await joinCouple(eve, code)).toMatchObject({ ok: false, reason: 'couple_full' });
   });
 
   it('refuses an invalid code', async () => {
-    const error = await expectRejected(
-      asUser(pool, eve, (c) => c.query('select public.join_couple($1)', ['ZZZZZZ'])),
-    );
-
-    expect(error.message).toMatch(/invalid invite code/i);
+    expect(await joinCouple(eve, 'ZZZZZZZZ')).toMatchObject({
+      ok: false,
+      reason: 'invalid_code',
+    });
   });
 
   it('refuses someone who is already paired', async () => {
@@ -343,6 +353,134 @@ describe('authorship', () => {
 
     expect(row.responded_by).toBe(bob);
     expect(row.responded_at).not.toBeNull();
+  });
+});
+
+describe('pairing hardening', () => {
+  it('issues eight-character codes from the unambiguous alphabet', async () => {
+    const fresh = await createUser(pool, `code-shape-${Date.now()}@example.test`);
+    const couple = await createCouple(fresh);
+
+    expect(couple.inviteCode).toMatch(/^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/);
+  });
+
+  it('never lets two people redeem the same code at once', async () => {
+    // The size trigger alone cannot prevent this: under READ COMMITTED neither
+    // transaction sees the other's uncommitted insert, so both pass the count
+    // check. Reproduced exactly this way against a schema without the row lock,
+    // which produced a three-member couple.
+    const founder = await createUser(pool, `race-founder-${Date.now()}@example.test`);
+    const couple = await createCouple(founder);
+    const first = await createUser(pool, `race-a-${Date.now()}@example.test`);
+    const second = await createUser(pool, `race-b-${Date.now()}@example.test`);
+
+    const results = await Promise.all([
+      joinCouple(first, couple.inviteCode),
+      joinCouple(second, couple.inviteCode),
+    ]);
+
+    // Exactly one wins. The loser is told the couple is full, or that the code
+    // is invalid because the winner already rotated it — either way, not in.
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+
+    const members = await asUser(pool, founder, async (client) => {
+      const { rows } = await client.query('select count(*)::int as n from public.couple_members');
+      return rows[0]!.n as number;
+    });
+    expect(members).toBe(2);
+  });
+
+  it('rate limits repeated wrong guesses', async () => {
+    const guesser = await createUser(pool, `guesser-${Date.now()}@example.test`);
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      expect(await joinCouple(guesser, 'ZZZZZZZZ')).toMatchObject({ reason: 'invalid_code' });
+    }
+
+    expect(await joinCouple(guesser, 'ZZZZZZZZ')).toMatchObject({ reason: 'rate_limited' });
+  });
+
+  it('does not count a correct code against a full couple as a guess', async () => {
+    // The code was right, so refusing it leaks nothing — and counting it would
+    // let a full couple's circulating code lock a legitimate user out.
+    const code = await currentInviteCode(alice, coupleA);
+    const bystander = await createUser(pool, `bystander-${Date.now()}@example.test`);
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      expect(await joinCouple(bystander, code)).toMatchObject({ reason: 'couple_full' });
+    }
+
+    const attempts = await pool.query<{ attempts: number }>(
+      'select attempts from public.join_attempts where profile_id = $1',
+      [bystander],
+    );
+    expect(attempts.rows[0]?.attempts ?? 0).toBe(0);
+  });
+
+  it('keeps the rate-limit table out of client reach', async () => {
+    const error = await expectRejected(
+      asUser(pool, alice, (c) => c.query('select * from public.join_attempts')),
+    );
+
+    expect(error.message).toMatch(/permission denied/i);
+  });
+});
+
+describe('plan integrity', () => {
+  it('refuses a completed plan with no completion time', async () => {
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plans (couple_id, domain, kind, status, created_by, starts_at)
+           values ($1, 'intimacy', 'intimacy', 'completed', $2, now())`,
+          [coupleA, alice],
+        ),
+      ),
+    );
+
+    expect(error.message).toMatch(/plans_completed_has_timestamp/i);
+  });
+
+  it('clears the completion time when a plan stops being complete', async () => {
+    const planId = await seedPlan(alice, coupleA, 'intimacy');
+    await asUser(pool, alice, (c) =>
+      c.query(
+        "update public.plans set status = 'completed', completed_at = now() where id = $1",
+        [planId],
+      ),
+    );
+
+    const error = await expectRejected(
+      asUser(pool, alice, (c) =>
+        c.query("update public.plans set status = 'skipped' where id = $1", [planId]),
+      ),
+    );
+
+    // A stale completed_at would silently re-anchor the cadence to something
+    // that never happened, so the database refuses the half-update.
+    expect(error.message).toMatch(/plans_completed_has_timestamp/i);
+  });
+
+  it('keeps shared history when a partner deletes their account', async () => {
+    const founder = await createUser(pool, `history-${Date.now()}@example.test`);
+    const couple = await createCouple(founder);
+    const planId = await asUser(pool, founder, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plans (couple_id, domain, kind, title, status, created_by)
+         values ($1, 'intimacy', 'intimacy', 'a shared evening', 'idea', $2) returning id`,
+        [couple.id, founder],
+      );
+      return rows[0]!.id;
+    });
+
+    await pool.query('delete from auth.users where id = $1', [founder]);
+
+    const survivor = await pool.query(
+      'select title, created_by from public.plans where id = $1',
+      [planId],
+    );
+    expect(survivor.rows[0]?.title).toBe('a shared evening');
+    expect(survivor.rows[0]?.created_by).toBeNull();
   });
 });
 

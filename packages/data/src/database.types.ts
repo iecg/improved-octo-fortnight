@@ -104,7 +104,7 @@ export interface Database {
           starts_at: string | null;
           ends_at: string | null;
           status: PlanStatusEnum;
-          created_by: string;
+          created_by: string | null;
           completed_at: string | null;
           calendar_event_ids: Json;
           created_at: string;
@@ -200,7 +200,10 @@ export interface Database {
         Args: { p_timezone: string };
         Returns: Database['public']['Tables']['couples']['Row'];
       };
-      join_couple: { Args: { p_code: string }; Returns: string };
+      join_couple: {
+        Args: { p_code: string };
+        Returns: { ok: true; couple_id: string } | { ok: false; reason: string };
+      };
       current_couple_id: { Args: Record<string, never>; Returns: string | null };
       is_couple_member: { Args: { target: string }; Returns: boolean };
     };

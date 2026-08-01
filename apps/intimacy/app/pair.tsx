@@ -21,6 +21,9 @@ import { useSession } from '../src/session';
 
 const accounts = createAccountRepository(supabase);
 
+/** Must match `generate_invite_code()` in the pairing-hardening migration. */
+const INVITE_CODE_LENGTH = 8;
+
 export default function Pair() {
   const { t } = useTranslation(['app', 'common']);
   const { refresh, couple } = useSession();
@@ -36,7 +39,9 @@ export default function Pair() {
   const [code, setCode] = useState(params.code ?? '');
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // A translation key, never a server string: Postgres speaks English and one
+  // of these two partners does not.
+  const [errorKey, setErrorKey] = useState<string | null>(null);
 
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
@@ -58,15 +63,15 @@ export default function Pair() {
 
   async function startCouple() {
     setBusy(true);
-    setError(null);
+    setErrorKey(null);
     try {
       const created = await accounts.createCouple(timeZone);
       await seedCadences(created.id);
       setInviteCode(created.inviteCode);
       setMode('created');
       await refresh();
-    } catch (failure) {
-      setError((failure as Error).message);
+    } catch {
+      setErrorKey('app:pair.error.unknown');
     } finally {
       setBusy(false);
     }
@@ -74,13 +79,17 @@ export default function Pair() {
 
   async function joinCouple() {
     setBusy(true);
-    setError(null);
+    setErrorKey(null);
     try {
-      const joinedId = await accounts.joinCouple(code);
-      await seedCadences(joinedId);
+      const result = await accounts.joinCouple(code);
+      if (!result.ok) {
+        setErrorKey(`app:pair.error.${result.reason}`);
+        return;
+      }
+      await seedCadences(result.coupleId);
       await refresh();
-    } catch (failure) {
-      setError((failure as Error).message);
+    } catch {
+      setErrorKey('app:pair.error.unknown');
     } finally {
       setBusy(false);
     }
@@ -135,13 +144,13 @@ export default function Pair() {
                 onChangeText={(next) => setCode(next.toUpperCase())}
                 autoCapitalize="characters"
                 autoCorrect={false}
-                maxLength={6}
+                maxLength={INVITE_CODE_LENGTH}
                 accessibilityLabel={t('app:pair.codeLabel')}
               />
               <Button
                 label={t('app:pair.joinAction')}
                 loading={busy}
-                disabled={code.trim().length < 6}
+                disabled={code.trim().length < INVITE_CODE_LENGTH}
                 onPress={() => void joinCouple()}
               />
               <Button
@@ -153,9 +162,9 @@ export default function Pair() {
           </Card>
         ) : null}
 
-        {error ? (
+        {errorKey ? (
           <Card>
-            <Body>{error}</Body>
+            <Body>{t(errorKey)}</Body>
           </Card>
         ) : null}
       </View>
