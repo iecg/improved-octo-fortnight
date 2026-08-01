@@ -1,0 +1,46 @@
+{
+  "appName": "Us",
+  "action": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "done": "Done",
+    "back": "Back",
+    "next": "Next",
+    "skip": "Skip",
+    "edit": "Edit",
+    "delete": "Delete",
+    "retry": "Try again",
+    "close": "Close"
+  },
+  "state": {
+    "loading": "Loading…",
+    "empty": "Nothing here yet",
+    "offline": "You're offline. Changes will sync when you reconnect.",
+    "error": "Something went wrong."
+  },
+  "time": {
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "yesterday": "Yesterday",
+    "dayCount_one": "{{count}} day",
+    "dayCount_other": "{{count}} days",
+    "weekCount_one": "{{count}} week",
+    "weekCount_other": "{{count}} weeks",
+    "monthCount_one": "{{count}} month",
+    "monthCount_other": "{{count}} months",
+    "yearCount_one": "{{count}} year",
+    "yearCount_other": "{{count}} years"
+  },
+  "partner": {
+    "you": "You",
+    "them": "Your partner",
+    "unnamed": "Your partner"
+  },
+  "language": {
+    "title": "Language",
+    "description": "This changes only what you see. Your partner keeps their own language.",
+    "en": "English",
+    "es": "Spanish"
+  }
+}

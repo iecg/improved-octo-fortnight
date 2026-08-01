@@ -1,0 +1,67 @@
+{
+  "health": {
+    "on_track": "On track",
+    "due_soon": "Coming up",
+    "overdue": "It's been a while"
+  },
+  "kind": {
+    "intimacy": {
+      "intimacy": {
+        "label": "Time together",
+        "description": "Your regular time for each other."
+      },
+      "extended": {
+        "label": "Unhurried time",
+        "description": "A longer stretch with nowhere to be afterwards."
+      },
+      "connection": {
+        "label": "Just talking",
+        "description": "Phones away, no agenda."
+      }
+    },
+    "two_two_two": {
+      "date_night": {
+        "label": "Date night",
+        "description": "An evening out, every couple of weeks."
+      },
+      "getaway": {
+        "label": "Weekend away",
+        "description": "A night or two somewhere else."
+      },
+      "trip": {
+        "label": "Big trip",
+        "description": "The one you keep meaning to book."
+      }
+    }
+  },
+  "due": {
+    "today": "Due today",
+    "tomorrow": "Due tomorrow",
+    "in_one": "Due in {{count}} day",
+    "in_other": "Due in {{count}} days",
+    "overdue_one": "{{count}} day past",
+    "overdue_other": "{{count}} days past",
+    "scheduled": "Booked for {{date}}"
+  },
+  "last": {
+    "never": "No history yet",
+    "on": "Last time {{date}}"
+  },
+  "interval": {
+    "label": "How often",
+    "every_day_one": "Every day",
+    "every_day_other": "Every {{count}} days",
+    "every_week_one": "Every week",
+    "every_week_other": "Every {{count}} weeks",
+    "every_month_one": "Every month",
+    "every_month_other": "Every {{count}} months",
+    "every_year_one": "Every year",
+    "every_year_other": "Every {{count}} years"
+  },
+  "action": {
+    "markDone": "Mark as done",
+    "schedule": "Put it on the calendar",
+    "skipThisOne": "Skip this one",
+    "pause": "Pause this"
+  }
+}

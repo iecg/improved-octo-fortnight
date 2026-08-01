@@ -1,0 +1,67 @@
+{
+  "health": {
+    "on_track": "Al día",
+    "due_soon": "Se acerca",
+    "overdue": "Ha pasado un tiempo"
+  },
+  "kind": {
+    "intimacy": {
+      "intimacy": {
+        "label": "Tiempo juntos",
+        "description": "Su tiempo habitual el uno para el otro."
+      },
+      "extended": {
+        "label": "Tiempo sin prisa",
+        "description": "Un rato largo, sin nada después."
+      },
+      "connection": {
+        "label": "Solo conversar",
+        "description": "Sin teléfonos, sin agenda."
+      }
+    },
+    "two_two_two": {
+      "date_night": {
+        "label": "Cita",
+        "description": "Una salida, cada dos semanas."
+      },
+      "getaway": {
+        "label": "Escapada",
+        "description": "Una noche o dos en otro lugar."
+      },
+      "trip": {
+        "label": "Viaje largo",
+        "description": "Ese que siempre dicen que van a reservar."
+      }
+    }
+  },
+  "due": {
+    "today": "Toca hoy",
+    "tomorrow": "Toca mañana",
+    "in_one": "Toca en {{count}} día",
+    "in_other": "Toca en {{count}} días",
+    "overdue_one": "Hace {{count}} día que tocaba",
+    "overdue_other": "Hace {{count}} días que tocaba",
+    "scheduled": "Reservado para el {{date}}"
+  },
+  "last": {
+    "never": "Aún no hay historial",
+    "on": "La última vez fue el {{date}}"
+  },
+  "interval": {
+    "label": "Con qué frecuencia",
+    "every_day_one": "Cada día",
+    "every_day_other": "Cada {{count}} días",
+    "every_week_one": "Cada semana",
+    "every_week_other": "Cada {{count}} semanas",
+    "every_month_one": "Cada mes",
+    "every_month_other": "Cada {{count}} meses",
+    "every_year_one": "Cada año",
+    "every_year_other": "Cada {{count}} años"
+  },
+  "action": {
+    "markDone": "Marcar como hecho",
+    "schedule": "Ponerlo en el calendario",
+    "skipThisOne": "Saltar esta vez",
+    "pause": "Pausar esto"
+  }
+}

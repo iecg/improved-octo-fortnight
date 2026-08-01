@@ -1,0 +1,50 @@
+{
+  "status": {
+    "idea": "Idea",
+    "proposed": "Waiting on a reply",
+    "scheduled": "Booked",
+    "completed": "Done",
+    "skipped": "Skipped",
+    "declined": "Not this time"
+  },
+  "list": {
+    "awaitingYou": "Waiting on you",
+    "awaitingThem": "Waiting on {{name}}",
+    "upcoming": "Coming up",
+    "history": "Earlier",
+    "emptyUpcoming": "Nothing booked yet.",
+    "emptyHistory": "Once you mark something done, it'll show up here."
+  },
+  "proposal": {
+    "from": "{{name}} suggested a time",
+    "window": "{{start}} – {{end}}",
+    "accept": "Works for me",
+    "decline": "Not this time",
+    "counter": "Suggest another time",
+    "accepted": "You both said yes",
+    "declinedByThem": "{{name}} suggested a different time instead",
+    "counteredNote": "In reply to an earlier suggestion",
+    "noPressure": "Saying no is a complete answer."
+  },
+  "new": {
+    "title": "Suggest a time",
+    "whenLabel": "When",
+    "durationLabel": "How long",
+    "notesLabel": "Anything to add",
+    "notesPlaceholder": "Optional",
+    "notesHint": "Your partner sees this exactly as you write it, in whatever language you write it.",
+    "locationLabel": "Where",
+    "submit": "Send it",
+    "openWindows": "You're both free then",
+    "conflict": "One of you has something on"
+  },
+  "detail": {
+    "notes": "Notes",
+    "location": "Where",
+    "markDone": "Mark as done",
+    "markSkipped": "Didn't happen",
+    "cancel": "Cancel this",
+    "addedToCalendar": "Added to your calendar",
+    "calendarTitle": "Shows up as \"{{label}}\""
+  }
+}
