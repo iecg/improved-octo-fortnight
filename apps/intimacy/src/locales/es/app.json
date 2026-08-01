@@ -1,0 +1,92 @@
+{
+  "tabs": { "today": "Hoy", "plans": "Planes", "settings": "Ajustes" },
+  "auth": {
+    "title": "Nosotros",
+    "subtitle": "Un lugar tranquilo para hacerse tiempo.",
+    "emailLabel": "Correo electrónico",
+    "emailPlaceholder": "tu@ejemplo.com",
+    "send": "Enviarme un código",
+    "codeLabel": "Código de seis dígitos",
+    "verify": "Entrar",
+    "sent": "Enviamos un código a {{email}}.",
+    "useAnotherEmail": "Usar otro correo",
+    "appleSignIn": "Continuar con Apple"
+  },
+  "pair": {
+    "title": "Solo ustedes dos",
+    "subtitle": "Uno empieza y el otro se une con el código.",
+    "create": "Empezar aquí",
+    "join": "Tengo un código",
+    "codeLabel": "Código de invitación",
+    "yourCodeLabel": "Tu código de invitación",
+    "shareHint": "Compártelo con tu pareja. Deja de funcionar en cuanto se una.",
+    "joinAction": "Unirme",
+    "waiting": "Esperando a que tu pareja se una.",
+    "joined": "Ya están conectados."
+  },
+  "today": {
+    "greeting": "Hoy",
+    "checkinPrompt": "¿Cómo te sientes para esta noche?",
+    "yourAnswer": "Dijiste",
+    "partnerAnswer": "{{name}} dijo",
+    "partnerNoAnswer": "{{name}} aún no ha respondido",
+    "bothYes": "Los dos dijeron que sí.",
+    "nextUp": "Lo próximo",
+    "nothingBooked": "No hay nada reservado.",
+    "rituals": "Su ritmo",
+    "propose": "Proponer una hora",
+    "dateNight": "Próxima cita"
+  },
+  "checkin": {
+    "yes": "Sí",
+    "maybe": "Quizá",
+    "not_tonight": "Esta noche no",
+    "noteLabel": "Algo que quieras decir",
+    "notePlaceholder": "Opcional",
+    "change": "Cambiar mi respuesta",
+    "noPressure": "No hay respuesta incorrecta, ni racha que mantener."
+  },
+  "propose": {
+    "title": "Proponer una hora",
+    "suggestions": "Los dos están libres",
+    "noSuggestions": "No encontramos noches libres. Elige una hora de todos modos.",
+    "needCalendar": "Permite el acceso al calendario para ver cuándo están libres.",
+    "grantCalendar": "Permitir acceso al calendario",
+    "duration": "Cuánto tiempo",
+    "durationMinutes_one": "{{count}} minuto",
+    "durationMinutes_other": "{{count}} minutos",
+    "durationHours_one": "{{count}} hora",
+    "durationHours_other": "{{count}} horas",
+    "send": "Proponerlo",
+    "sent": "Enviado."
+  },
+  "settings": {
+    "title": "Ajustes",
+    "account": "Cuenta",
+    "partner": "Vinculado con {{name}}",
+    "notPaired": "Aún sin vincular",
+    "privacy": "Privacidad",
+    "lock": "Pedir Face ID o código",
+    "lockDescription": "Preguntar cada vez que se abra la app.",
+    "lockUnavailable": "Configura un código en este dispositivo para usarlo.",
+    "calendarLabel": "Nombre del evento en el calendario",
+    "calendarLabelHint": "Esto es todo lo que aparece en tu calendario. No se escribe nada más.",
+    "calendarLabelDefault": "Nosotros",
+    "calendarAccess": "Acceso al calendario",
+    "notificationAccess": "Recordatorios",
+    "allow": "Permitir",
+    "allowed": "Permitido",
+    "signOut": "Cerrar sesión",
+    "leave": "Desvincular",
+    "leaveConfirm": "Esto te desconecta de tu pareja. Sus planes seguirán en el dispositivo de la otra persona."
+  },
+  "lock": {
+    "prompt": "Desbloquear",
+    "locked": "Bloqueado",
+    "unlock": "Desbloquear"
+  },
+  "notification": {
+    "title": "Nosotros",
+    "body": "Un recordatorio discreto."
+  }
+}

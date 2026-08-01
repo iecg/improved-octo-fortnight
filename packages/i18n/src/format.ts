@@ -54,9 +54,7 @@ export function formatWindowParts(
     start: sameDay
       ? `${formatWeekday(start, locale, timeZone)}, ${formatTime(start, locale, timeZone)}`
       : formatDayTime(start, locale, timeZone),
-    end: sameDay
-      ? formatTime(end, locale, timeZone)
-      : formatDayTime(end, locale, timeZone),
+    end: sameDay ? formatTime(end, locale, timeZone) : formatDayTime(end, locale, timeZone),
     sameDay,
   };
 }

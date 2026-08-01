@@ -88,9 +88,7 @@ describe('locale files', () => {
 
           it('has identical keys in every language', () => {
             for (const locale of REQUIRED_LOCALES.filter((l) => l !== 'en')) {
-              const otherKeys = flatten(readNamespace(localeDir, locale, file)).map(
-                ([key]) => key,
-              );
+              const otherKeys = flatten(readNamespace(localeDir, locale, file)).map(([key]) => key);
 
               const missing = enKeys.filter((key) => !otherKeys.includes(key));
               const extra = otherKeys.filter((key) => !enKeys.includes(key));

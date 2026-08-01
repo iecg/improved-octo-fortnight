@@ -11,12 +11,7 @@ export type Json = string | number | boolean | null | { [key: string]: Json } | 
 export type LocaleEnum = 'en' | 'es';
 export type IntervalUnitEnum = 'day' | 'week' | 'month' | 'year';
 export type PlanStatusEnum =
-  | 'idea'
-  | 'proposed'
-  | 'scheduled'
-  | 'completed'
-  | 'skipped'
-  | 'declined';
+  'idea' | 'proposed' | 'scheduled' | 'completed' | 'skipped' | 'declined';
 export type ProposalResponseEnum = 'pending' | 'accepted' | 'declined' | 'countered';
 export type CheckinInterestEnum = 'yes' | 'maybe' | 'not_tonight';
 

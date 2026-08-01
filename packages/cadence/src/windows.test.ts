@@ -69,19 +69,19 @@ describe('suggestWindows', () => {
   });
 
   it('works around a busy block', () => {
-    const windows = suggestWindows(
-      [range('2026-03-02T20:00:00Z', '2026-03-02T21:00:00Z')],
-      { ...base, limit: 1 },
-    );
+    const windows = suggestWindows([range('2026-03-02T20:00:00Z', '2026-03-02T21:00:00Z')], {
+      ...base,
+      limit: 1,
+    });
 
     expect(iso(windows)).toEqual(['2026-03-02T21:00:00.000Z/2026-03-02T22:30:00.000Z']);
   });
 
   it('skips a day with no gap long enough', () => {
-    const windows = suggestWindows(
-      [range('2026-03-02T19:00:00Z', '2026-03-02T23:00:00Z')],
-      { ...base, limit: 1 },
-    );
+    const windows = suggestWindows([range('2026-03-02T19:00:00Z', '2026-03-02T23:00:00Z')], {
+      ...base,
+      limit: 1,
+    });
 
     expect(iso(windows)).toEqual(['2026-03-03T20:00:00.000Z/2026-03-03T21:30:00.000Z']);
   });
@@ -109,7 +109,7 @@ describe('suggestWindows', () => {
     expect(iso(windows)).toEqual(['2026-03-02T21:00:00.000Z/2026-03-02T22:30:00.000Z']);
   });
 
-  it('honours the couple\'s timezone rather than UTC', () => {
+  it("honours the couple's timezone rather than UTC", () => {
     const windows = suggestWindows([], {
       ...base,
       timeZone: 'America/New_York',

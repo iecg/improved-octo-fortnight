@@ -78,19 +78,8 @@ function subtract(band: TimeRange, busy: TimeRange[]): TimeRange[] {
  * One suggestion per free gap rather than every possible slot inside it: a
  * screen offering forty near-identical times is worse than one offering three.
  */
-export function suggestWindows(
-  busy: TimeRange[],
-  options: SuggestWindowsOptions,
-): TimeRange[] {
-  const {
-    from,
-    to,
-    durationMinutes,
-    earliestHour,
-    latestHour,
-    timeZone,
-    limit,
-  } = options;
+export function suggestWindows(busy: TimeRange[], options: SuggestWindowsOptions): TimeRange[] {
+  const { from, to, durationMinutes, earliestHour, latestHour, timeZone, limit } = options;
 
   if (durationMinutes <= 0 || limit <= 0 || to <= from) return [];
   if (latestHour <= earliestHour) return [];

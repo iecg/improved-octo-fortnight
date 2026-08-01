@@ -1,11 +1,6 @@
 import type { Cadence, Plan } from '@couple/core';
 import { describe, expect, it } from 'vitest';
-import {
-  addInterval,
-  compareUrgency,
-  computeCadenceStatus,
-  nextOccurrences,
-} from './engine';
+import { addInterval, compareUrgency, computeCadenceStatus, nextOccurrences } from './engine';
 
 const NY = 'America/New_York';
 
@@ -241,9 +236,7 @@ describe('computeCadenceStatus — scheduled plans', () => {
 
   it('does not let a distant booking silence a due warning', () => {
     const status = statusOf({
-      plans: [
-        makePlan({ id: 'far', status: 'scheduled', startsAt: '2026-03-01T00:00:00.000Z' }),
-      ],
+      plans: [makePlan({ id: 'far', status: 'scheduled', startsAt: '2026-03-01T00:00:00.000Z' })],
       now: '2026-01-07T00:00:00.000Z',
     });
 
@@ -277,9 +270,7 @@ describe('computeCadenceStatus — scheduled plans', () => {
 
   it('ignores bookings that have already passed', () => {
     const status = statusOf({
-      plans: [
-        makePlan({ id: 'past', status: 'scheduled', startsAt: '2026-01-02T00:00:00.000Z' }),
-      ],
+      plans: [makePlan({ id: 'past', status: 'scheduled', startsAt: '2026-01-02T00:00:00.000Z' })],
       now: '2026-01-05T00:00:00.000Z',
     });
 

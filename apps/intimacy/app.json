@@ -1,25 +1,48 @@
 {
   "expo": {
-    "name": "intimacy",
-    "slug": "intimacy",
-    "version": "1.0.0",
+    "name": "Us",
+    "slug": "us",
+    "scheme": "us",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "app.couple.us",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Unlock the app with Face ID.",
+        "NSCalendarsUsageDescription": "Add the times you plan together to your calendar, and find windows when you are both free.",
+        "NSCalendarsFullAccessUsageDescription": "Add the times you plan together to your calendar, and find windows when you are both free."
+      }
     },
     "android": {
+      "package": "app.couple.us",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#E8E2DD",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    }
+    "web": { "favicon": "./assets/favicon.png", "bundler": "metro" },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Add the times you plan together to your calendar, and find windows when you are both free."
+        }
+      ],
+      ["expo-local-authentication", { "faceIDPermission": "Unlock the app with Face ID." }],
+      [
+        "expo-splash-screen",
+        { "backgroundColor": "#E8E2DD", "image": "./assets/splash-icon.png", "imageWidth": 160 }
+      ]
+    ],
+    "experiments": { "typedRoutes": true }
   }
 }

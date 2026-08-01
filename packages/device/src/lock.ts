@@ -16,8 +16,7 @@ const LOCK_ENABLED_KEY = 'app_lock_enabled';
 
 export async function deviceHasBiometrics(): Promise<boolean> {
   return (
-    (await LocalAuthentication.hasHardwareAsync()) &&
-    (await LocalAuthentication.isEnrolledAsync())
+    (await LocalAuthentication.hasHardwareAsync()) && (await LocalAuthentication.isEnrolledAsync())
   );
 }
 

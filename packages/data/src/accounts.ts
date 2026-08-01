@@ -9,10 +9,18 @@ import type { Couple, Locale, Profile } from '@couple/core';
 import type { AppSupabaseClient } from './client';
 import { toCouple, toProfile } from './mappers';
 
-function unwrap<T>(result: { data: T | null; error: { message: string } | null }): T {
-  if (result.error) throw new Error(result.error.message);
-  if (result.data === null) throw new Error('no data returned');
-  return result.data;
+/**
+ * Narrow a PostgREST response to its payload.
+ *
+ * Written as two parameters rather than taking the response object whole:
+ * Supabase types the result as a discriminated union (`{data, error: null}` or
+ * `{data: null, error}`), and inferring `T` across both arms picks up the
+ * `null` from the error branch.
+ */
+function unwrap<T>(data: T | null, error: { message: string } | null): T {
+  if (error) throw new Error(error.message);
+  if (data === null) throw new Error('no data returned');
+  return data;
 }
 
 export interface AccountRepository {
@@ -39,11 +47,7 @@ export function createAccountRepository(client: AppSupabaseClient): AccountRepos
     },
 
     async getProfile(id) {
-      const { data, error } = await client
-        .from('profiles')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      const { data, error } = await client.from('profiles').select('*').eq('id', id).maybeSingle();
       if (error) throw new Error(error.message);
       return data ? toProfile(data) : null;
     },
@@ -55,19 +59,17 @@ export function createAccountRepository(client: AppSupabaseClient): AccountRepos
     },
 
     async updateProfile(id, patch) {
-      const row = unwrap(
-        await client
-          .from('profiles')
-          .update({
-            ...(patch.displayName !== undefined ? { display_name: patch.displayName } : {}),
-            ...(patch.locale !== undefined ? { locale: patch.locale } : {}),
-            ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
-          })
-          .eq('id', id)
-          .select()
-          .single(),
-      );
-      return toProfile(row);
+      const { data, error } = await client
+        .from('profiles')
+        .update({
+          ...(patch.displayName !== undefined ? { display_name: patch.displayName } : {}),
+          ...(patch.locale !== undefined ? { locale: patch.locale } : {}),
+          ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      return toProfile(unwrap(data, error));
     },
 
     async setPushToken(id, token) {
@@ -87,21 +89,21 @@ export function createAccountRepository(client: AppSupabaseClient): AccountRepos
     },
 
     async createCouple(timezone) {
-      const row = unwrap(await client.rpc('create_couple', { p_timezone: timezone }));
-      return toCouple(row);
+      const { data, error } = await client.rpc('create_couple', { p_timezone: timezone });
+      return toCouple(unwrap(data, error));
     },
 
     async joinCouple(inviteCode) {
       // Pairing goes through an RPC so invite codes are never exposed to
       // enumeration through the table API.
-      return unwrap(await client.rpc('join_couple', { p_code: inviteCode.trim().toUpperCase() }));
+      const { data, error } = await client.rpc('join_couple', {
+        p_code: inviteCode.trim().toUpperCase(),
+      });
+      return unwrap(data, error);
     },
 
     async leaveCouple(profileId) {
-      const { error } = await client
-        .from('couple_members')
-        .delete()
-        .eq('profile_id', profileId);
+      const { error } = await client.from('couple_members').delete().eq('profile_id', profileId);
       if (error) throw new Error(error.message);
     },
   };

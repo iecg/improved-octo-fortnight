@@ -31,8 +31,7 @@ function fakeClient(result: unknown): { client: AppSupabaseClient; calls: Record
         if (typeof property !== 'string') return undefined;
         // Thenable, so `await` on the builder resolves like a PostgREST call.
         if (property === 'then') {
-          return (resolve: (value: unknown) => unknown) =>
-            resolve({ data: result, error: null });
+          return (resolve: (value: unknown) => unknown) => resolve({ data: result, error: null });
         }
         return (...args: unknown[]) => {
           calls.push({ method: property, args });
@@ -161,10 +160,7 @@ describe('every write is stamped with the repository domain', () => {
       (repo: ReturnType<typeof createDomainRepository>) =>
         repo.setPlanStatus('plan-1', 'completed'),
     ],
-    [
-      'deletePlan',
-      (repo: ReturnType<typeof createDomainRepository>) => repo.deletePlan('plan-1'),
-    ],
+    ['deletePlan', (repo: ReturnType<typeof createDomainRepository>) => repo.deletePlan('plan-1')],
     [
       'setCadenceEnabled',
       (repo: ReturnType<typeof createDomainRepository>) =>
@@ -195,12 +191,15 @@ describe('every write is stamped with the repository domain', () => {
     });
   });
 
-  it('removes only the departing partner\'s calendar id', async () => {
+  it("removes only the departing partner's calendar id", async () => {
     const { client, calls } = fakeClient(PLAN_ROW);
     const repo = createDomainRepository(client, 'intimacy');
 
     await repo.recordCalendarEvent(
-      { ...PLAN_ROW, calendarEventIds: { 'profile-1': 'event-a', 'profile-2': 'event-b' } } as never,
+      {
+        ...PLAN_ROW,
+        calendarEventIds: { 'profile-1': 'event-a', 'profile-2': 'event-b' },
+      } as never,
       'profile-2',
       null,
     );

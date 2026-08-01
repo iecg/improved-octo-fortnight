@@ -11,7 +11,14 @@
  * Consequently: do not export a raw table client from this package, and do not
  * add a method that takes `domain` as a per-call argument.
  */
-import type { AppDomain, Cadence, IntervalUnit, Plan, PlanProposal, PlanStatus } from '@couple/core';
+import type {
+  AppDomain,
+  Cadence,
+  IntervalUnit,
+  Plan,
+  PlanProposal,
+  PlanStatus,
+} from '@couple/core';
 
 import type { AppSupabaseClient } from './client';
 import { toCadence, toPlan, toPlanProposal } from './mappers';
@@ -210,11 +217,7 @@ export function createDomainRepository(
     },
 
     async deletePlan(planId) {
-      const { error } = await client
-        .from('plans')
-        .delete()
-        .eq('id', planId)
-        .eq('domain', domain);
+      const { error } = await client.from('plans').delete().eq('id', planId).eq('domain', domain);
       if (error) throw new Error(error.message);
     },
 

@@ -42,7 +42,9 @@ export async function createTestDatabase(): Promise<Pool> {
   const setup = new Client({ ...CONNECTION, database: TEST_DB });
   await setup.connect();
   await setup.query(readFileSync(SHIM, 'utf8'));
-  for (const file of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()) {
+  for (const file of readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()) {
     await setup.query(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
   }
   await setup.end();

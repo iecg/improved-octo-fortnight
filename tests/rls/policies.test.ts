@@ -52,13 +52,13 @@ async function seedPlan(userId: string, coupleId: string, domain: string): Promi
 
 beforeAll(async () => {
   pool = await createTestDatabase();
-  [alice, bob, carol, dave, eve] = await Promise.all([
+  [alice, bob, carol, dave, eve] = (await Promise.all([
     createUser(pool, 'alice@example.test'),
     createUser(pool, 'bob@example.test'),
     createUser(pool, 'carol@example.test'),
     createUser(pool, 'dave@example.test'),
     createUser(pool, 'eve@example.test'),
-  ]) as [string, string, string, string, string];
+  ])) as [string, string, string, string, string];
 
   const a = await createCouple(alice);
   coupleA = a.id;
@@ -88,7 +88,9 @@ describe('pairing', () => {
     const couple = await createCouple(fresh);
     const partner = await createUser(pool, `rotate-partner-${Date.now()}@example.test`);
 
-    await asUser(pool, partner, (c) => c.query('select public.join_couple($1)', [couple.inviteCode]));
+    await asUser(pool, partner, (c) =>
+      c.query('select public.join_couple($1)', [couple.inviteCode]),
+    );
     const after = await currentInviteCode(fresh, couple.id);
 
     // A forwarded link or a screenshot in a camera roll must not be replayable.
@@ -145,10 +147,19 @@ describe('cross-couple isolation', () => {
   });
 
   it.each([
-    ['plans', "insert into public.plans (couple_id, domain, kind, status, created_by) values ($1, 'intimacy', 'intimacy', 'idea', $2)"],
-    ['cadences', "insert into public.cadences (couple_id, domain, kind, interval_value, interval_unit) values ($1, 'intimacy', 'intimacy', 1, 'week')"],
-    ['checkins', "insert into public.checkins (couple_id, profile_id, on_date, interest) values ($1, $2, current_date, 'yes')"],
-  ])('refuses writes to the other couple\'s %s', async (_table, sql) => {
+    [
+      'plans',
+      "insert into public.plans (couple_id, domain, kind, status, created_by) values ($1, 'intimacy', 'intimacy', 'idea', $2)",
+    ],
+    [
+      'cadences',
+      "insert into public.cadences (couple_id, domain, kind, interval_value, interval_unit) values ($1, 'intimacy', 'intimacy', 1, 'week')",
+    ],
+    [
+      'checkins',
+      "insert into public.checkins (couple_id, profile_id, on_date, interest) values ($1, $2, current_date, 'yes')",
+    ],
+  ])("refuses writes to the other couple's %s", async (_table, sql) => {
     const error = await expectRejected(
       asUser(pool, carol, (client) =>
         sql.includes('$2') ? client.query(sql, [coupleA, carol]) : client.query(sql, [coupleA]),
@@ -199,7 +210,7 @@ describe('cross-couple isolation', () => {
     expect(stillThere).toBe('seed');
   });
 
-  it('hides the other couple\'s profiles', async () => {
+  it("hides the other couple's profiles", async () => {
     const visible = await asUser(pool, alice, async (client) => {
       const { rows } = await client.query('select id from public.profiles');
       return rows.map((row) => row.id as string).sort();
@@ -363,16 +374,21 @@ describe('column privileges', () => {
 });
 
 describe('anonymous access', () => {
-  it.each(['profiles', 'couples', 'couple_members', 'cadences', 'plans', 'plan_proposals', 'checkins'])(
-    'refuses a signed-out reader on %s',
-    async (table) => {
-      const error = await expectRejected(
-        asAnon(pool, (client) => client.query(`select * from public.${table}`)),
-      );
+  it.each([
+    'profiles',
+    'couples',
+    'couple_members',
+    'cadences',
+    'plans',
+    'plan_proposals',
+    'checkins',
+  ])('refuses a signed-out reader on %s', async (table) => {
+    const error = await expectRejected(
+      asAnon(pool, (client) => client.query(`select * from public.${table}`)),
+    );
 
-      expect(error.message).toMatch(/permission denied/i);
-    },
-  );
+    expect(error.message).toMatch(/permission denied/i);
+  });
 });
 
 describe('constraints', () => {

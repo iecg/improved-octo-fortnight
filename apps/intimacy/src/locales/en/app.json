@@ -1,0 +1,92 @@
+{
+  "tabs": { "today": "Today", "plans": "Plans", "settings": "Settings" },
+  "auth": {
+    "title": "Us",
+    "subtitle": "A quiet place to make time for each other.",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "send": "Send me a code",
+    "codeLabel": "Six-digit code",
+    "verify": "Sign in",
+    "sent": "We sent a code to {{email}}.",
+    "useAnotherEmail": "Use a different email",
+    "appleSignIn": "Continue with Apple"
+  },
+  "pair": {
+    "title": "Just the two of you",
+    "subtitle": "One of you starts, the other joins with the code.",
+    "create": "Start here",
+    "join": "I have a code",
+    "codeLabel": "Invite code",
+    "yourCodeLabel": "Your invite code",
+    "shareHint": "Share this with your partner. It stops working once they join.",
+    "joinAction": "Join",
+    "waiting": "Waiting for your partner to join.",
+    "joined": "You're connected."
+  },
+  "today": {
+    "greeting": "Today",
+    "checkinPrompt": "How are you feeling about tonight?",
+    "yourAnswer": "You said",
+    "partnerAnswer": "{{name}} said",
+    "partnerNoAnswer": "{{name}} hasn't answered yet",
+    "bothYes": "You've both said yes.",
+    "nextUp": "Next up",
+    "nothingBooked": "Nothing booked.",
+    "rituals": "Your rhythm",
+    "propose": "Suggest a time",
+    "dateNight": "Next date night"
+  },
+  "checkin": {
+    "yes": "Yes",
+    "maybe": "Maybe",
+    "not_tonight": "Not tonight",
+    "noteLabel": "Anything to say about it",
+    "notePlaceholder": "Optional",
+    "change": "Change my answer",
+    "noPressure": "There's no wrong answer, and no streak to keep."
+  },
+  "propose": {
+    "title": "Suggest a time",
+    "suggestions": "You're both free",
+    "noSuggestions": "No open evenings found. Pick a time anyway.",
+    "needCalendar": "Allow calendar access to see when you're free.",
+    "grantCalendar": "Allow calendar access",
+    "duration": "How long",
+    "durationMinutes_one": "{{count}} minute",
+    "durationMinutes_other": "{{count}} minutes",
+    "durationHours_one": "{{count}} hour",
+    "durationHours_other": "{{count}} hours",
+    "send": "Suggest it",
+    "sent": "Sent."
+  },
+  "settings": {
+    "title": "Settings",
+    "account": "Account",
+    "partner": "Paired with {{name}}",
+    "notPaired": "Not paired yet",
+    "privacy": "Privacy",
+    "lock": "Require Face ID or passcode",
+    "lockDescription": "Ask every time the app opens.",
+    "lockUnavailable": "Set a passcode on this device to use this.",
+    "calendarLabel": "Calendar event name",
+    "calendarLabelHint": "This is all that appears in your calendar. Nothing else is written.",
+    "calendarLabelDefault": "Us",
+    "calendarAccess": "Calendar access",
+    "notificationAccess": "Reminders",
+    "allow": "Allow",
+    "allowed": "Allowed",
+    "signOut": "Sign out",
+    "leave": "Unpair",
+    "leaveConfirm": "This disconnects you from your partner. Your plans stay on their device."
+  },
+  "lock": {
+    "prompt": "Unlock",
+    "locked": "Locked",
+    "unlock": "Unlock"
+  },
+  "notification": {
+    "title": "Us",
+    "body": "A quiet reminder."
+  }
+}

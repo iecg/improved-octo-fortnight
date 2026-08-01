@@ -12,13 +12,7 @@
  * an instant rather than by adding milliseconds.
  */
 import type { Cadence, IntervalUnit, Plan } from '@couple/core';
-import {
-  addDays,
-  addMonths,
-  addWeeks,
-  addYears,
-  differenceInCalendarDays,
-} from 'date-fns';
+import { addDays, addMonths, addWeeks, addYears, differenceInCalendarDays } from 'date-fns';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
 export type CadenceHealth = 'on_track' | 'due_soon' | 'overdue';
@@ -133,12 +127,7 @@ export function computeCadenceStatus(input: ComputeCadenceStatusInput): CadenceS
   // With no history the couple's start date is the anchor, so a brand new
   // couple gets a full interval before anything reads as overdue.
   const anchorAt = lastCompletedAt ?? coupleCreatedAt;
-  const nextDueAt = addInterval(
-    anchorAt,
-    cadence.intervalValue,
-    cadence.intervalUnit,
-    timeZone,
-  );
+  const nextDueAt = addInterval(anchorAt, cadence.intervalValue, cadence.intervalUnit, timeZone);
 
   const nextScheduledAt = relevant
     .filter((plan) => plan.status === 'scheduled')
