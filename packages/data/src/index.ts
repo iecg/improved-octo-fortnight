@@ -16,5 +16,8 @@ export type { IdeaRepository, SaveIdeaInput } from './ideas';
 export { createPlaceRepository } from './places';
 export type { AttachPlaceInput, PlaceRepository } from './places';
 
+export { createBusyRepository } from './busy';
+export type { BusyRepository } from './busy';
+
 export * from './mappers';
 export type { Database, Json } from './database.types';

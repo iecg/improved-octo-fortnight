@@ -31,6 +31,16 @@ a test, listed with them.
    method that takes `domain` as a per-call argument.**
    (`packages/data/src/repository.test.ts`)
 
+   There is exactly one accessor that reads across it, and the shape of the
+   exception is the point. `createBusyRepository` reads `plan_busy_times`, a
+   view selecting `couple_id`, `starts_at` and `ends_at` and nothing else — so
+   it cannot take a domain because there is no domain column to take one, and
+   a caller learns that a window is occupied without learning what occupies it.
+   Widening it means changing the view, in a migration, in review. The 2-2-2
+   app gates reading it on a device-local setting that starts off; the intimacy
+   app does not, because what it discloses in that direction is that a date
+   night is booked. (`tests/guards/standalone.test.ts`, `tests/rls/`)
+
 3. **Discretion.** Nothing intimate reaches a lock screen, a notification
    payload, or a calendar entry. Calendar events carry a user-chosen neutral
    label only. Reminders are _local_, composed on the recipient's own device —
@@ -111,11 +121,16 @@ a schema change that typechecks but does not _work_ gets caught.
 What it deliberately does not cover, because Node cannot: email OTP delivery
 (that is Supabase's auth service — rows are inserted into `auth.users`
 directly), PostgREST (statements run over a socket as the `authenticated` role,
-not through supabase-js), and writing to a device calendar. All three have been
-walked by hand on a simulator dev build against the local stack — sign in with
-a real code, check in, search free/busy, propose, and watch a partner-booked
-plan produce a calendar entry titled with the neutral label and nothing else —
-but no automated test covers them, so treat a green suite accordingly.
+not through supabase-js), and writing to a device calendar. No automated test
+covers any of them, so treat a green suite accordingly.
+
+**`docs/simulator-walk.md` is the checklist for that gap** — a dev build on two
+simulators against a local stack, covering the auth service, the second
+install, discretion on the device (calendar titles, reminder copy, the lock),
+the two-partner paths, and free/busy with each of its three sources removed in
+turn. Run it before a release and after any change to `packages/device`, the
+propose or plan screens, or the busy-times view. It needs a Mac: neither app
+runs in Expo Go, so a dev build is not optional.
 
 ## Data model notes
 

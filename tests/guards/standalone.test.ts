@@ -196,4 +196,90 @@ describe('cross-app conveniences degrade to nothing', () => {
 
     expect(offenders).toEqual([]);
   });
+
+  /**
+   * Free/busy must never rest on the device calendar alone.
+   *
+   * It used to, and the intimacy propose screen showed what that costs:
+   * refusing calendar access left it offering nothing at all, which reads as a
+   * broken app rather than a declined permission. `busyFromPlans` needs no
+   * permission and no network, so a screen that consults it always has
+   * something to say.
+   */
+  it('never lets a permission decide whether free/busy works at all', () => {
+    const screens = allAppFiles.filter((file) => file.endsWith(join('plan', 'new.tsx')));
+    expect(screens.length, 'the two plan screens moved — this guard is looking in the wrong place')
+      .toBe(2);
+
+    const offenders = screens
+      .filter((file) => !read(file).includes('busyFromPlans'))
+      .map((file) => relative(REPO_ROOT, file));
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('the cross-app busy feed is asked for, never assumed', () => {
+  /**
+   * The busy view is the one accessor that reads across the domain boundary.
+   * It is safe on its face — it returns instants and carries no domain, title
+   * or notes — but it is still the other app's schedule, shown on a phone
+   * whose owner may have refused calendar access precisely to avoid that.
+   *
+   * So in the 2-2-2 app, the app you would hand to a friend, reading it is
+   * gated on a setting that starts off. The intimacy app reads it
+   * unconditionally: what it discloses in that direction is that a date night
+   * is booked, and that app is behind the lock.
+   */
+  it('gates the 2-2-2 side where the repository is constructed', () => {
+    // The gate rides on the data access rather than on a screen, so a second
+    // consumer cannot be written without it. Assert it on whichever module
+    // builds the repository — that is the only door.
+    const owners = filesByApp.two_two_two.filter((file) =>
+      read(file).includes('createBusyRepository'),
+    );
+    expect(owners.length, 'no busy repository in 2-2-2 — renamed?').toBe(1);
+
+    expect(read(owners[0]!)).toContain('isCrossAppBusyEnabled');
+  });
+
+  /**
+   * And the intimacy app must *not* be gated. A setting there would be
+   * theatre: what the feed discloses in that direction is that a date night is
+   * booked, the app is already behind a lock, and an off-by-default switch
+   * would just leave the propose screen worse informed for no privacy gained.
+   */
+  it('does not gate the intimacy side', () => {
+    const owners = filesByApp.intimacy.filter((file) => read(file).includes('createBusyRepository'));
+    expect(owners.length).toBe(1);
+
+    expect(read(owners[0]!)).not.toContain('isCrossAppBusyEnabled');
+  });
+
+  /** Default off is the whole point; a default of `true` would be the bug. */
+  it('defaults the preference to off', () => {
+    const preferences = readFileSync(
+      join(REPO_ROOT, 'packages/device/src/preferences.ts'),
+      'utf8',
+    );
+
+    // Stored as the string 'true' only when explicitly enabled, so an unset
+    // key — a fresh install — reads as false.
+    expect(preferences).toMatch(/isCrossAppBusyEnabled[\s\S]*?getItemAsync[\s\S]*?===\s*'true'/);
+  });
+
+  /**
+   * Neither app may reach the underlying table for this. The redaction is the
+   * view body; pointing a query at `plans` instead would make it a promise the
+   * client makes rather than one Postgres keeps.
+   */
+  it('reads the view rather than the plans table', () => {
+    const offenders = allAppFiles
+      .filter((file) => read(file).includes('plan_busy_times'))
+      .map((file) => relative(REPO_ROOT, file));
+
+    // Apps go through createBusyRepository; the view name belongs to the data
+    // package and should not appear in a screen or a query module at all.
+    expect(offenders).toEqual([]);
+  });
 });

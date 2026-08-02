@@ -295,7 +295,14 @@ export interface Database {
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
+    Views: {
+      // Times only, by construction — the view carries no domain, title, notes
+      // or location. Read through createBusyRepository.
+      plan_busy_times: {
+        Row: { couple_id: string; starts_at: string; ends_at: string };
+        Relationships: [];
+      };
+    };
     Functions: {
       create_couple: {
         Args: { p_timezone: string };
