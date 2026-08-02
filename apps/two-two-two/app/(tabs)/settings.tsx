@@ -1,3 +1,4 @@
+import { ConnectedAppsCard } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import { hasCalendarAccess, requestCalendarAccess } from '@couple/device';
 import { Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
@@ -75,6 +76,10 @@ export default function Settings() {
           />
         </View>
       </Card>
+
+      {/* Same component as the other app, so the two can never disagree about
+          what is shared. */}
+      <ConnectedAppsCard />
     </Screen>
   );
 }

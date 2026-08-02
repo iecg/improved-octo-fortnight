@@ -115,26 +115,40 @@ export function Button({
  * A single choice in a row of them. Used for check-ins, where the options
  * carry equal weight — "not tonight" is styled exactly like "yes", because it
  * is just as valid an answer.
+ *
+ * `busy` marks a choice that clashes with something already booked. It is a
+ * hint, never a block: the chip stays pressable, because deciding to overlap
+ * is the caller's business and a disabled chip would state more certainty
+ * about someone's calendar than we have. The marker is a dot rather than a
+ * word so this file keeps holding no strings — `accessibilityLabel` is what
+ * carries the meaning, already translated by the caller.
  */
 export function Chip({
   label,
   selected = false,
+  busy = false,
+  accessibilityLabel,
   onPress,
 }: {
   label: string;
   selected?: boolean;
+  busy?: boolean;
+  accessibilityLabel?: string;
   onPress?: () => void;
 }) {
+  const border = selected
+    ? 'border-accent bg-accent/10 dark:border-accent-dark'
+    : busy
+      ? 'border-duesoon bg-surface dark:border-duesoon-dark dark:bg-surface-dark'
+      : 'border-line bg-surface dark:border-line-dark dark:bg-surface-dark';
+
   return (
     <Pressable
       accessibilityRole="radio"
       accessibilityState={{ selected }}
+      accessibilityLabel={accessibilityLabel}
       onPress={onPress}
-      className={`grow basis-0 items-center rounded-xl border px-3 py-3 ${
-        selected
-          ? 'border-accent bg-accent/10 dark:border-accent-dark'
-          : 'border-line bg-surface dark:border-line-dark dark:bg-surface-dark'
-      }`}
+      className={`grow basis-0 items-center rounded-xl border px-3 py-3 ${border}`}
     >
       <Text
         className={`text-center text-sm font-medium ${
@@ -143,6 +157,7 @@ export function Chip({
       >
         {label}
       </Text>
+      {busy ? <View className="mt-1 h-1.5 w-1.5 rounded-full bg-duesoon dark:bg-duesoon-dark" /> : null}
     </Pressable>
   );
 }

@@ -6,6 +6,7 @@
  * in reverse: they protect this phone, and syncing them would let one partner
  * turn off the other's lock.
  */
+import { ConnectedAppsCard } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
@@ -149,6 +150,10 @@ export default function Settings() {
           />
         </View>
       </Card>
+
+      {/* Same component as the other app, so the two can never disagree about
+          what is shared. */}
+      <ConnectedAppsCard />
     </Screen>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { atHourInZone, mergeRanges, suggestWindows, type TimeRange } from './windows';
+import { atHourInZone, mergeRanges, overlapsAny, suggestWindows, type TimeRange } from './windows';
 
 const UTC = 'UTC';
 
@@ -34,6 +34,46 @@ describe('atHourInZone', () => {
     const morning = atHourInZone(new Date('2026-09-12T04:00:00Z'), 20, 'UTC');
     const evening = atHourInZone(new Date('2026-09-12T22:00:00Z'), 20, 'UTC');
     expect(morning.toISOString()).toBe(evening.toISOString());
+  });
+});
+
+describe('overlapsAny', () => {
+  const busy = [
+    range('2026-09-12T18:00:00Z', '2026-09-12T20:00:00Z'),
+    range('2026-09-14T09:00:00Z', '2026-09-14T17:00:00Z'),
+  ];
+
+  it.each([
+    ['starting inside a block', '2026-09-12T19:00:00Z', '2026-09-12T21:00:00Z'],
+    ['ending inside a block', '2026-09-12T17:00:00Z', '2026-09-12T19:00:00Z'],
+    ['swallowing a block whole', '2026-09-12T12:00:00Z', '2026-09-13T12:00:00Z'],
+    ['sitting entirely inside one', '2026-09-12T18:30:00Z', '2026-09-12T19:00:00Z'],
+    ['spanning days into the second block', '2026-09-13T20:00:00Z', '2026-09-14T10:00:00Z'],
+  ])('detects a candidate %s', (_label, start, end) => {
+    expect(overlapsAny(range(start, end), busy)).toBe(true);
+  });
+
+  it.each([
+    ['before everything', '2026-09-12T15:00:00Z', '2026-09-12T17:00:00Z'],
+    ['between two blocks', '2026-09-13T09:00:00Z', '2026-09-13T11:00:00Z'],
+    ['after everything', '2026-09-15T09:00:00Z', '2026-09-15T11:00:00Z'],
+  ])('clears a candidate %s', (_label, start, end) => {
+    expect(overlapsAny(range(start, end), busy)).toBe(false);
+  });
+
+  it('treats touching as free, the same way mergeRanges does', () => {
+    // A plan starting the moment a block ends is back-to-back, not a clash.
+    expect(overlapsAny(range('2026-09-12T20:00:00Z', '2026-09-12T22:00:00Z'), busy)).toBe(false);
+    expect(overlapsAny(range('2026-09-12T16:00:00Z', '2026-09-12T18:00:00Z'), busy)).toBe(false);
+  });
+
+  it('is false against an empty calendar', () => {
+    expect(overlapsAny(range('2026-09-12T19:00:00Z', '2026-09-12T21:00:00Z'), [])).toBe(false);
+  });
+
+  it('is false for an empty or inverted candidate', () => {
+    expect(overlapsAny(range('2026-09-12T19:00:00Z', '2026-09-12T19:00:00Z'), busy)).toBe(false);
+    expect(overlapsAny(range('2026-09-12T20:00:00Z', '2026-09-12T18:00:00Z'), busy)).toBe(false);
   });
 });
 
