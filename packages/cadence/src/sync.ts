@@ -27,18 +27,19 @@ export interface CalendarActions {
   /** Booked plans this device has no event for yet. */
   toWrite: Plan[];
   /**
-   * `[plan, eventId]` for entries that exist and should be re-asserted.
+   * `[plan, eventId]` for entries that exist and should be brought back into
+   * line with the plan.
    *
-   * Re-stating every booked plan rather than working out which one moved, for
-   * the same reason the reminders below are rebuilt rather than diffed: nothing
-   * records what time an event was written with, so the only honest way to know
-   * an entry still matches its plan is to write it again. The list is a handful
-   * of plans, and the caller only reconciles when a status, a time or an event
-   * id actually changed.
+   * Every still-booked plan with an entry, rather than only the ones that
+   * changed: nothing records what was actually written to the OS calendar, so
+   * there is nothing to compare against. Rewriting unconditionally is the
+   * version with no state to get wrong, and a couple has a handful of upcoming
+   * plans rather than thousands.
    *
-   * Without this a rescheduled plan kept its original entry forever: the write
-   * arm skips a plan that already has an event id, and nothing else ever
-   * touched it.
+   * Without this, an entry was written once and then frozen. Move a date night,
+   * rename it, or attach a place to it, and the phone kept showing whatever was
+   * true the first time — which is worse than showing nothing, because it is
+   * confidently wrong.
    */
   toUpdate: Array<[Plan, string]>;
   /** `[plan, eventId]` for entries that should no longer exist. */
@@ -64,7 +65,8 @@ export function calendarActions(plans: Plan[], profileId: string): CalendarActio
       continue;
     }
 
-    // Completed plans are history and are left exactly as they were.
+    // Still booked, and still has a time to be booked at. A completed plan is
+    // history and is left exactly as it was.
     if (BOOKED.includes(plan.status) && plan.startsAt) toUpdate.push([plan, eventId]);
   }
 

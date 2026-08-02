@@ -4,19 +4,27 @@
  * Completing a plan is what re-anchors its cadence, so the two actions here
  * are the only things that move the clocks on the rhythm screen.
  */
-import type { Plan } from '@couple/core';
+import type { Plan, PlanPlace } from '@couple/core';
 import { formatDay, formatWindowParts } from '@couple/i18n';
 import { Body, Button, Card, Divider, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useCompletePlan, usePlans } from '../../src/queries';
+import { PlanPlaceCard } from '../../src/features/places/PlanPlace';
+import {
+  useAttachPlace,
+  useCompletePlan,
+  useDetachPlace,
+  usePlaces,
+  usePlans,
+  useSetPlaceCalendarSharing,
+} from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 export default function Plans() {
-  const { t, i18n } = useTranslation(['app', 'common', 'plans']);
-  const { couple } = usePairedSession();
+  const { t, i18n } = useTranslation(['app', 'common', 'plans', 'places']);
+  const { profile, couple } = usePairedSession();
 
   const now = useMemo(() => new Date(), []);
   const locale = i18n.language === 'es' ? 'es' : 'en';
@@ -24,6 +32,18 @@ export default function Plans() {
 
   const plansQuery = usePlans(couple.id);
   const complete = useCompletePlan(couple.id);
+  const placesQuery = usePlaces(couple.id);
+  const attach = useAttachPlace(couple.id, profile.id);
+  const detach = useDetachPlace(couple.id);
+  const share = useSetPlaceCalendarSharing(couple.id);
+
+  const placeByPlan = useMemo(() => {
+    const map = new Map<string, PlanPlace>();
+    for (const place of placesQuery.data ?? []) {
+      if (place.planId) map.set(place.planId, place);
+    }
+    return map;
+  }, [placesQuery.data]);
 
   const { upcoming, history } = useMemo(() => {
     const all = plansQuery.data ?? [];
@@ -63,6 +83,24 @@ export default function Plans() {
               {/* Written by a partner, shown exactly as written. */}
               {plan.title ? <Body>{plan.title}</Body> : null}
               <Muted>{label(plan)}</Muted>
+              <PlanPlaceCard
+                plan={plan}
+                place={placeByPlan.get(plan.id) ?? null}
+                locale={locale}
+                timeZone={timeZone}
+                busy={attach.isPending || detach.isPending}
+                onAttach={(draft) =>
+                  attach.mutate({ planId: plan.id, place: { ...draft, locale } })
+                }
+                onRemove={() => {
+                  const place = placeByPlan.get(plan.id);
+                  if (place) detach.mutate({ placeId: place.id, planId: plan.id });
+                }}
+                onShareWithCalendar={(next) => {
+                  const place = placeByPlan.get(plan.id);
+                  if (place) share.mutate({ placeId: place.id, share: next });
+                }}
+              />
               <View className="flex-row gap-2">
                 <View className="grow basis-0">
                   <Button

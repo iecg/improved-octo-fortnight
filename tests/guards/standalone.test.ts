@@ -131,11 +131,13 @@ describe('the domain boundary holds at the realtime layer', () => {
    * a filter against the replica identity, and under the default identity a
    * delete carries only the primary key — so filtering on anything else
    * silently drops deletes, which connect, report success and never fire.
-   * `plan_ideas` is the one table here that is genuinely deleted from
-   * (`useRemoveIdea`), and it is 2-2-2-owned outright, so it has no boundary to
-   * protect and everything to lose from a filter. Nothing deletes a plan, a
-   * proposal or a check-in from any screen; if that changes, the filter on that
-   * table has to go and this list is where the argument gets had.
+   * `plan_ideas` and `plan_places` are the tables here that are genuinely
+   * deleted from (`useRemoveIdea`, `useDetachPlace`), and both are 2-2-2-owned
+   * outright, so they have no boundary to protect and everything to lose from a
+   * filter — a detached place that never disappears from the other phone is the
+   * failure this buys off. Nothing deletes a plan, a proposal or a check-in
+   * from any screen; if that changes, the filter on that table has to go and
+   * this list is where the argument gets had.
    */
   it('filters each subscription deliberately', () => {
     const found = allAppFiles
@@ -154,6 +156,7 @@ describe('the domain boundary holds at the realtime layer', () => {
     expect(found).toEqual([
       { table: 'checkins', filter: 'couple_id' },
       { table: 'plan_ideas', filter: null },
+      { table: 'plan_places', filter: null },
       { table: 'plan_proposals', filter: 'couple_id' },
       { table: 'plans', filter: 'domain' },
       { table: 'plans', filter: 'domain' },

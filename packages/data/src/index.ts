@@ -13,6 +13,9 @@ export type { CheckinRepository, RecordCheckinInput } from './checkins';
 export { createIdeaRepository } from './ideas';
 export type { IdeaRepository, SaveIdeaInput } from './ideas';
 
+export { createPlaceRepository } from './places';
+export type { AttachPlaceInput, PlaceRepository } from './places';
+
 export { createBusyRepository } from './busy';
 export type { BusyRepository } from './busy';
 

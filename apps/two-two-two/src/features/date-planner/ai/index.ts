@@ -8,7 +8,8 @@
  */
 export { AiKeyCard } from './AiKeyCard';
 export { AiSuggestionCard } from './AiSuggestionCard';
-export { resetPlannerInputs } from './session-inputs';
+export { resetPlannerInputs, usePlannerInputs } from './session-inputs';
+export type { PlannerInputs } from './session-inputs';
 export type { SuggestedIdea } from './parse';
 
 import enAi from './locales/en/ai.json';

@@ -79,8 +79,13 @@ packages/i18n/      i18next bootstrap, shared namespaces, date formatting
 packages/ui/        Shared components (no strings)
 packages/device/    expo-calendar / notifications / local-auth wrappers
 supabase/migrations/  SINGLE source of truth for both apps
+supabase/functions/   Edge Functions — the only place a third-party key lives
 tests/i18n/, tests/rls/, tests/e2e/, tests/guards/
 ```
+
+Per-app optional features live in `apps/<app>/features/<name>/`, with anything
+that assumes an external dependency confined to a named subdirectory
+(`ai/`, `maps/`). See the two optional-dependency rules below.
 
 Shared packages ship **TypeScript source**, not builds — Metro transpiles them.
 There is no build step and no `dist/` to go stale.
@@ -127,11 +132,16 @@ a schema change that typechecks but does not _work_ gets caught.
 What it deliberately does not cover, because Node cannot: email OTP delivery
 (that is Supabase's auth service — rows are inserted into `auth.users`
 directly), PostgREST (statements run over a socket as the `authenticated` role,
-not through supabase-js), and writing to a device calendar. All three have been
-walked by hand on a simulator dev build against the local stack — sign in with
-a real code, check in, search free/busy, propose, and watch a partner-booked
-plan produce a calendar entry titled with the neutral label and nothing else —
-but no automated test covers them, so treat a green suite accordingly.
+not through supabase-js), and writing to a device calendar. No automated test
+covers any of them, so treat a green suite accordingly.
+
+**`docs/simulator-walk.md` is the checklist for that gap** — a dev build on two
+simulators against a local stack, covering the auth service, the second
+install, discretion on the device (calendar titles, reminder copy, the lock),
+the two-partner paths, and free/busy with each of its three sources removed in
+turn. Run it before a release and after any change to `packages/device`, the
+propose or plan screens, or the busy-times view. It needs a Mac: neither app
+runs in Expo Go, so a dev build is not optional.
 
 ## Data model notes
 
@@ -192,6 +202,12 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 there — RLS is what protects the data, never key secrecy. The root `.env` is a
 different thing entirely: it points `npm run db:test` at a local throwaway
 database and never at Supabase.
+
+The mapping key goes in `supabase/functions/.env` (see its `.env.example`),
+never here — `supabase secrets set` on a hosted project. It is optional: with
+none set, `npm test` passes, both apps bundle, and the 2-2-2 app's places
+feature works with venues typed by hand. A model key is not configured here at
+all; it is BYOK and lives in each partner's own keychain (see below).
 
 ## Dev builds
 
@@ -256,26 +272,82 @@ an app, that invariant is about to break.
 Per app: its screens, its `app` translation namespace, its kind catalog, and
 its `createDomainRepository(client, '<domain>')` binding.
 
-2-2-2-owned tables are `plan_ideas` and `ai_usage`. `plan_ideas` is reached
-through `createIdeaRepository` in `packages/data/src/ideas.ts` — its own
-factory, next to the intimacy-owned `createCheckinRepository`, so the other app
-has nothing to import even by accident. It hard-codes its domain rather than
-taking one, because a domain parameter is the exact shape invariant 2 forbids.
+2-2-2-owned tables are `plan_ideas`, `plan_places`, `ai_usage` and
+`places_usage`, plus the `places` Edge Function. `plan_ideas` and `plan_places`
+are reached through `createIdeaRepository` and `createPlaceRepository` in
+`packages/data` — their own factories, next to the intimacy-owned
+`createCheckinRepository`, so the other app has nothing to import even by
+accident. Both hard-code their domain rather than taking one, because a domain
+parameter is the exact shape invariant 2 forbids.
 
-`ai_usage` has no accessor at all, in either app, and that is the correct
-number: it is `select`-only to clients and only a service role could write it,
-so a repository method would be a read of a table nothing fills. It exists as a
-place a future metered path would write from, and stays empty while suggestions
-go from the device straight to the provider.
+The two counters have no accessor at all, in either app, and that is the correct
+number: both are `select`-only to clients and only a service role can write
+them, so a repository method would be a read of a table the client cannot fill.
+`places_usage` is written by the `places` Edge Function, which is what a service
+role is for. `ai_usage` is written by nothing and stays empty, because
+suggestions go from the device straight to the provider — it exists as the place
+a future metered path would write from.
 
-Its AI-optional rule — no path outside `features/<name>/ai/` may assume a model
-exists — applies to that app only, and is enforced by
-`tests/guards/ai-optional.test.ts` rather than remembered. The curated idea
-library (`apps/two-two-two/src/ideas.ts` for the ids, `locales/{en,es}/ideas.json`
-for the text) and manual entry are what make the feature work with no key
-configured; `ai_usage` simply stays empty. The guard also requires the bundled
-library to stay non-empty and complete in both languages, since a grep that
-passes over an empty library proves nothing.
+`plan_places` is a side table rather than columns on `plans` because `plans` is
+shared and replicated; it carries a composite foreign key `(plan_id,
+couple_id)` into `plans` so its denormalized `couple_id` cannot be forged, the
+same trick `plan_proposals` uses.
+
+### The two optional-dependency rules
+
+Both apply to the 2-2-2 app only, both have the same shape, and both are
+enforced by a guard rather than remembered:
+
+- **AI-optional** — no path outside `features/<name>/ai/` may assume a model
+  exists (`tests/guards/ai-optional.test.ts`).
+- **Maps-optional** — no path outside `features/<name>/maps/` may name a
+  mapping provider, and _no path anywhere_ may put a provider key in an
+  `EXPO_PUBLIC_` variable (`tests/guards/maps-optional.test.ts`).
+
+Both exempt `supabase/functions/`, which is where a key legitimately lives.
+They share one walker in `tests/guards/sources.ts`.
+
+Each guard also checks that the no-dependency path still _works_, by importing
+the modules it actually runs through — a grep that passes over a feature nobody
+can use proves nothing. For AI that is the curated idea library
+(`apps/two-two-two/src/ideas.ts` for the ids, `locales/{en,es}/ideas.json` for
+the text) plus manual entry. For maps it is `features/places/label.ts` and
+`link.ts`: a venue typed by hand, and an "Open in Maps" OS URL scheme that
+needs no key at all. `ai_usage` and `places_usage` simply stay empty.
+
+**The app never learns whether a mapping key exists.** It asks the `places`
+Edge Function (`op: 'capabilities'`), which is the only thing holding one, and
+every search control renders `null` when the answer is no. That is why there is
+no `EXPO_PUBLIC_` feature flag — the key's _name_ never enters the bundle
+either. `EXPO_PUBLIC_` values ship inside the app and can be read back out of
+it; that is fine for the anon key, which has RLS behind it, and not for a
+billed third-party key, where possession is the authorization.
+
+### Accommodation: a link, because there is no integration to build
+
+**Airbnb has no API this app could ever hold a key for.** The public API was
+retired years ago and the partner programme (`developer.withairbnb.com`) is
+closed to unsolicited applicants — vetted property-management systems and
+channel managers only, approached by Airbnb rather than applying. So there is
+no search to proxy, no listing data to show, and nothing for the proxy pattern
+above to wrap. Third-party scraper APIs sell the data; they are somebody else
+reselling a site's contents, and pointing a couple's private planner at one
+would add a paid dependency and a legal question to answer a need a URL
+answers.
+
+`features/places/stays.ts` therefore builds a deep link and nothing else. The
+couple has already supplied the only two facts an accommodation search needs —
+the nights and roughly where — so the link arrives with both filled in and they
+finish on Airbnb's own site, as themselves. No key, no account, no request from
+us to anyone, nothing sent until somebody taps. Offered only for `getaway` and
+`trip`, since a date night ends at home.
+
+Dates go through `calendarDateIn` in the couple's timezone, never
+`toISOString()`: a night is a calendar date, and an evening departure is
+already tomorrow in UTC. **No affiliate or referral tagging** — quietly earning
+on two people's weekend away is a product decision with a conversation
+attached, not a query parameter. A test asserts the URL carries only the three
+parameters it means to.
 
 Suggestions are the optional third source, in
 `apps/two-two-two/src/features/date-planner/ai/`, and they are **BYOK**: each
@@ -311,7 +383,24 @@ case — partner-authored, shown verbatim, and labelled with the language they
 were written in when that differs from the reader's. A suggestion is a model's
 words rather than ours, so it is treated the same way as a partner's: generated
 in the asker's language, stored with that `locale`, shown verbatim, and labelled
-rather than machine-translated for the partner reading in the other one.
+rather than machine-translated for the partner reading in the other one. A
+place follows the same rule with one wrinkle: a venue name is a proper noun and
+is never labelled, while its address is.
+
+A place's address reaches a device calendar only when that place carries
+`share_with_calendar`, which is off by default —
+`DeviceSyncOptions.calendarLocationFor` is optional, so the intimacy app is
+unaffected. A title is one thing; an address syncs to shared computers as "we
+are not home, and here is where we are".
+
+`calendarActions` returns `toUpdate` as well as `toWrite` and `toRemove`, and
+reconciliation rewrites every still-booked entry rather than diffing: nothing
+records what was actually written to the OS calendar, so there is nothing to
+compare against. Before that, an entry was written once and then frozen —
+renaming a plan, moving it, or attaching a place left the phone confidently
+showing something that was no longer true. The change detector in
+`useDeviceSync` therefore hashes the title and location an entry _would_ carry,
+not just the plan's own columns, or a pass that could fix it would never run.
 
 Ported from `iecg/legendary-bassoon` (now superseded). Two bugs found there
 and guarded against here, both with tests: a `count(*)`-based couple-size
@@ -323,8 +412,8 @@ were adopted.
 
 ## Version notes
 
-Expo SDK 57 / React 19.2 / RN 0.86 / TypeScript 6. Two things that differ from
-older material an agent may have absorbed:
+Expo SDK 57 / React 19.2 / RN 0.86 / TypeScript 6. Three things that differ
+from older material an agent may have absorbed:
 
 - **`expo-calendar` replaced the `*Async` free functions with an
   object-oriented API.** The old names still exist but _throw at runtime_ when
@@ -336,6 +425,14 @@ older material an agent may have absorbed:
   transitive dependencies nested, and disabling the walk-up makes them
   unresolvable. `babel-preset-expo` is also declared explicitly for the same
   reason.
+- **`btoa`, `atob` and `Blob.arrayBuffer()` do not exist here.** They are Web
+  APIs; Hermes implements none of them and neither RN nor Expo polyfills them.
+  Node has all three, so a unit suite is no evidence — this shipped once as a
+  map thumbnail that silently never appeared, because the call threw inside a
+  `catch` that turned it into "no map". Use `FileReader` (which RN _does_
+  polyfill globally) — see `features/places/maps/blob.ts`.
 
 When touching a native module, read its `.d.ts` in `node_modules` rather than
-recalling the API. It has moved recently.
+recalling the API. It has moved recently. The same caution applies to anything
+that looks like a browser global: check it exists in Hermes before relying on
+a green Node suite.

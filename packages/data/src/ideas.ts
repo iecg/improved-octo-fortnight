@@ -29,6 +29,8 @@ export interface SaveIdeaInput {
   url?: string | null;
   estCostBand?: CostBand | null;
   source: IdeaSource;
+  /** Which provider named this. Null for library, manual, and ai. */
+  sourceDomain?: string | null;
   /** The language the title and summary are written in. */
   locale: Locale;
 }
@@ -73,6 +75,7 @@ export function createIdeaRepository(client: AppSupabaseClient): IdeaRepository 
           url: input.url ?? null,
           est_cost_band: input.estCostBand ?? null,
           source: input.source,
+          source_domain: input.sourceDomain ?? null,
           locale: input.locale,
         })
         .select()

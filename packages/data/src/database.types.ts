@@ -226,8 +226,66 @@ export interface Database {
         };
         Relationships: [];
       };
+      // 2-2-2-owned. Reachable only through createPlaceRepository.
+      plan_places: {
+        Row: {
+          id: string;
+          couple_id: string;
+          domain: string;
+          plan_id: string | null;
+          idea_id: string | null;
+          name: string;
+          address: string | null;
+          provider: string;
+          provider_place_id: string | null;
+          /**
+           * `numeric` columns. PostgREST and node-postgres both hand these back
+           * as strings to avoid the precision loss of a float, so `toPlanPlace`
+           * coerces rather than trusting the type.
+           */
+          latitude: string | number | null;
+          longitude: string | number | null;
+          locale: LocaleEnum;
+          share_with_calendar: boolean;
+          attached_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          couple_id: string;
+          domain: string;
+          plan_id?: string | null;
+          idea_id?: string | null;
+          name: string;
+          address?: string | null;
+          provider: string;
+          provider_place_id?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          locale: LocaleEnum;
+          share_with_calendar?: boolean;
+          attached_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          address?: string | null;
+          provider_place_id?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          share_with_calendar?: boolean;
+        };
+        Relationships: [];
+      };
       // Read-only to clients; only the Edge Function's service role writes it.
       ai_usage: {
+        Row: { couple_id: string; day: string; request_count: number };
+        Insert: { couple_id: string; day: string; request_count?: number };
+        Update: { request_count?: number };
+        Relationships: [];
+      };
+      // Read-only to clients; only the Edge Function's service role writes it.
+      places_usage: {
         Row: { couple_id: string; day: string; request_count: number };
         Insert: { couple_id: string; day: string; request_count?: number };
         Update: { request_count?: number };

@@ -509,3 +509,126 @@ describe('7. countering a suggestion', () => {
     expect(plan.status).toBe('proposed');
   });
 });
+
+/**
+ * 8. Where it actually is.
+ *
+ * The 2-2-2 app is the one that answers "where", and it answers it with no
+ * mapping provider configured — which is the state every install is in until
+ * someone sets a key, and the state this suite runs in. A place typed by hand
+ * has to survive the round trip, reach the label a calendar would show, and
+ * stay out of that calendar unless somebody asked for it.
+ */
+describe('8. a place on a 2-2-2 plan', () => {
+  let planId = '';
+  let placeId = '';
+
+  /** Accented, em-dashed, and in the partner's own language on purpose. */
+  const NAME = 'Café Anglès';
+  const ADDRESS = 'Carrer dels Almogàvers 1, Barcelona';
+
+  it('books a 2-2-2 date night and attaches a place typed by hand', async () => {
+    const startsAt = new Date(Date.now() + 5 * 86_400_000).toISOString();
+
+    [planId, placeId] = await asUser(pool, alice, async (client) => {
+      const { rows: planRows } = await client.query<{ id: string }>(
+        `insert into public.plans (couple_id, domain, kind, title, location, starts_at, status, created_by)
+         values ($1, 'two_two_two', 'date_night', 'dinner', $2, $3, 'scheduled', $4)
+         returning id`,
+        [world.coupleId, `${NAME} — ${ADDRESS}`, startsAt, alice],
+      );
+      const { rows: placeRows } = await client.query<{ id: string }>(
+        `insert into public.plan_places
+           (couple_id, domain, plan_id, name, address, provider, locale, attached_by)
+         values ($1, 'two_two_two', $2, $3, $4, 'manual', 'es', $5)
+         returning id`,
+        [world.coupleId, planRows[0]!.id, NAME, ADDRESS, alice],
+      );
+      return [planRows[0]!.id, placeRows[0]!.id];
+    });
+
+    expect(planId).toBeTruthy();
+    expect(placeId).toBeTruthy();
+  });
+
+  it('shows Bob the place verbatim, accents and all', async () => {
+    const place = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query('select * from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows[0];
+    });
+
+    // Authored text. Byte-identical, never machine-translated — the same
+    // property this suite already pins for a proposal's note.
+    expect(place.name).toBe(NAME);
+    expect(place.address).toBe(ADDRESS);
+    // Labelled with the language it was written in, so Bob is told rather than
+    // shown a translation.
+    expect(place.locale).toBe('es');
+    // Nothing was searched, so there is nothing a provider gave us.
+    expect(place.provider).toBe('manual');
+    expect(place.latitude).toBeNull();
+    expect(place.provider_place_id).toBeNull();
+  });
+
+  it('keeps the address out of the calendar until someone opts in', async () => {
+    const place = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select * from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows[0];
+    });
+    expect(place.share_with_calendar).toBe(false);
+
+    // What the device would do with it. The plan is booked, so an entry is
+    // wanted — but the app's own opt-in check is what decides whether the
+    // address rides along, and nobody asked.
+    const plans = await readPlans(alice);
+    const plan = plans.find((candidate) => candidate.id === planId)!;
+    const { toWrite } = calendarActions([plan], alice);
+
+    expect(toWrite).toHaveLength(1);
+    expect(place.share_with_calendar ? (plan.location ?? undefined) : undefined).toBeUndefined();
+  });
+
+  it('lets either partner opt the address in, and then it is the label', async () => {
+    await asUser(pool, bob, (client) =>
+      client.query('update public.plan_places set share_with_calendar = true where id = $1', [
+        placeId,
+      ]),
+    );
+
+    const [place, plans] = await Promise.all([
+      asUser(pool, bob, async (client) => {
+        const { rows } = await client.query('select * from public.plan_places where id = $1', [
+          placeId,
+        ]);
+        return rows[0];
+      }),
+      readPlans(bob),
+    ]);
+    const plan = plans.find((candidate) => candidate.id === planId)!;
+
+    expect(place.share_with_calendar).toBe(true);
+    // plans.location is the column that reaches a calendar entry, and it holds
+    // the label rather than a coordinate.
+    const written = place.share_with_calendar ? (plan.location ?? undefined) : undefined;
+    expect(written).toBe(`${NAME} — ${ADDRESS}`);
+    expect(written!.length).toBeLessThanOrEqual(200);
+  });
+
+  it('takes the place with it when the plan is deleted', async () => {
+    await asUser(pool, alice, (client) =>
+      client.query('delete from public.plans where id = $1', [planId]),
+    );
+
+    const left = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select id from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows;
+    });
+    expect(left).toEqual([]);
+  });
+});
