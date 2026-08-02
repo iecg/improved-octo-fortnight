@@ -10,7 +10,7 @@
  * are intimacy-owned and reachable only through their own factory.
  */
 import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
-import type { Cadence, IdeaSource, Locale, Plan } from '@couple/core';
+import type { Cadence, CostBand, IdeaSource, Locale, Plan } from '@couple/core';
 import { createDomainRepository, createIdeaRepository } from '@couple/data';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
@@ -133,6 +133,8 @@ export function useSaveIdea(coupleId: string, profileId: string) {
       kind: string;
       title: string;
       summary?: string | null;
+      /** Only suggestions carry one; the library and manual entry leave it null. */
+      estCostBand?: CostBand | null;
       source: IdeaSource;
       locale: Locale;
     }) =>
@@ -142,6 +144,7 @@ export function useSaveIdea(coupleId: string, profileId: string) {
         savedBy: profileId,
         title: input.title,
         summary: input.summary ?? null,
+        estCostBand: input.estCostBand ?? null,
         source: input.source,
         locale: input.locale,
       }),
@@ -162,17 +165,31 @@ export function useRemoveIdea(coupleId: string) {
 }
 
 /**
- * Live updates for this app's plans.
+ * Keep this device in step with the other one.
  *
- * The `filter` is load-bearing, not an optimisation. Without it the server
- * sends every plan row the couple can read — `domain = 'intimacy'` rows
+ * Mounted once, in the tabs layout, rather than per screen: both tabs stay
+ * mounted, so a per-screen call opened the same topic more than once for no
+ * benefit.
+ *
+ * Every handler invalidates and refetches rather than patching the cache from
+ * the payload. That is not only for consistency — a delete event carries just
+ * the primary key, so there is nothing to patch a row from.
+ *
+ * The `filter` on `plans` is load-bearing, not an optimisation. Without it the
+ * server sends every plan row the couple can read — `domain = 'intimacy'` rows
  * included, `title` and `notes` and all — into this app's socket. Discarding
  * the payload in the callback is not the same as never receiving it, and the
- * whole point of the domain-scoped repository is that intimacy rows do not
- * reach this app at all.
+ * whole point of the domain-scoped repository is that intimacy rows never
+ * reach this app. `postgres_changes` accepts one `column=op.value`, so it goes
+ * on the column RLS provably cannot express; the couple scoping RLS does.
  *
- * `postgres_changes` accepts one `column=op.value`, so it goes on the column
- * that RLS provably cannot express. The couple scoping RLS already does.
+ * Why `plan_ideas` is deliberately *not* filtered: a filter is matched against
+ * the replica identity, and with the default identity a delete carries only
+ * the primary key — so filtering on any other column silently drops deletes.
+ * The shortlist is the one list here that is genuinely deleted from
+ * (`useRemoveIdea`), and it is 2-2-2-owned outright, so there is no boundary
+ * to protect and a filter would only cost a removal that never syncs. `plans`
+ * has the opposite shape: two domains share it, and nothing deletes a plan.
  */
 export function useRealtimeSync(coupleId: string | null): void {
   const client = useQueryClient();
@@ -188,6 +205,13 @@ export function useRealtimeSync(coupleId: string | null): void {
           void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
         },
       )
+      // The shortlist is shared, and both partners read it while deciding what
+      // to book. Requires `plan_ideas` in the `supabase_realtime` publication —
+      // `tests/guards/realtime-subscriptions.test.ts` holds the two together.
+      // Unfiltered on purpose; see the note above about deletes.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plan_ideas' }, () => {
+        void client.invalidateQueries({ queryKey: keys.ideas(coupleId) });
+      })
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);

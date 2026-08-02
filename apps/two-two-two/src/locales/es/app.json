@@ -21,7 +21,8 @@
     "library": "Algunas sugerencias",
     "libraryHint": "Vienen con la app. Sin cuenta, sin conexión y sin nada sofisticado.",
     "save": "Guardarla",
-    "planIt": "Planearlo"
+    "planIt": "Planearlo",
+    "fromAi": "Sugerido por un modelo"
   },
   "home": {
     "title": "Su ritmo",

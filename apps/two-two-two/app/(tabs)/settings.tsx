@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { AiKeyCard } from '../../src/features/date-planner/ai';
 import { useSession } from '../../src/session';
 
 export default function Settings() {
@@ -56,6 +57,9 @@ export default function Settings() {
           )}
         </View>
       </Card>
+
+      {/* Optional, and per person: a key lives on one phone and is never shared. */}
+      <AiKeyCard />
 
       <Card>
         <View className="gap-3">

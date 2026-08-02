@@ -12,7 +12,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { plans as repository, usePlans, useRealtimeSync } from '../../src/queries';
+import { plans as repository, usePlans } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 export default function Plans() {
@@ -24,7 +24,6 @@ export default function Plans() {
   const locale = i18n.language === 'es' ? 'es' : 'en';
   const timeZone = couple.timezone;
 
-  useRealtimeSync(couple.id);
   const plansQuery = usePlans(couple.id);
 
   const { upcoming, history } = useMemo(() => {

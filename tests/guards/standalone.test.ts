@@ -112,31 +112,52 @@ describe('the domain boundary holds at the realtime layer', () => {
    * into a socket that has no business seeing them. Discarding the payload in
    * the callback is not the same as never receiving it.
    */
-  it('filters every plans subscription', () => {
-    const subscribers = allAppFiles.filter((file) => read(file).includes('postgres_changes'));
-    expect(subscribers.length).toBeGreaterThan(0);
-
-    for (const file of subscribers) {
-      const contents = read(file);
-      // Each `.on('postgres_changes', {...})` config object must name a filter.
-      const configs = contents.match(/table:\s*'[a-z_]+'[^}]*/g) ?? [];
-      expect(configs.length, `${relative(REPO_ROOT, file)} has no subscription configs`).
-        toBeGreaterThan(0);
-
-      for (const config of configs) {
-        expect(config, `unfiltered subscription in ${relative(REPO_ROOT, file)}: ${config}`).toMatch(
-          /filter:/,
-        );
-      }
+  it('scopes every plans subscription by domain, the one thing RLS cannot express', () => {
+    for (const [app, files] of Object.entries(filesByApp)) {
+      const subscribers = files.filter((file) => read(file).includes("table: 'plans'"));
+      expect(subscribers.length, `${app} does not subscribe to plans`).toBe(1);
+      expect(read(subscribers[0]!)).toMatch(
+        /table:\s*'plans'[^}]*filter:\s*`domain=eq\.\$\{DOMAIN\}`/,
+      );
     }
   });
 
-  it('scopes the plans subscription by domain, the one thing RLS cannot express', () => {
-    for (const files of Object.values(filesByApp)) {
-      const queries = files.filter((file) => read(file).includes("table: 'plans'"));
-      expect(queries.length).toBe(1);
-      expect(read(queries[0]!)).toMatch(/table:\s*'plans'[^}]*filter:\s*`domain=eq\.\$\{DOMAIN\}`/);
-    }
+  /**
+   * Whether a subscription is filtered is a decision, not a default, so the
+   * whole set is asserted at once — in the same spirit as the publication list
+   * in `./realtime-subscriptions.test.ts`.
+   *
+   * The unfiltered entry is the one that matters to get right. Realtime matches
+   * a filter against the replica identity, and under the default identity a
+   * delete carries only the primary key — so filtering on anything else
+   * silently drops deletes, which connect, report success and never fire.
+   * `plan_ideas` is the one table here that is genuinely deleted from
+   * (`useRemoveIdea`), and it is 2-2-2-owned outright, so it has no boundary to
+   * protect and everything to lose from a filter. Nothing deletes a plan, a
+   * proposal or a check-in from any screen; if that changes, the filter on that
+   * table has to go and this list is where the argument gets had.
+   */
+  it('filters each subscription deliberately', () => {
+    const found = allAppFiles
+      .flatMap((file) => {
+        const contents = read(file);
+        return [...contents.matchAll(/postgres_changes['"]\s*,\s*\{([^}]*)\}/g)].map((match) => {
+          const options = match[1] ?? '';
+          return {
+            table: /\btable:\s*['"]([^'"]+)['"]/.exec(options)?.[1] ?? '?',
+            filter: /\bfilter:\s*`([a-z_]+)=/.exec(options)?.[1] ?? null,
+          };
+        });
+      })
+      .sort((a, b) => a.table.localeCompare(b.table));
+
+    expect(found).toEqual([
+      { table: 'checkins', filter: 'couple_id' },
+      { table: 'plan_ideas', filter: null },
+      { table: 'plan_proposals', filter: 'couple_id' },
+      { table: 'plans', filter: 'domain' },
+      { table: 'plans', filter: 'domain' },
+    ]);
   });
 });
 
