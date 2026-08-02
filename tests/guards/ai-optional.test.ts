@@ -13,20 +13,15 @@
  * The rule is the 2-2-2 app's alone — the intimacy app has no AI story at all,
  * which is why the whole repo is scanned rather than just that app.
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { extname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { libraryFor } from '../../apps/two-two-two/src/ideas';
 import en from '../../apps/two-two-two/src/locales/en/ideas.json';
 import es from '../../apps/two-two-two/src/locales/es/ideas.json';
 import { TWO_TWO_TWO_KINDS } from '../../packages/core/src/kinds';
-
-const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const SCANNED = ['apps', 'packages', 'supabase'];
-const IGNORED_DIRS = new Set(['node_modules', '.git', '.expo', 'dist', 'ios', 'android']);
-const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+import { isFeatureSegmentPath, REPO_ROOT, scannedFiles } from './sources';
 
 /**
  * Anything that only makes sense when a model is reachable. Deliberately
@@ -35,28 +30,20 @@ const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
  */
 const MODEL_MARKERS = [/ANTHROPIC_API_KEY/, /@anthropic-ai\//, /\bnew\s+Anthropic\b/];
 
-/** The one place any of this is allowed to live. */
-function isAiFeaturePath(relativePath: string): boolean {
-  const parts = relativePath.split(sep);
-  const features = parts.indexOf('features');
-  // .../features/<name>/ai/...
-  return features !== -1 && parts[features + 2] === 'ai';
+/**
+ * The server half.
+ *
+ * `SCANNED` includes `supabase/`, so the planned `suggest-ideas` function would
+ * have tripped this rule the moment it was written — and it is precisely where
+ * a key *should* live, since an Edge Function secret never reaches a phone.
+ * The client half of the rule is unchanged: nothing under `apps/` may assume a
+ * model exists outside its own feature folder.
+ */
+function isEdgeFunctionPath(relativePath: string): boolean {
+  return relativePath.startsWith(join('supabase', 'functions') + sep);
 }
 
-function sourceFilesIn(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (IGNORED_DIRS.has(entry)) continue;
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) sourceFilesIn(full, found);
-    else if (SOURCE_EXTENSIONS.has(extname(entry))) found.push(full);
-  }
-  return found;
-}
-
-const files = SCANNED.flatMap((dir) => {
-  const full = join(REPO_ROOT, dir);
-  return statSync(full).isDirectory() ? sourceFilesIn(full) : [];
-});
+const files = scannedFiles();
 
 describe('the AI-optional rule', () => {
   it('has source files to check', () => {
@@ -65,12 +52,12 @@ describe('the AI-optional rule', () => {
 
   it('keeps every assumption that a model exists inside features/*/ai/', () => {
     const offenders = files
-      .filter((file) => !isAiFeaturePath(relative(REPO_ROOT, file)))
-      .filter((file) => {
-        const contents = readFileSync(file, 'utf8');
+      .map((file) => relative(REPO_ROOT, file))
+      .filter((path) => !isFeatureSegmentPath(path, 'ai') && !isEdgeFunctionPath(path))
+      .filter((path) => {
+        const contents = readFileSync(join(REPO_ROOT, path), 'utf8');
         return MODEL_MARKERS.some((marker) => marker.test(contents));
-      })
-      .map((file) => relative(REPO_ROOT, file));
+      });
 
     expect(offenders).toEqual([]);
   });
