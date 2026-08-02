@@ -10,7 +10,7 @@
  * are intimacy-owned and reachable only through their own factory.
  */
 import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
-import type { Cadence, IdeaSource, Locale, Plan } from '@couple/core';
+import type { Cadence, CostBand, IdeaSource, Locale, Plan } from '@couple/core';
 import { createDomainRepository, createIdeaRepository } from '@couple/data';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
@@ -91,6 +91,8 @@ export function useSaveIdea(coupleId: string, profileId: string) {
       kind: string;
       title: string;
       summary?: string | null;
+      /** Only suggestions carry one; the library and manual entry leave it null. */
+      estCostBand?: CostBand | null;
       source: IdeaSource;
       locale: Locale;
     }) =>
@@ -100,6 +102,7 @@ export function useSaveIdea(coupleId: string, profileId: string) {
         savedBy: profileId,
         title: input.title,
         summary: input.summary ?? null,
+        estCostBand: input.estCostBand ?? null,
         source: input.source,
         locale: input.locale,
       }),

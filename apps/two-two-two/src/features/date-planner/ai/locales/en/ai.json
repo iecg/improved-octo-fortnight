@@ -1,0 +1,48 @@
+{
+  "settings": {
+    "title": "Suggestions",
+    "description": "Optional. Add a key from one of these services and the ideas screen can suggest a few more.",
+    "privacy": "Your key is stored on this phone only. It never reaches our servers and your partner never sees it — if they want suggestions too, they add their own.",
+    "provider": {
+      "openrouter": "OpenRouter",
+      "gemini": "Google Gemini"
+    },
+    "keyLabel": "API key",
+    "keyPlaceholder": "Paste your key",
+    "keyInvalid": "That does not look like a key for this service.",
+    "keyStored": "A key is saved on this phone.",
+    "keyAbsent": "No key saved.",
+    "save": "Save key",
+    "remove": "Remove key",
+    "getKey": "Where do I get a key?",
+    "modelLabel": "Model",
+    "modelHint": "Only worth changing if the default stops working."
+  },
+  "suggest": {
+    "title": "Ask for a few",
+    "hint": "Anything to steer it?",
+    "hintPlaceholder": "Somewhere walkable, under £50",
+    "hintNote": "What you type here is sent to the service you chose. Nothing else from the app is.",
+    "notConfigured": "Add a key in Settings and a few suggestions can appear here.",
+    "generate": "Suggest some",
+    "again": "Try again",
+    "generating": "Thinking…",
+    "disclaimer": "Written by a model, not by us. Check anything before you count on it.",
+    "dismiss": "Clear these"
+  },
+  "error": {
+    "no_key": "No key saved for this service yet.",
+    "unauthorized": "That key was refused. Check it and save it again.",
+    "quota": "That account is out of credit.",
+    "rate_limited": "Too many requests just now. Give it a minute.",
+    "invalid_request": "The service could not read that request.",
+    "model_unavailable": "That model is not available. Try clearing the model field.",
+    "provider_down": "The service is having trouble. Try again shortly.",
+    "network": "Could not reach the service. Check your connection.",
+    "timeout": "That took too long. Try again.",
+    "refused": "The model declined to answer that one.",
+    "malformed": "The reply could not be read.",
+    "empty": "Nothing usable came back. Try again.",
+    "unknown": "That did not work."
+  }
+}

@@ -11,6 +11,7 @@ import { secureAuthStorage } from '@couple/device';
 import { addAppNamespace, createI18n, resolveLocale } from '@couple/i18n';
 import { getLocales } from 'expo-localization';
 
+import { AI_NAMESPACE, aiBundles } from './features/date-planner/ai';
 import enApp from './locales/en/app.json';
 import enIdeas from './locales/en/ideas.json';
 import esApp from './locales/es/app.json';
@@ -35,6 +36,9 @@ addAppNamespace(i18n, 'app', { en: enApp, es: esApp });
 // The curated library is ours, not a partner's, so it is translated like any
 // other chrome rather than labelled with the language it was written in.
 addAppNamespace(i18n, 'ideas', { en: enIdeas, es: esIdeas });
+// Registered whether or not anyone has configured a key: the settings card has
+// to be able to explain itself before there is anything to explain.
+addAppNamespace(i18n, AI_NAMESPACE, aiBundles);
 
 /** Date night every 2 weeks, a getaway every 2 months, a trip every 2 years. */
 export const DEFAULT_CADENCES = Object.values(TWO_TWO_TWO_KINDS);
