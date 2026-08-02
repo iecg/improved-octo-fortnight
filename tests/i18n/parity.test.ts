@@ -14,7 +14,21 @@ import { describe, expect, it } from 'vitest';
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const REQUIRED_LOCALES = ['en', 'es'] as const;
-const IGNORED_DIRS = new Set(['node_modules', '.git', '.expo', 'dist', 'ios', 'android']);
+/**
+ * `.claude` holds git worktrees. Without it here, a run from the main checkout
+ * walks into every worktree and tests their locale files too — inflating the
+ * count, and failing `main`'s suite over a half-finished translation in an
+ * unrelated branch.
+ */
+const IGNORED_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.claude',
+  '.expo',
+  'dist',
+  'ios',
+  'android',
+]);
 
 /** Every directory named `locales` anywhere in the workspace. */
 function findLocaleDirs(dir: string, found: string[] = []): string[] {

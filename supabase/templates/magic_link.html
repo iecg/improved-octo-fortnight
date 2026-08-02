@@ -1,0 +1,19 @@
+<!--
+  Sign-in code.
+
+  The app asks for a code, not a link: the sign-in screen is a number pad with
+  `autoComplete="one-time-code"`, and `verifyOtp` is called with `type: 'email'`.
+  Supabase's stock template sends only {{ .ConfirmationURL }}, which arrives as
+  a link into a browser the app cannot pick up — so this template exists to put
+  {{ .Token }} in front of the person typing it.
+
+  Bilingual in one message rather than translated per recipient. Every other
+  string in this product is rendered on the reader's own device from their
+  `profiles.locale`; an email is composed server-side, before anyone is signed
+  in, so there is no profile to read a locale from yet. Two short lines is the
+  honest way to serve both partners at the moment neither is identifiable.
+-->
+<h2>{{ .Token }}</h2>
+
+<p>Enter this code to sign in. It expires shortly and can only be used once.</p>
+<p>Escribe este código para iniciar sesión. Caduca en breve y solo se puede usar una vez.</p>

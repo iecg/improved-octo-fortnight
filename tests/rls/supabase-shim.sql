@@ -58,12 +58,27 @@ grant execute on function auth.uid() to anon, authenticated, service_role;
 
 create publication supabase_realtime;
 
--- Supabase's default grants: both roles start with full table privileges and
--- RLS is what actually restricts them. Our migrations then narrow this
--- (revoking from anon, and reducing couples to a column-level update grant),
--- so the starting point has to match or those statements would be testing
--- nothing.
+-- Supabase's default grants.
+--
+-- This block used to `grant all on tables` by default, on the belief that both
+-- roles start with full table privileges and RLS is what restricts them. That
+-- is no longer true, and the suite was quietly the more permissive of the two:
+-- on a current Supabase image the default ACL for tables created by `postgres`
+-- in `public` is `Dxtm` — TRUNCATE, REFERENCES, TRIGGER, MAINTAIN — with no
+-- SELECT/INSERT/UPDATE/DELETE at all.
+--
+-- Granting `all` here meant every policy test passed against privileges the
+-- real project does not hand out, and the app got 42501 on its first query
+-- after sign-in while 43 tests stayed green. The schema now grants what it
+-- needs explicitly, in 20260802000300_table_grants.sql, and this file
+-- reproduces the real starting point so that migration is actually load-bearing
+-- rather than decorative.
+--
+-- Functions keep their default grant: `execute` is public by default in
+-- Postgres, which is why the migrations bother to revoke it before granting
+-- execute to `authenticated`.
 grant usage on schema public to anon, authenticated, service_role;
-alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public
+  grant truncate, references, trigger on tables to anon, authenticated, service_role;
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
