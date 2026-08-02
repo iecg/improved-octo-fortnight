@@ -10,15 +10,20 @@
  * With no key configured this collapses to a single line pointing at settings,
  * and the two sources above it carry on exactly as before. That is the
  * AI-optional rule as a rendering decision rather than a promise.
+ *
+ * The three form fields live in a session store rather than in this component,
+ * because the card unmounts on a tab change and nobody should retype their
+ * city for that. See `session-inputs.ts` for why budget is per kind and
+ * location is not, and for why none of it is written to disk.
  */
 import type { Locale } from '@couple/core';
 import { Body, Button, Card, Divider, Heading, Muted } from '@couple/ui';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
 import { MAX_IDEAS } from './client';
 import type { SuggestedIdea } from './parse';
+import { usePlannerInputs } from './session-inputs';
 import { useProviderKey, useSelectedProvider } from './use-provider-key';
 import { useSuggestions } from './use-suggestions';
 
@@ -74,7 +79,10 @@ export function AiSuggestionCard({
   const { status } = useProviderKey(provider);
   const { ideas, isPending, errorKey, generate, dismiss } = useSuggestions(provider);
 
-  const [hint, setHint] = useState('');
+  // Session-lived, and budget is keyed by kind: switching the chip swaps what
+  // you are willing to spend on an evening for what you would spend on a
+  // fortnight, while leaving the place you are planning around alone.
+  const { location, budget, hint, setLocation, setBudget, setHint } = usePlannerInputs(kind);
 
   // Deduped here rather than by telling the model what is already saved:
   // the shortlist is partner-authored, and sending it would ship private text
@@ -99,6 +107,24 @@ export function AiSuggestionCard({
       <View className="gap-2">
         <Heading>{t('ai:suggest.title')}</Heading>
 
+        <Body>{t('ai:suggest.location')}</Body>
+        <TextInput
+          className={INPUT_CLASS}
+          value={location}
+          onChangeText={setLocation}
+          placeholder={t('ai:suggest.locationPlaceholder')}
+          accessibilityLabel={t('ai:suggest.location')}
+        />
+
+        <Body>{t('ai:suggest.budget')}</Body>
+        <TextInput
+          className={INPUT_CLASS}
+          value={budget}
+          onChangeText={setBudget}
+          placeholder={t('ai:suggest.budgetPlaceholder')}
+          accessibilityLabel={t('ai:suggest.budget')}
+        />
+
         <Body>{t('ai:suggest.hint')}</Body>
         <TextInput
           className={INPUT_CLASS}
@@ -107,13 +133,16 @@ export function AiSuggestionCard({
           placeholder={t('ai:suggest.hintPlaceholder')}
           accessibilityLabel={t('ai:suggest.hint')}
         />
-        <Muted>{t('ai:suggest.hintNote')}</Muted>
+
+        {/* The only thing telling anyone that the city they typed leaves the
+            device, so it covers all three fields rather than just the last. */}
+        <Muted>{t('ai:suggest.inputsNote')}</Muted>
 
         <Button
           label={ideas.length > 0 ? t('ai:suggest.again') : t('ai:suggest.generate')}
           variant="secondary"
           loading={isPending}
-          onPress={() => generate({ kind, locale, count: MAX_IDEAS, hint })}
+          onPress={() => generate({ kind, locale, count: MAX_IDEAS, location, budget, hint })}
         />
 
         {errorKey ? <Muted>{t(errorKey)}</Muted> : null}

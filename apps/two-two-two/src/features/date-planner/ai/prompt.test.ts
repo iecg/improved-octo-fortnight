@@ -37,6 +37,54 @@ describe('buildPrompt', () => {
     expect(blank.user).toBe(bare.user);
   });
 
+  it('passes location and budget through verbatim', () => {
+    const { user } = buildPrompt({
+      kind: 'getaway',
+      locale: 'en',
+      count: 3,
+      location: 'Lisbon',
+      budget: 'under €300 all in',
+    });
+    expect(user).toContain('Lisbon');
+    expect(user).toContain('under €300 all in');
+  });
+
+  /**
+   * An empty label is worse than no label: "Budget:" with nothing after it
+   * reads to a model as a constraint rather than an absence.
+   */
+  it('omits location and budget when they are blank', () => {
+    const bare = buildPrompt({ kind: 'getaway', locale: 'en', count: 3 });
+    const blank = buildPrompt({
+      kind: 'getaway',
+      locale: 'en',
+      count: 3,
+      location: '  ',
+      budget: '',
+    });
+    expect(bare.user).not.toContain('Near:');
+    expect(bare.user).not.toContain('Budget:');
+    expect(blank.user).toBe(bare.user);
+  });
+
+  it('keeps each field on its own line so none can run into the next', () => {
+    const { user } = buildPrompt({
+      kind: 'date_night',
+      locale: 'en',
+      count: 3,
+      location: 'Lisbon',
+      budget: 'cheap',
+      hint: 'no restaurants',
+    });
+    expect(user.split('\n')).toHaveLength(4);
+  });
+
+  it('takes the fields independently, so one filled field is enough', () => {
+    const onlyBudget = buildPrompt({ kind: 'trip', locale: 'en', count: 3, budget: 'no limit' });
+    expect(onlyBudget.user).toContain('no limit');
+    expect(onlyBudget.user).not.toContain('Near:');
+  });
+
   it('asks for the number of ideas requested', () => {
     expect(buildPrompt({ kind: 'trip', locale: 'en', count: 4 }).user).toContain('4');
   });
@@ -46,15 +94,25 @@ describe('buildPrompt', () => {
    * is the only thing that leaves the device, so it is the only place this can
    * be checked.
    */
-  it('sends nothing but the kind, the language, the count and the hint', () => {
+  it('sends nothing beyond the kind, the language, the count and the three fields', () => {
     const { system, user } = buildPrompt({
       kind: 'date_night',
       locale: 'en',
       count: 3,
+      location: 'Lisbon',
+      budget: 'under €50',
       hint: 'near the river',
     });
     const sent = `${system}\n${user}`.toLowerCase();
 
+    // What the user filled in does go — all three of them, verbatim.
+    expect(sent).toContain('lisbon');
+    expect(sent).toContain('under €50');
+    expect(sent).toContain('near the river');
+
+    // And nothing else does, with every field populated. `timezone` stays on
+    // this list even though a location now leaves: a city the user typed is
+    // not the same as one inferred from a device setting.
     for (const forbidden of [
       'couple_id',
       'profile_id',
