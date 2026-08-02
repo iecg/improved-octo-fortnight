@@ -14,6 +14,7 @@ import { Linking, Platform, View } from 'react-native';
 
 import { mapsLinkFor } from '../../src/features/places/link';
 import { StaticMap } from '../../src/features/places/maps/StaticMap';
+import { airbnbSearchUrl, needsSomewhereToStay } from '../../src/features/places/stays';
 import { plans as repository, usePlaces, usePlans } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
@@ -71,7 +72,25 @@ export default function Plans() {
    * one language, so it is labelled rather than translated when the reader is
    * in the other, exactly as a saved idea is.
    */
-  function Where({ place }: { place: PlanPlace }) {
+  function Where({ plan, place }: { plan: Plan; place: PlanPlace }) {
+    /**
+     * A search for somewhere to stay, with the nights and the place already
+     * filled in — but only for the two commitments that involve sleeping
+     * somewhere, and only once the plan has a window to book. Null the rest of
+     * the time, which is most of the time.
+     */
+    const stayUrl =
+      needsSomewhereToStay(plan.kind) && plan.startsAt && plan.endsAt
+        ? airbnbSearchUrl({
+            // The address is what a person would type into the site; the name
+            // alone is a venue, which is not what you search for a bed near.
+            where: place.address ?? place.name,
+            startsAt: new Date(plan.startsAt),
+            endsAt: new Date(plan.endsAt),
+            timeZone,
+          })
+        : null;
+
     return (
       <View className="gap-1">
         <Muted>{place.name}</Muted>
@@ -92,6 +111,15 @@ export default function Plans() {
             )
           }
         />
+        {stayUrl ? (
+          <Button
+            label={t('places:action.findAStay')}
+            variant="ghost"
+            // Airbnb has no API anyone can hold a key for, so this is a link
+            // and nothing else — the search runs on their site, as them.
+            onPress={() => void Linking.openURL(stayUrl)}
+          />
+        ) : null}
       </View>
     );
   }
@@ -112,7 +140,9 @@ export default function Plans() {
               {/* Written by a partner, shown exactly as written. */}
               {plan.title ? <Body>{plan.title}</Body> : null}
               <Muted>{label(plan)}</Muted>
-              {placeByPlan.has(plan.id) ? <Where place={placeByPlan.get(plan.id)!} /> : null}
+              {placeByPlan.has(plan.id) ? (
+                <Where plan={plan} place={placeByPlan.get(plan.id)!} />
+              ) : null}
               <View className="flex-row gap-2">
                 <View className="grow basis-0">
                   <Button

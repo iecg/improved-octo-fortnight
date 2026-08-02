@@ -11,7 +11,8 @@
   "action": {
     "openInMaps": "Open in Maps",
     "remove": "Remove the place",
-    "use": "Use this one"
+    "use": "Use this one",
+    "findAStay": "Find somewhere to stay"
   },
   "empty": "No place set",
   "search": {

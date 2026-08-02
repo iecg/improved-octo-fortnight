@@ -280,6 +280,32 @@ either. `EXPO_PUBLIC_` values ship inside the app and can be read back out of
 it; that is fine for the anon key, which has RLS behind it, and not for a
 billed third-party key, where possession is the authorization.
 
+### Accommodation: a link, because there is no integration to build
+
+**Airbnb has no API this app could ever hold a key for.** The public API was
+retired years ago and the partner programme (`developer.withairbnb.com`) is
+closed to unsolicited applicants — vetted property-management systems and
+channel managers only, approached by Airbnb rather than applying. So there is
+no search to proxy, no listing data to show, and nothing for the proxy pattern
+above to wrap. Third-party scraper APIs sell the data; they are somebody else
+reselling a site's contents, and pointing a couple's private planner at one
+would add a paid dependency and a legal question to answer a need a URL
+answers.
+
+`features/places/stays.ts` therefore builds a deep link and nothing else. The
+couple has already supplied the only two facts an accommodation search needs —
+the nights and roughly where — so the link arrives with both filled in and they
+finish on Airbnb's own site, as themselves. No key, no account, no request from
+us to anyone, nothing sent until somebody taps. Offered only for `getaway` and
+`trip`, since a date night ends at home.
+
+Dates go through `calendarDateIn` in the couple's timezone, never
+`toISOString()`: a night is a calendar date, and an evening departure is
+already tomorrow in UTC. **No affiliate or referral tagging** — quietly earning
+on two people's weekend away is a product decision with a conversation
+attached, not a query parameter. A test asserts the URL carries only the three
+parameters it means to.
+
 Suggestions are the optional third source, in
 `apps/two-two-two/src/features/date-planner/ai/`, and they are **BYOK**: each
 partner stores their own OpenRouter or Gemini key in the device keychain
