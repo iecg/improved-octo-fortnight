@@ -193,6 +193,52 @@ export interface Database {
         };
         Relationships: [];
       };
+      // 2-2-2-owned. Reachable only through createIdeaRepository.
+      plan_ideas: {
+        Row: {
+          id: string;
+          couple_id: string;
+          domain: string;
+          kind: string;
+          title: string;
+          summary: string | null;
+          url: string | null;
+          source_domain: string | null;
+          est_cost_band: string | null;
+          source: string;
+          locale: LocaleEnum;
+          saved_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          couple_id: string;
+          domain: string;
+          kind: string;
+          title: string;
+          summary?: string | null;
+          url?: string | null;
+          source_domain?: string | null;
+          est_cost_band?: string | null;
+          source: string;
+          locale: LocaleEnum;
+          saved_by?: string | null;
+        };
+        Update: {
+          title?: string;
+          summary?: string | null;
+          url?: string | null;
+          est_cost_band?: string | null;
+        };
+        Relationships: [];
+      };
+      // Read-only to clients; only the Edge Function's service role writes it.
+      ai_usage: {
+        Row: { couple_id: string; day: string; request_count: number };
+        Insert: { couple_id: string; day: string; request_count?: number };
+        Update: { request_count?: number };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {

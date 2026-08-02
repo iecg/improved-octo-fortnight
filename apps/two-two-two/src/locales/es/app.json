@@ -6,7 +6,22 @@
   "tabs": {
     "today": "Ritmo",
     "plans": "Planes",
+    "ideas": "Ideas",
     "settings": "Ajustes"
+  },
+  "ideas": {
+    "title": "Ideas",
+    "subtitle": "Para cuando saben que deberían salir y no se les ocurre adónde.",
+    "yours": "Su lista",
+    "emptyShortlist": "Aún no hay nada guardado. Tomen una de abajo o escriban la suya.",
+    "addOwn": "Añadir la suya",
+    "addOwnPlaceholder": "Un sitio al que llevan tiempo queriendo ir",
+    "addOwnHint": "Tu pareja lo ve tal como lo escribes, en el idioma en que lo escribas.",
+    "add": "Añadirla",
+    "library": "Algunas sugerencias",
+    "libraryHint": "Vienen con la app. Sin cuenta, sin conexión y sin nada sofisticado.",
+    "save": "Guardarla",
+    "planIt": "Planearlo"
   },
   "home": {
     "title": "Su ritmo",

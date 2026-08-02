@@ -55,6 +55,7 @@ export default function TabsLayout() {
     <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: '#9C5B4E' }}>
       <Tabs.Screen name="index" options={{ title: t('app:tabs.today') }} />
       <Tabs.Screen name="plans" options={{ title: t('app:tabs.plans') }} />
+      <Tabs.Screen name="ideas" options={{ title: t('app:tabs.ideas') }} />
       <Tabs.Screen name="settings" options={{ title: t('app:tabs.settings') }} />
     </Tabs>
   );

@@ -1,0 +1,88 @@
+{
+  "date_night": {
+    "cook_something_new": {
+      "title": "Cocinen algo que ninguno haya hecho nunca",
+      "summary": "Elijan una receta nueva para los dos. La gracia está en que se les dé igual de mal."
+    },
+    "early_dinner_late_walk": {
+      "title": "Cena temprano y un paseo largo después",
+      "summary": "Reserven para las seis. El paseo de vuelta es la mitad que van a recordar."
+    },
+    "live_music_small_room": {
+      "title": "Música en directo en un sitio pequeño",
+      "summary": "Un bar con un solo grupo entre semana gana a cualquier estadio y cuesta diez veces menos."
+    },
+    "revisit_first_date": {
+      "title": "Vuelvan al sitio de su primera cita",
+      "summary": "Si ha cerrado, vayan a lo que haya en su lugar y quéjense del cambio."
+    },
+    "market_then_breakfast": {
+      "title": "Mercado por la mañana y desayuno después",
+      "summary": "Compren algo que no sepan identificar y averigüen qué hacer con ello."
+    },
+    "trivia_or_quiz": {
+      "title": "Concurso de preguntas, en equipo de dos",
+      "summary": "Van a perder. Perder juntos es una noche sorprendentemente buena."
+    },
+    "drive_no_destination": {
+      "title": "Conducir sin rumbo",
+      "summary": "Elijan izquierda o derecha en cada cruce durante una hora y luego busquen dónde comer."
+    },
+    "cinema_you_would_not_pick": {
+      "title": "Vean la película que nunca elegirían",
+      "summary": "Cada uno elige por el otro. Sin derecho a veto."
+    }
+  },
+  "getaway": {
+    "one_train_away": {
+      "title": "A un tren de distancia",
+      "summary": "El primer pueblo lo bastante lejos como para que los edificios cambien. Con dos noches basta."
+    },
+    "cabin_no_signal": {
+      "title": "Un sitio sin cobertura",
+      "summary": "Reserven el alojamiento con malas reseñas sobre el wifi. Eso es lo bueno."
+    },
+    "city_you_both_dismissed": {
+      "title": "La ciudad que los dos han descartado",
+      "summary": "Un sitio que a ninguno le llama. Las expectativas bajas viajan bien."
+    },
+    "spa_or_hot_springs": {
+      "title": "Un sitio con agua caliente",
+      "summary": "Termas, un balneario, un lago en verano. Algo que haga que estar quietos se sienta merecido."
+    },
+    "coast_out_of_season": {
+      "title": "La costa, fuera de temporada",
+      "summary": "La mitad de precio, nada de gentío y mejor luz."
+    },
+    "walk_between_two_towns": {
+      "title": "Caminar de un pueblo a otro",
+      "summary": "Ir en tren, volver andando en un día y dormir en algún punto intermedio."
+    }
+  },
+  "trip": {
+    "language_neither_speaks": {
+      "title": "Un sitio donde ninguno hable el idioma",
+      "summary": "Estar igual de perdidos es lo más parecido a empezar de cero juntos."
+    },
+    "long_rail_journey": {
+      "title": "Un viaje largo en tren",
+      "summary": "Elijan la ruta, no el destino. Días enteros viendo pasar la ventana."
+    },
+    "island_off_season": {
+      "title": "Una isla, con calma",
+      "summary": "Un solo sitio durante dos semanas en vez de cinco sitios en diez días."
+    },
+    "revisit_ten_years_on": {
+      "title": "Un sitio que uno de los dos adoró hace diez años",
+      "summary": "Enséñale al otro la versión de ti que estuvo allí."
+    },
+    "walk_a_long_route": {
+      "title": "Recorran una ruta con nombre propio",
+      "summary": "Una semana por un sendero señalizado. Nada que decidir cada mañana salvo a qué hora salir."
+    },
+    "somewhere_cold": {
+      "title": "Un sitio de verdad frío",
+      "summary": "Auroras boreales, pleno invierno, abrigos gruesos. Lo contrario de toda foto de vacaciones."
+    }
+  }
+}

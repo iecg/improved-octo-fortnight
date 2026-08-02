@@ -1,0 +1,88 @@
+{
+  "date_night": {
+    "cook_something_new": {
+      "title": "Cook something neither of you has made",
+      "summary": "Pick a recipe you've both never tried. Being equally bad at it is the point."
+    },
+    "early_dinner_late_walk": {
+      "title": "Early dinner, long walk after",
+      "summary": "Book somewhere for six. The walk home is the half you'll remember."
+    },
+    "live_music_small_room": {
+      "title": "Live music somewhere small",
+      "summary": "A bar with one act on a weeknight beats an arena and costs a tenth as much."
+    },
+    "revisit_first_date": {
+      "title": "Go back to where you had your first date",
+      "summary": "If it's closed, go to whatever replaced it and complain about the change."
+    },
+    "market_then_breakfast": {
+      "title": "Market in the morning, breakfast after",
+      "summary": "Buy one thing you can't identify and work out what to do with it."
+    },
+    "trivia_or_quiz": {
+      "title": "Pub quiz as a team of two",
+      "summary": "You will lose. Losing together is a surprisingly good evening."
+    },
+    "drive_no_destination": {
+      "title": "Drive with no destination",
+      "summary": "Pick left or right at every junction for an hour, then find somewhere to eat."
+    },
+    "cinema_you_would_not_pick": {
+      "title": "See the film you'd never choose",
+      "summary": "Each of you picks for the other. No vetoes."
+    }
+  },
+  "getaway": {
+    "one_train_away": {
+      "title": "One train ride away",
+      "summary": "The first town far enough that the buildings look different. Two nights is plenty."
+    },
+    "cabin_no_signal": {
+      "title": "Somewhere with no signal",
+      "summary": "Book the place with bad reviews about the wifi. That's the feature."
+    },
+    "city_you_both_dismissed": {
+      "title": "The city you've both written off",
+      "summary": "Somewhere neither of you rates. Low expectations travel well."
+    },
+    "spa_or_hot_springs": {
+      "title": "Somewhere with hot water",
+      "summary": "Springs, a spa, a lake in summer. Something that makes sitting still feel earned."
+    },
+    "coast_out_of_season": {
+      "title": "The coast, out of season",
+      "summary": "Half the price, none of the crowds, and better light for it."
+    },
+    "walk_between_two_towns": {
+      "title": "Walk between two towns",
+      "summary": "Train out, walk back over a day, sleep somewhere in the middle."
+    }
+  },
+  "trip": {
+    "language_neither_speaks": {
+      "title": "Somewhere neither of you speaks the language",
+      "summary": "Being equally lost is the closest thing to a shared beginner's mind."
+    },
+    "long_rail_journey": {
+      "title": "A long journey by rail",
+      "summary": "Pick the route, not the destination. Days of watching the window go by."
+    },
+    "island_off_season": {
+      "title": "An island, slowly",
+      "summary": "One place for two weeks instead of five places in ten days."
+    },
+    "revisit_ten_years_on": {
+      "title": "Somewhere one of you loved ten years ago",
+      "summary": "Show the other person the version of you that went there."
+    },
+    "walk_a_long_route": {
+      "title": "Walk a route with a name",
+      "summary": "A week on a marked trail. Nothing to decide each morning except when to start."
+    },
+    "somewhere_cold": {
+      "title": "Somewhere properly cold",
+      "summary": "Northern lights, deep winter, thick coats. The opposite of every holiday photo."
+    }
+  }
+}

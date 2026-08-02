@@ -53,13 +53,14 @@ export default function NewPlan() {
   // Arriving from a card on the rhythm screen preselects that commitment. An
   // unrecognised param is ignored rather than trusted — it reaches a `kind`
   // column with a slug constraint on it.
-  const params = useLocalSearchParams<{ kind?: string }>();
+  const params = useLocalSearchParams<{ kind?: string; title?: string }>();
   const [kind, setKind] = useState<string>(
     params.kind && params.kind in TWO_TWO_TWO_KINDS
       ? params.kind
       : TWO_TWO_TWO_KINDS.date_night.kind,
   );
-  const [title, setTitle] = useState('');
+  // Arriving from the ideas screen prefills the title, still editable.
+  const [title, setTitle] = useState(params.title ?? '');
   const [dayIndex, setDayIndex] = useState(0);
   const [hour, setHour] = useState<number | null>(null);
   const [duration, setDuration] = useState<number | null>(null);

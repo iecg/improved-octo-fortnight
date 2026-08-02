@@ -10,7 +10,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['packages/*/src/**/*.test.ts', 'tests/i18n/**/*.test.ts'],
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'tests/i18n/**/*.test.ts',
+      'tests/guards/**/*.test.ts',
+    ],
     // The couple's timezone is always passed in explicitly. Pinning the host
     // zone to something other than UTC keeps an accidental `new Date()` or a
     // dropped `timeZone` argument from passing by coincidence.
