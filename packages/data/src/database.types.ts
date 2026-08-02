@@ -24,7 +24,6 @@ export interface Database {
           display_name: string | null;
           timezone: string;
           locale: LocaleEnum;
-          expo_push_token: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -33,13 +32,11 @@ export interface Database {
           display_name?: string | null;
           timezone?: string;
           locale?: LocaleEnum;
-          expo_push_token?: string | null;
         };
         Update: {
           display_name?: string | null;
           timezone?: string;
           locale?: LocaleEnum;
-          expo_push_token?: string | null;
         };
         Relationships: [];
       };

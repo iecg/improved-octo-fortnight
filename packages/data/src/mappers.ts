@@ -28,7 +28,6 @@ export function toProfile(row: Tables['profiles']['Row']): Profile {
     displayName: row.display_name,
     timezone: row.timezone,
     locale: row.locale,
-    expoPushToken: row.expo_push_token,
   };
 }
 
