@@ -6,6 +6,7 @@
  */
 import type { Plan, PlanProposal } from '@couple/core';
 import { Body, Button, Card, Divider, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
+import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -23,6 +24,7 @@ import { usePairedSession } from '../../src/session';
 export default function Plans() {
   const { t, i18n } = useTranslation(['app', 'common', 'plans']);
   const { profile, couple, partner } = usePairedSession();
+  const router = useRouter();
 
   const now = useMemo(() => new Date(), []);
   const locale = i18n.language === 'es' ? 'es' : 'en';
@@ -76,6 +78,9 @@ export default function Plans() {
           </Muted>
           <Body>{windowLabel(proposal.startsAt, proposal.endsAt)}</Body>
 
+          {/* Shows the thread when this one replies to an earlier suggestion. */}
+          {proposal.counteredFrom ? <Muted>{t('plans:proposal.counteredNote')}</Muted> : null}
+
           {mine ? null : (
             <View className="gap-2">
               <Button
@@ -86,6 +91,19 @@ export default function Plans() {
                 label={t('plans:proposal.decline')}
                 variant="secondary"
                 onPress={() => respond.mutate({ proposal, response: 'declined' })}
+              />
+              {/* A third answer that is neither yes nor no: same plan, a
+                  different time. Styled level with the other two, because
+                  "not then, but yes" should be no harder to say. */}
+              <Button
+                label={t('plans:proposal.counter')}
+                variant="secondary"
+                onPress={() =>
+                  router.push({
+                    pathname: '/plan/new',
+                    params: { counterOf: proposal.id, planId: proposal.planId },
+                  })
+                }
               />
               {/* Declining is a complete answer, and the UI should say so
                   rather than nudge toward yes. */}

@@ -58,7 +58,7 @@ packages/i18n/      i18next bootstrap, shared namespaces, date formatting
 packages/ui/        Shared components (no strings)
 packages/device/    expo-calendar / notifications / local-auth wrappers
 supabase/migrations/  SINGLE source of truth for both apps
-tests/i18n/, tests/rls/
+tests/i18n/, tests/rls/, tests/e2e/, tests/guards/
 ```
 
 Shared packages ship **TypeScript source**, not builds — Metro transpiles them.
@@ -70,18 +70,37 @@ There is no build step and no `dist/` to go stale.
 npm run lint             # eslint
 npm run typecheck        # tsc across every workspace
 npm test                 # unit tests (no database needed)
-npm run db:test          # RLS suite — needs Postgres (see below)
+npm run db:test          # RLS + end-to-end suites — needs Postgres (see below)
 npm run intimacy         # expo start
 npm run two-two-two      # expo start
 ```
 
 `npm run db:test` builds a throwaway database from `supabase/migrations` and
-runs the policies against it. It needs a Postgres reachable via the standard
-`PG*` variables — either `supabase start`, or any plain Postgres 16, because
+runs against it. It needs a Postgres reachable via the standard `PG*`
+variables — either `supabase start`, or any plain Postgres 16, because
 `tests/rls/supabase-shim.sql` recreates the Supabase surface the migrations
 touch (roles, `auth.users`, `auth.uid()`, the realtime publication, and the
 default grants). The security-critical tests must not be the ones gated behind
-the heaviest dependency.
+the heaviest dependency. On a Homebrew cluster:
+
+```bash
+brew install postgresql@16 && brew services start postgresql@16
+PGHOST=/tmp PGPORT=5432 PGUSER=$(whoami) npm run db:test
+```
+
+Two suites live behind it. `tests/rls/` checks the policies statement by
+statement. `tests/e2e/journey.test.ts` walks the path a couple actually takes —
+pair, rotate the code, turn a third person away, set two locales, propose,
+accept, reconcile both devices' calendars, counter, complete — against the real
+migrations, the real policies, the real cadence engine and the real translation
+bundles. It is the only place the pieces are checked together, and it is where
+a schema change that typechecks but does not _work_ gets caught.
+
+What it deliberately does not cover, because Node cannot: email OTP delivery
+(that is Supabase's auth service — rows are inserted into `auth.users`
+directly), PostgREST (statements run over a socket as the `authenticated` role,
+not through supabase-js), and writing to a device calendar. The last of those
+needs a dev build; see below.
 
 ## Data model notes
 
@@ -107,6 +126,29 @@ EXPO_PUBLIC_SUPABASE_URL=...
 EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
+## Dev builds
+
+Expo Go cannot grant calendar, notification, or biometric permissions, so
+`packages/device` is inert in it — `hasCalendarAccess()` returns false and
+`useDeviceSync` correctly does nothing. Those paths only execute in a dev
+build. Both apps carry an `eas.json`:
+
+```bash
+cd apps/intimacy && npx eas build --profile development --platform ios
+```
+
+The `development` profile targets the iOS Simulator; `device` builds for real
+hardware, which is what Face ID and delivered notifications need. `npx expo
+prebuild --platform ios` generates `ios/` locally to inspect the native config
+without a build — it is gitignored, and it rewrites the app's `ios`/`android`
+package scripts as a side effect, so check `git diff` afterwards.
+
+EAS does not see your `.env`; set `EXPO_PUBLIC_SUPABASE_URL` and
+`EXPO_PUBLIC_SUPABASE_ANON_KEY` as EAS environment variables. **Anon key
+only** — see below.
+
+## Environment
+
 `EXPO_PUBLIC_` values are embedded in the app bundle. Only the anon key belongs
 there — RLS is what protects the data, never key secrecy.
 
@@ -122,10 +164,25 @@ Per app: its screens, its `app` translation namespace, its kind catalog, and
 its `createDomainRepository(client, '<domain>')` binding.
 
 2-2-2-owned tables are `plan_ideas` and `ai_usage`, plus the planned
-`suggest-ideas` Edge Function. Its AI-optional rule — no path outside
-`features/*/ai/` may assume a model exists — applies to that app only. The
-curated idea library and manual entry are what make the feature work with no
-key configured; `ai_usage` simply stays empty.
+`suggest-ideas` Edge Function. They are reached through
+`createIdeaRepository` in `packages/data/src/ideas.ts` — its own factory, next
+to the intimacy-owned `createCheckinRepository`, so the other app has nothing
+to import even by accident. It hard-codes its domain rather than taking one,
+because a domain parameter is the exact shape invariant 2 forbids.
+
+Its AI-optional rule — no path outside `features/<name>/ai/` may assume a model
+exists — applies to that app only, and is enforced by
+`tests/guards/ai-optional.test.ts` rather than remembered. The curated idea
+library (`apps/two-two-two/src/ideas.ts` for the ids, `locales/{en,es}/ideas.json`
+for the text) and manual entry are what make the feature work with no key
+configured; `ai_usage` simply stays empty. The guard also requires the bundled
+library to stay non-empty and complete in both languages, since a grep that
+passes over an empty library proves nothing.
+
+The library is _ours_, so it is translated like any other chrome and each
+partner reads it in their own language. Manually entered ideas are the other
+case — partner-authored, shown verbatim, and labelled with the language they
+were written in when that differs from the reader's.
 
 Ported from `iecg/legendary-bassoon` (now superseded). Two bugs found there
 and guarded against here, both with tests: a `count(*)`-based couple-size

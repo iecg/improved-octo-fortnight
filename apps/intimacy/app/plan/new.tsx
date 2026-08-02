@@ -11,13 +11,13 @@ import { suggestWindows, type TimeRange } from '@couple/cadence';
 import { INTIMACY_KINDS } from '@couple/core';
 import { hasCalendarAccess, readBusyBlocks, requestCalendarAccess } from '@couple/device';
 import { Body, Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
 import { formatWindowParts } from '../../src/format';
-import { useProposeTime } from '../../src/queries';
+import { useCounterProposal, useProposeTime } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 /** Evening hours in the couple's timezone. */
@@ -41,7 +41,20 @@ export default function NewPlan() {
   const [calendarOk, setCalendarOk] = useState<boolean | null>(null);
   const [chosen, setChosen] = useState<TimeRange | null>(null);
 
+  /**
+   * Arriving with both ids means this is a reply to a suggestion rather than a
+   * fresh one. Both must be present to count — half a pair is a malformed
+   * link, and answering the wrong proposal is worse than starting over.
+   */
+  const params = useLocalSearchParams<{ counterOf?: string; planId?: string }>();
+  const counterOf =
+    params.counterOf && params.planId
+      ? { proposalId: params.counterOf, planId: params.planId }
+      : null;
+
   const propose = useProposeTime(couple.id, profile.id);
+  const counter = useCounterProposal(couple.id, profile.id);
+  const pending = counterOf ? counter.isPending : propose.isPending;
 
   const loadBusy = useCallback(async () => {
     const to = new Date(now.getTime() + SEARCH_DAYS * 24 * 60 * 60 * 1000);
@@ -82,18 +95,30 @@ export default function NewPlan() {
 
   async function send() {
     if (!chosen) return;
-    await propose.mutateAsync({
-      kind: INTIMACY_KINDS.intimacy.kind,
-      startsAt: chosen.start,
-      endsAt: chosen.end,
-      notes: notes.trim() || null,
-    });
+    if (counterOf) {
+      // The counter replaces the time, not the plan — notes stay with the
+      // original suggestion rather than being silently rewritten.
+      await counter.mutateAsync({
+        proposalId: counterOf.proposalId,
+        planId: counterOf.planId,
+        startsAt: chosen.start,
+        endsAt: chosen.end,
+      });
+    } else {
+      await propose.mutateAsync({
+        kind: INTIMACY_KINDS.intimacy.kind,
+        startsAt: chosen.start,
+        endsAt: chosen.end,
+        notes: notes.trim() || null,
+      });
+    }
     router.back();
   }
 
   return (
     <Screen>
-      <Title>{t('app:propose.title')}</Title>
+      <Title>{counterOf ? t('plans:proposal.counter') : t('app:propose.title')}</Title>
+      {counterOf ? <Muted>{t('plans:proposal.counteredNote')}</Muted> : null}
 
       <Card>
         <View className="gap-3">
@@ -149,27 +174,31 @@ export default function NewPlan() {
         </View>
       </Card>
 
-      <Card>
-        <View className="gap-2">
-          <Heading>{t('plans:new.notesLabel')}</Heading>
-          <TextInput
-            className="min-h-20 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
-            value={notes}
-            onChangeText={setNotes}
-            placeholder={t('plans:new.notesPlaceholder')}
-            multiline
-            accessibilityLabel={t('plans:new.notesLabel')}
-          />
-          {/* Sets the expectation that this reaches the partner untranslated. */}
-          <Muted>{t('plans:new.notesHint')}</Muted>
-        </View>
-      </Card>
+      {/* A counter answers the time. The note the other person wrote stays
+          theirs, so this is not offered again. */}
+      {counterOf ? null : (
+        <Card>
+          <View className="gap-2">
+            <Heading>{t('plans:new.notesLabel')}</Heading>
+            <TextInput
+              className="min-h-20 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
+              value={notes}
+              onChangeText={setNotes}
+              placeholder={t('plans:new.notesPlaceholder')}
+              multiline
+              accessibilityLabel={t('plans:new.notesLabel')}
+            />
+            {/* Sets the expectation that this reaches the partner untranslated. */}
+            <Muted>{t('plans:new.notesHint')}</Muted>
+          </View>
+        </Card>
+      )}
 
       <View className="gap-2">
         <Button
           label={t('app:propose.send')}
           disabled={!chosen}
-          loading={propose.isPending}
+          loading={pending}
           onPress={() => void send()}
         />
         <Button label={t('common:action.cancel')} variant="ghost" onPress={() => router.back()} />

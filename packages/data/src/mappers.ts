@@ -9,8 +9,11 @@ import type {
   AppDomain,
   Cadence,
   Checkin,
+  CostBand,
   Couple,
+  IdeaSource,
   Plan,
+  PlanIdea,
   PlanProposal,
   Profile,
 } from '@couple/core';
@@ -94,6 +97,23 @@ export function toPlanProposal(row: Tables['plan_proposals']['Row']): PlanPropos
     response: row.response,
     respondedAt: row.responded_at,
     counteredFrom: row.countered_from,
+    createdAt: row.created_at,
+  };
+}
+
+export function toPlanIdea(row: Tables['plan_ideas']['Row']): PlanIdea {
+  return {
+    id: row.id,
+    coupleId: row.couple_id,
+    domain: row.domain as AppDomain,
+    kind: row.kind,
+    title: row.title,
+    summary: row.summary,
+    url: row.url,
+    estCostBand: row.est_cost_band as CostBand | null,
+    source: row.source as IdeaSource,
+    locale: row.locale,
+    savedBy: row.saved_by,
     createdAt: row.created_at,
   };
 }

@@ -96,6 +96,43 @@ export function useRespondToProposal(coupleId: string) {
   });
 }
 
+/**
+ * Answer a proposal with a different time.
+ *
+ * "Countered" is a real answer, not a soft decline — the original is closed
+ * out and the reply hangs off the *same plan*, chained back through
+ * `countered_from`, so the negotiation reads as one thread rather than a pile
+ * of unrelated suggestions. The plan itself stays `proposed`: nothing is
+ * booked until somebody actually says yes.
+ */
+export function useCounterProposal(coupleId: string, profileId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      proposalId: string;
+      planId: string;
+      startsAt: Date;
+      endsAt: Date;
+    }) => {
+      // Order matters: closing the original first means a failure here leaves
+      // no second pending proposal competing with it.
+      await plans.respond(input.proposalId, 'countered');
+      return plans.propose({
+        planId: input.planId,
+        coupleId,
+        proposedBy: profileId,
+        startsAt: input.startsAt.toISOString(),
+        endsAt: input.endsAt.toISOString(),
+        counteredFrom: input.proposalId,
+      });
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.proposals(coupleId) });
+      void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+    },
+  });
+}
+
 export function useProposeTime(coupleId: string, profileId: string) {
   const client = useQueryClient();
   return useMutation({

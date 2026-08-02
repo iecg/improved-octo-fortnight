@@ -49,71 +49,94 @@ function signatureOf(plans: Plan[], profileId: string | null): string {
     .join('|');
 }
 
-export function useDeviceSync(options: DeviceSyncOptions): void {
-  const { plans, profileId, timeZone, enabled, calendarTitleFor, reminder, onCalendarEvent } =
-    options;
+/**
+ * One reconciliation pass. Exported so it can be tested without a renderer.
+ *
+ * Idempotent by construction: it derives everything from the plans it is
+ * handed, so an interrupted pass leaves no state behind and the next one
+ * simply picks up whatever is still outstanding. That property is what makes
+ * it safe for the hook below to abandon a run whenever the plans change.
+ */
+export async function reconcileDevice(
+  options: DeviceSyncOptions,
+  isCancelled: () => boolean,
+): Promise<void> {
+  const { plans, profileId, timeZone, calendarTitleFor, reminder, onCalendarEvent } = options;
+  if (!profileId) return;
 
+  const { toWrite, toRemove } = calendarActions(plans, profileId);
+
+  // Permission is never requested here — that belongs to a screen where the
+  // user can see why they are being asked. Without it, this silently does
+  // nothing, which is the correct outcome.
+  if ((toWrite.length > 0 || toRemove.length > 0) && (await hasCalendarAccess())) {
+    for (const plan of toWrite) {
+      if (isCancelled() || !plan.startsAt) break;
+      const eventId = await writeCalendarEvent({
+        title: calendarTitleFor(plan),
+        startsAt: new Date(plan.startsAt),
+        // A plan with no end is treated as an hour, so the entry has a
+        // sensible shape in a week view.
+        endsAt: new Date(plan.endsAt ?? new Date(plan.startsAt).getTime() + 3_600_000),
+        timeZone,
+      });
+      if (eventId) await onCalendarEvent(plan, eventId);
+    }
+
+    for (const [plan, eventId] of toRemove) {
+      if (isCancelled()) break;
+      await deleteCalendarEvent(eventId);
+      await onCalendarEvent(plan, null);
+    }
+  }
+
+  if (isCancelled()) return;
+
+  if (await hasNotificationPermission()) {
+    // Rebuild rather than diff: every reminder here is ours, and the plan list
+    // is small enough that being obviously correct beats being clever.
+    await cancelAllReminders();
+    const now = new Date();
+    for (const planned of plannedReminders(plans, now, reminder.leadMinutes)) {
+      if (isCancelled()) break;
+      await scheduleReminder(
+        { key: planned.key, title: reminder.title, body: reminder.body, at: planned.at },
+        now,
+      );
+    }
+  }
+}
+
+export function useDeviceSync(options: DeviceSyncOptions): void {
+  const { plans, profileId, enabled } = options;
   const signature = signatureOf(plans, profileId);
-  const lastRun = useRef<string | null>(null);
+
+  /**
+   * The run reads its inputs from here rather than closing over them.
+   *
+   * `plans` is a fresh array on every refetch and the callbacks are fresh on
+   * every render, so listing them as dependencies re-ran the effect constantly.
+   * The previous version tried to absorb that with a `lastRun` signature guard,
+   * which made it worse: React tears the old effect down *before* the new one
+   * runs, so an unrelated re-render cancelled the in-flight pass and the guard
+   * then saw the signature already recorded and returned immediately. The work
+   * — usually the reminder scheduling, which comes last — was dropped and never
+   * retried until a plan happened to change. Depending only on what we act on
+   * means a teardown now happens exactly when restarting is the right answer.
+   */
+  const latest = useRef(options);
+  useEffect(() => {
+    latest.current = options;
+  });
 
   useEffect(() => {
     if (!enabled || !profileId) return;
-    if (lastRun.current === signature) return;
-    lastRun.current = signature;
 
     let cancelled = false;
-
-    void (async () => {
-      const { toWrite, toRemove } = calendarActions(plans, profileId);
-
-      // Permission is never requested here — that belongs to a screen where
-      // the user can see why they are being asked. Without it, this silently
-      // does nothing, which is the correct outcome.
-      if ((toWrite.length > 0 || toRemove.length > 0) && (await hasCalendarAccess())) {
-        for (const plan of toWrite) {
-          if (cancelled || !plan.startsAt) break;
-          const eventId = await writeCalendarEvent({
-            title: calendarTitleFor(plan),
-            startsAt: new Date(plan.startsAt),
-            // A plan with no end is treated as an hour, so the entry has a
-            // sensible shape in a week view.
-            endsAt: new Date(plan.endsAt ?? new Date(plan.startsAt).getTime() + 3_600_000),
-            timeZone,
-          });
-          if (eventId) await onCalendarEvent(plan, eventId);
-        }
-
-        for (const [plan, eventId] of toRemove) {
-          if (cancelled) break;
-          await deleteCalendarEvent(eventId);
-          await onCalendarEvent(plan, null);
-        }
-      }
-
-      if (cancelled) return;
-
-      if (await hasNotificationPermission()) {
-        // Rebuild rather than diff: every reminder here is ours, and the plan
-        // list is small enough that being obviously correct beats being clever.
-        await cancelAllReminders();
-        const now = new Date();
-        for (const planned of plannedReminders(plans, now, reminder.leadMinutes)) {
-          if (cancelled) break;
-          await scheduleReminder(
-            {
-              key: planned.key,
-              title: reminder.title,
-              body: reminder.body,
-              at: planned.at,
-            },
-            now,
-          );
-        }
-      }
-    })();
+    void reconcileDevice(latest.current, () => cancelled);
 
     return () => {
       cancelled = true;
     };
-  }, [signature, enabled, profileId, plans, timeZone, calendarTitleFor, reminder, onCalendarEvent]);
+  }, [signature, enabled, profileId]);
 }

@@ -101,6 +101,42 @@ export interface PlanProposal {
   createdAt: string;
 }
 
+/**
+ * Where an idea came from.
+ *
+ * `library` is the bundled curated set and `manual` is written by a partner —
+ * between them the feature works with no model configured anywhere, which is
+ * the whole point of the 2-2-2 app's AI-optional rule. `ai` is the optional
+ * third case.
+ */
+export const IDEA_SOURCES = ['library', 'manual', 'ai'] as const;
+export type IdeaSource = (typeof IDEA_SOURCES)[number];
+
+export const COST_BANDS = ['free', 'low', 'medium', 'high'] as const;
+export type CostBand = (typeof COST_BANDS)[number];
+
+/** A saved suggestion. 2-2-2-owned; the intimacy app has no accessor for these. */
+export interface PlanIdea {
+  id: string;
+  coupleId: string;
+  domain: AppDomain;
+  kind: string;
+  /** Shown verbatim. Partner-written or model-written, never re-translated. */
+  title: string;
+  summary: string | null;
+  url: string | null;
+  estCostBand: CostBand | null;
+  source: IdeaSource;
+  /**
+   * The language this idea's text is written in. Ideas are labelled rather
+   * than machine-translated, exactly as with any other authored text.
+   */
+  locale: Locale;
+  /** Null once the person who saved it deletes their account. */
+  savedBy: string | null;
+  createdAt: string;
+}
+
 export interface Checkin {
   id: string;
   coupleId: string;

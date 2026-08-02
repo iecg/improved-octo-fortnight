@@ -45,6 +45,7 @@ function RootNavigator() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="pair" />
+      <Stack.Screen name="plan/new" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }

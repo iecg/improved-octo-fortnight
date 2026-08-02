@@ -6,7 +6,22 @@
   "tabs": {
     "today": "Rhythm",
     "plans": "Plans",
+    "ideas": "Ideas",
     "settings": "Settings"
+  },
+  "ideas": {
+    "title": "Ideas",
+    "subtitle": "For when you know you should go somewhere and can't think where.",
+    "yours": "Your shortlist",
+    "emptyShortlist": "Nothing saved yet. Take one from below, or write your own.",
+    "addOwn": "Add your own",
+    "addOwnPlaceholder": "Somewhere you've been meaning to go",
+    "addOwnHint": "Your partner sees this exactly as you write it, in whatever language you write it.",
+    "add": "Add it",
+    "library": "Some suggestions",
+    "libraryHint": "Bundled with the app. No account, no connection, no cleverness required.",
+    "save": "Save it",
+    "planIt": "Plan it"
   },
   "home": {
     "title": "Your rhythm",
@@ -15,6 +30,22 @@
     "neverYet": "Nothing logged yet",
     "planIt": "Plan it",
     "bookedFor": "Booked for {{date}}"
+  },
+  "plan": {
+    "title": "Plan something",
+    "kind": "What is it",
+    "titleLabel": "What are you calling it",
+    "titlePlaceholder": "Optional",
+    "titleHint": "Your partner sees this exactly as you write it, in whatever language you write it.",
+    "when": "Which day",
+    "startTime": "Starting at",
+    "howLong": "How long",
+    "hours_one": "{{count}} hour",
+    "hours_other": "{{count}} hours",
+    "nights_one": "{{count}} night",
+    "nights_other": "{{count}} nights",
+    "summary": "Booked for {{date}}",
+    "save": "Put it on the calendar"
   },
   "settings": {
     "title": "Settings",

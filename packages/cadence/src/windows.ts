@@ -48,8 +48,14 @@ export function mergeRanges(ranges: TimeRange[]): TimeRange[] {
   return merged;
 }
 
-/** The instant at a given wall-clock hour on the day containing `anchor`. */
-function atHourInZone(anchor: Date, hour: number, timeZone: string): Date {
+/**
+ * The instant at a given wall-clock hour on the day containing `anchor`.
+ *
+ * Exported because picking a plan's start is the same question: "7pm on that
+ * day, as the couple reads a clock". Screens must not do this arithmetic
+ * themselves — all of it lives in this package, against the couple's timezone.
+ */
+export function atHourInZone(anchor: Date, hour: number, timeZone: string): Date {
   const zoned = toZonedTime(anchor, timeZone);
   const wall = startOfDay(zoned);
   wall.setHours(hour, 0, 0, 0);
