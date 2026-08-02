@@ -31,6 +31,13 @@ a test, listed with them.
    method that takes `domain` as a per-call argument.**
    (`packages/data/src/repository.test.ts`)
 
+   Since encryption, this is also arithmetic: each domain gets its own content
+   key derived from the couple root, so the 2-2-2 app's cipher **cannot open**
+   an intimacy payload even if a bug hands it the row. That is a defence
+   against the code, not against the person — both partners hold the root key
+   and can derive either scope. The convention above still stands; it now has a
+   second lock behind it.
+
 3. **Discretion.** Nothing intimate reaches a lock screen, a notification
    payload, or a calendar entry. Calendar events carry a user-chosen neutral
    label only. Reminders are _local_, composed on the recipient's own device —
@@ -111,6 +118,77 @@ walked by hand on a simulator dev build against the local stack — sign in with
 a real code, check in, search free/busy, propose, and watch a partner-booked
 plan produce a calendar entry titled with the neutral label and nothing else —
 but no automated test covers them, so treat a green suite accordingly.
+
+## Encryption
+
+Everything a partner writes is sealed on the device that wrote it. RLS answers
+"can another couple read this"; it cannot answer "can the operator read this,"
+because policies apply to the `authenticated` role and the operator connects as
+owner or `service_role`. Only client-side encryption answers that.
+
+**Sealed** into one `payload` per row: `plans.title/notes/location`,
+`checkins.note` **and `checkins.interest`/`energy`**, `plan_ideas`' title,
+summary, url, cost band and locale, and `profiles.name_payload`. The interest
+level is in there because `yes` / `maybe` / `not_tonight` is the most revealing
+value in the schema — as an enum column it was published in the clear for every
+check-in ever made.
+
+**Readable**, because RLS, foreign keys and the authorship triggers need them:
+ids, `couple_id`, `created_by`/`proposed_by`/`saved_by`, `domain`, `kind`, every
+date, `status`, `response`, `plan_ideas.source`.
+
+One blob per row rather than a ciphertext per column, and not for efficiency:
+with a column each, `notes is null` would tell anyone reading the table whether
+a note exists on every plan in it. The AAD binds table, couple and row key, so
+ciphertext cannot be moved between rows, couples or tables — and check-ins bind
+to `(couple_id, profile_id, on_date)`, not to `id`, because `record()` upserts
+on that natural key and Postgres keeps the existing row's id on conflict.
+
+`packages/crypto` is pure the way `packages/cadence` is pure: no React, no I/O,
+no native modules, and **no ambient globals**. Randomness is injected as a
+`RandomSource`, and UTF-8 and base64 are hand-written, because Expo SDK 57's
+winter runtime supplies `TextDecoder` but not `TextEncoder` and Hermes has no
+`btoa` — importing them would work under Node and fail on device.
+
+Per-field length limits are enforced client-side now; the `CHECK` constraints
+bound ciphertext only. That moves an integrity rule off the server, though the
+only party it ever protected against was the couple themselves.
+
+`tests/guards/no-plaintext-content.test.ts` is what keeps this true: an
+allowlist of every column of every table, cross-checked against every key
+`packages/data` sends to PostgREST.
+
+### What this does not protect
+
+The first item is the deliberate limit of the whole design, not a gap in it.
+
+1. **A malicious app build.** Whoever ships the binary can ship one that
+   uploads the keys. End-to-end encryption makes the _server alone_ incapable of
+   reading the data — not the developer permanently incapable. The mitigations
+   are process: open source, reproducible builds, published hashes.
+2. **Metadata.** That these two accounts are a couple, when they paired, how
+   many rows exist, the exact date and time of every plan, which days each
+   partner checked in, every status, and `domain`/`kind`. An operator can see
+   that this couple has an `intimacy/intimacy` plan on Friday at 19:00. Not a
+   word of what it says, and not whether the answer was yes.
+3. **Length, approximately.** Payloads pad to 64-byte buckets, which blunts it;
+   a very long note is still visibly long.
+4. **Rollback and withholding.** The AAD stops relocation. It does not stop
+   restoring an older ciphertext for the same row, deleting rows, or serving one
+   partner a stale view. Integrity is per row, not per database.
+5. **The device.** An unlocked phone, a compromised OS, a screenshot. Note the
+   trade: the couple key is stored _without_ `THIS_DEVICE_ONLY` so an encrypted
+   backup can restore it — a recovery feature and an exposure at once.
+6. **Your partner.** By design.
+7. **Availability.** Lose both devices and the recovery code and the history is
+   gone. Nobody, including the developer, can reset it. That is what "the server
+   cannot read it" means, spelled out.
+8. **The mailbox.** Sign-in is email OTP, so whoever controls it can sign in and
+   ask the partner to approve a new device. The only barrier is the human step —
+   real, and thin.
+9. **Search, forever.** No server-side search, filter or sort over content is
+   possible any more. A consequence rather than a gap, but the one that will be
+   forgotten and then proposed as a feature.
 
 ## Data model notes
 
