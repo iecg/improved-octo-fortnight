@@ -45,7 +45,9 @@
     "nights_one": "{{count}} noche",
     "nights_other": "{{count}} noches",
     "summary": "Reservado para el {{date}}",
-    "save": "Ponerlo en el calendario"
+    "save": "Ponerlo en el calendario",
+    "busyHint": "Las horas marcadas ya tienen algo en tu calendario. Aun así puedes elegirlas.",
+    "busyOption": "{{option}} — ya ocupado"
   },
   "settings": {
     "title": "Ajustes",

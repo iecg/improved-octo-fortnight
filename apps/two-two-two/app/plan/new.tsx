@@ -6,18 +6,26 @@
  * `scheduled`, because there is no negotiation step here: a getaway either has
  * a date or it does not.
  *
- * Days and times are chosen from chips rather than a native picker. That is
- * not a shortcut for its own sake — the whole screen then needs no native
- * module, works in Expo Go, and matches how the other app already asks the
- * same question. All of the date arithmetic goes through `@couple/cadence`
- * against the couple's timezone; none of it happens here.
+ * Days and times are chosen from chips rather than a native picker, matching
+ * how the other app already asks the same question. All of the date arithmetic
+ * goes through `@couple/cadence` against the couple's timezone; none of it
+ * happens here.
+ *
+ * Choices that clash with something already on the phone's calendar are
+ * marked. That is the one place the two apps meet: both write their booked
+ * plans to the device calendar, and the intimacy app writes only a neutral
+ * label, so this screen learns that an evening is taken and cannot learn what
+ * is taking it. `readBusyBlocks` returns times and nothing else. Without
+ * calendar permission the marks simply never appear and the screen works
+ * exactly as it did before — no feature here is gated on the other app.
  */
-import { addInterval, atHourInZone } from '@couple/cadence';
+import { addInterval, atHourInZone, overlapsAny, type TimeRange } from '@couple/cadence';
 import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain } from '@couple/core';
+import { hasCalendarAccess, readBusyBlocks } from '@couple/device';
 import { formatDay, formatTime } from '@couple/i18n';
 import { Body, Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
@@ -84,22 +92,64 @@ export default function NewPlan() {
     return out;
   }, [now, timeZone]);
 
-  const startsAt = useMemo(
-    () => atHourInZone(days[dayIndex] ?? now, chosenHour, timeZone),
-    [days, dayIndex, now, chosenHour, timeZone],
+  /**
+   * The span a plan would occupy if it started on `day` at `hourValue`.
+   *
+   * Shared by the chosen range and by the conflict marks, so a chip can never
+   * disagree with what saving would actually book.
+   */
+  const rangeFor = useCallback(
+    (day: Date, hourValue: number): TimeRange => {
+      const start = atHourInZone(day, hourValue, timeZone);
+      const end =
+        shape.unit === 'hour'
+          ? new Date(start.getTime() + chosenDuration * 3_600_000)
+          : // Nights land on the same wall-clock hour N days later, not 24h × N.
+            atHourInZone(addInterval(start, chosenDuration, 'day', timeZone), hourValue, timeZone);
+      return { start, end };
+    },
+    [shape.unit, chosenDuration, timeZone],
   );
 
-  const endsAt = useMemo(() => {
-    if (shape.unit === 'hour') {
-      return new Date(startsAt.getTime() + chosenDuration * 3_600_000);
-    }
-    // Nights land on the same wall-clock hour N days later, not 24h × N.
-    return atHourInZone(
-      addInterval(startsAt, chosenDuration, 'day', timeZone),
-      chosenHour,
-      timeZone,
-    );
-  }, [shape.unit, startsAt, chosenDuration, chosenHour, timeZone]);
+  const { start: startsAt, end: endsAt } = useMemo(
+    () => rangeFor(days[dayIndex] ?? now, chosenHour),
+    [rangeFor, days, dayIndex, now, chosenHour],
+  );
+
+  /**
+   * Busy blocks from the phone's own calendar.
+   *
+   * `null` means "we do not know" — permission refused, or not yet answered —
+   * and is deliberately distinct from `[]`, an empty fortnight. Nothing is
+   * marked while it is null.
+   */
+  const [busy, setBusy] = useState<TimeRange[] | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      if (!(await hasCalendarAccess())) return;
+      const to = addInterval(now, DAY_CHOICES, 'day', timeZone);
+      setBusy(await readBusyBlocks(now, to));
+    })();
+  }, [now, timeZone]);
+
+  // Each day judged at the currently chosen hour, and each hour on the
+  // currently chosen day — so the marks answer "if I changed just this one
+  // thing", which is the question a chip actually poses.
+  const busyDays = useMemo(
+    () => days.map((day) => busy !== null && overlapsAny(rangeFor(day, chosenHour), busy)),
+    [busy, days, rangeFor, chosenHour],
+  );
+
+  const busyHours = useMemo(
+    () =>
+      HOUR_CHOICES.map(
+        (value) => busy !== null && overlapsAny(rangeFor(days[dayIndex] ?? now, value), busy),
+      ),
+    [busy, days, dayIndex, now, rangeFor],
+  );
+
+  const anyBusy = busyDays.some(Boolean) || busyHours.some(Boolean);
 
   function durationLabel(value: number): string {
     return shape.unit === 'hour'
@@ -167,10 +217,17 @@ export default function NewPlan() {
                 key={day.toISOString()}
                 label={formatDay(day, locale, timeZone)}
                 selected={dayIndex === index}
+                busy={busyDays[index]}
+                accessibilityLabel={
+                  busyDays[index]
+                    ? t('app:plan.busyOption', { option: formatDay(day, locale, timeZone) })
+                    : undefined
+                }
                 onPress={() => setDayIndex(index)}
               />
             ))}
           </View>
+          {anyBusy ? <Muted>{t('app:plan.busyHint')}</Muted> : null}
         </View>
       </Card>
 
@@ -178,14 +235,21 @@ export default function NewPlan() {
         <View className="gap-3">
           <Heading>{t('app:plan.startTime')}</Heading>
           <View className="flex-row gap-2">
-            {HOUR_CHOICES.map((value) => (
-              <Chip
-                key={value}
-                label={formatTime(atHourInZone(startsAt, value, timeZone), locale, timeZone)}
-                selected={chosenHour === value}
-                onPress={() => setHour(value)}
-              />
-            ))}
+            {HOUR_CHOICES.map((value, index) => {
+              const label = formatTime(atHourInZone(startsAt, value, timeZone), locale, timeZone);
+              return (
+                <Chip
+                  key={value}
+                  label={label}
+                  selected={chosenHour === value}
+                  busy={busyHours[index]}
+                  accessibilityLabel={
+                    busyHours[index] ? t('app:plan.busyOption', { option: label }) : undefined
+                  }
+                  onPress={() => setHour(value)}
+                />
+              );
+            })}
           </View>
         </View>
       </Card>

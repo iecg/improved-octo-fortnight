@@ -45,7 +45,9 @@
     "nights_one": "{{count}} night",
     "nights_other": "{{count}} nights",
     "summary": "Booked for {{date}}",
-    "save": "Put it on the calendar"
+    "save": "Put it on the calendar",
+    "busyHint": "Marked times already have something on your calendar. You can still pick them.",
+    "busyOption": "{{option}} — already booked"
   },
   "settings": {
     "title": "Settings",
