@@ -80,6 +80,9 @@ const devices: Record<
   { keypair: ReturnType<typeof generateDeviceKeypair>; cipher?: FieldCipher }
 > = {};
 
+/** The couple key itself, minted in 2b and re-checked when a third device joins. */
+let coupleRoot: CoupleRootKey;
+
 function cipherOf(actor: string): FieldCipher {
   const cipher = devices[actor]?.cipher;
   if (!cipher) throw new Error(`${actor}'s device has no couple key yet`);
@@ -245,6 +248,7 @@ describe('2b. exchanging keys', () => {
 
   it('hands the couple key from one device to the other', async () => {
     const root = generateCoupleRootKey(testRandom);
+    coupleRoot = root;
     devices[alice]!.cipher = cipherWithKey(root, world.coupleId, 'intimacy');
 
     const deviceKeyId = await asUser(pool, alice, async (client) => {
@@ -312,6 +316,71 @@ describe('2b. exchanging keys', () => {
         epoch: 0,
       }),
     ).toThrow();
+  });
+
+  /**
+   * The second app on the same phone, against the real policies.
+   *
+   * SecureStore is scoped per app bundle, so installing Two22 next to Us gives
+   * a signed-in, paired, keyless device belonging to *you*. CLAUDE.md says
+   * "installing the second app finds the couple already connected"; if only a
+   * partner could approve a device, that sentence stopped being true the moment
+   * encryption shipped. What makes it work is that `couple_key_wraps` asks for
+   * membership and `wrapped_by = auth.uid()`, and says nothing about whose
+   * device the wrap is for.
+   */
+  it('lets a partner approve their own second install', async () => {
+    const secondApp = generateDeviceKeypair(testRandom);
+
+    const deviceKeyId = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query(
+        'insert into public.device_keys (profile_id, public_key) values ($1, $2) returning id',
+        [alice, toBase64(secondApp.publicKey)],
+      );
+      return rows[0].id as string;
+    });
+
+    await asUser(pool, alice, (client) =>
+      client.query(
+        `insert into public.couple_key_wraps (couple_id, device_key_id, epoch, wrapped_key, wrapped_by)
+         values ($1, $2, 0, $3, $4)`,
+        [
+          world.coupleId,
+          deviceKeyId,
+          wrapCoupleKey({
+            root: coupleRoot,
+            mySecret: devices[alice]!.keypair.secretKey,
+            myPublic: devices[alice]!.keypair.publicKey,
+            theirPublic: secondApp.publicKey,
+            coupleId: world.coupleId,
+            epoch: 0,
+            random: testRandom,
+          }),
+          alice,
+        ],
+      ),
+    );
+
+    const wrapped = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query(
+        'select wrapped_key from public.couple_key_wraps where device_key_id = $1',
+        [deviceKeyId],
+      );
+      return rows[0].wrapped_key as string;
+    });
+
+    const opened = unwrapCoupleKey({
+      wrapped,
+      mySecret: secondApp.secretKey,
+      myPublic: secondApp.publicKey,
+      theirPublic: devices[alice]!.keypair.publicKey,
+      coupleId: world.coupleId,
+      epoch: 0,
+    });
+
+    // Byte-identical, so the second app derives the same content keys — and can
+    // therefore read what the first app wrote, which is the whole promise.
+    expect(Buffer.from(opened).equals(Buffer.from(coupleRoot))).toBe(true);
   });
 });
 

@@ -39,6 +39,7 @@ export {
 export {
   CONTENT_KEY_BYTES,
   deriveContentKey,
+  DEVICE_SECRET_KEY_BYTES,
   generateCoupleRootKey,
   generateDeviceKeypair,
   publicKeyFor,
@@ -48,6 +49,8 @@ export {
   type DeviceKeypair,
   type KeyScope,
 } from './keys';
+
+export type { CoupleKeyVault, StoredCoupleKey } from './vault';
 
 export { randomBytes, type RandomSource } from './random';
 

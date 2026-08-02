@@ -6,9 +6,10 @@
  * differ.
  */
 import { TWO_TWO_TWO_KINDS, type Locale } from '@couple/core';
-import { createSupabaseClient } from '@couple/data';
+import { createKeyService } from '@couple/auth';
+import { createKeyRepository, createSupabaseClient } from '@couple/data';
 import { createCoupleKeyStore, createFieldCipher } from '@couple/crypto';
-import { deviceRandom, secureAuthStorage } from '@couple/device';
+import { createKeyVault, deviceRandom, secureAuthStorage } from '@couple/device';
 import { addAppNamespace, createI18n, resolveLocale } from '@couple/i18n';
 import { getLocales } from 'expo-localization';
 
@@ -49,6 +50,21 @@ export const contentCipher = createFieldCipher(keyStore, 'two_two_two', deviceRa
 
 /** Rows both apps read — today just a partner's name. */
 export const sharedCipher = createFieldCipher(keyStore, 'shared', deviceRandom);
+
+/**
+ * How the couple key reaches this device, and where it rests between launches.
+ *
+ * The service is stateless glue; the two things it needs that cannot be faked
+ * are here: the keychain, and the key tables. `keyStore` above is the third,
+ * and it is the same instance the ciphers read from — that is what makes
+ * `adoptStoredKey` enough to bring the whole app to life.
+ */
+export const keyService = createKeyService({
+  keys: createKeyRepository(supabase),
+  vault: createKeyVault(),
+  keyStore,
+  random: deviceRandom,
+});
 
 export const deviceLocale: Locale = resolveLocale(getLocales()[0]?.languageTag);
 

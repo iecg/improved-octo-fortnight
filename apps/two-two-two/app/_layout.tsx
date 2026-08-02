@@ -1,5 +1,6 @@
 import '../global.css';
 
+import { routeIntent } from '@couple/auth';
 import { Loading } from '@couple/ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -17,40 +18,40 @@ const queryClient = new QueryClient({
 });
 
 /**
- * Same three states as the other app — signed out, unpaired, paired — because
- * they share one account and one pairing. No app lock here: a 2-2-2 tracker
- * has nothing to hide, and demanding Face ID for a date-night countdown would
- * be friction with no payoff.
+ * Routing follows the four states the app can be in: signed out, signed in but
+ * unpaired, paired without the couple key, and ready. Doing it here rather than
+ * in each screen means no screen has to defend against being reached in the
+ * wrong state.
+ *
+ * The decision itself is `routeIntent` in `@couple/auth` — it was duplicated
+ * character-for-character between the two apps, and a fourth state was not
+ * something to copy a third time. What stays here is the expo-router plumbing,
+ * which is the part that genuinely differs from a package.
  */
 function RootNavigator() {
-  const { loading, session, couple } = useSession();
+  const { loading, session, couple, keyState } = useSession();
   const segments = useSegments();
   const router = useRouter();
 
-  const group = segments[0];
-  const onSignIn = group === 'sign-in';
-  const onPairing = group === 'pair';
-
-  /**
-   * Whether the route we are on contradicts the session we have. Known during
-   * render, not only inside the effect: `(tabs)` is the initial route, so on a
-   * cold start with no session it mounts, `usePairedSession()` throws, and a
-   * new user's first screen is a red one. Effects run after the render that
-   * broke.
-   */
-  const misplaced =
-    (!session && !onSignIn) ||
-    (!!session && !couple && !onPairing) ||
-    (!!session && !!couple && (onSignIn || onPairing));
+  // Known during render, not only inside the effect below. `(tabs)` is the
+  // initial route, so on a cold start with no session it mounts,
+  // `usePairedSession()` throws, and the first thing a new user sees is a red
+  // screen — the redirect is queued in an effect and effects run after the
+  // render that broke.
+  const { misplaced, target } = routeIntent({
+    session: !!session,
+    couple: !!couple,
+    keyState,
+    group: segments[0],
+  });
 
   useEffect(() => {
     if (loading || !misplaced) return;
+    router.replace(target);
+  }, [loading, misplaced, target, router]);
 
-    if (!session) router.replace('/sign-in');
-    else if (!couple) router.replace('/pair');
-    else router.replace('/(tabs)');
-  }, [loading, misplaced, session, couple, router]);
-
+  // Hold the spinner until the route agrees with the session, rather than
+  // mounting a screen that is about to be navigated away from.
   if (loading || misplaced) return <Loading />;
 
   return (
@@ -58,6 +59,8 @@ function RootNavigator() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="pair" />
+      <Stack.Screen name="unlock" />
+      <Stack.Screen name="approve" options={{ presentation: 'modal' }} />
       <Stack.Screen name="plan/new" options={{ presentation: 'modal' }} />
     </Stack>
   );

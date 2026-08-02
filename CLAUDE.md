@@ -158,6 +158,50 @@ only party it ever protected against was the couple themselves.
 allowlist of every column of every table, cross-checked against every key
 `packages/data` sends to PostgREST.
 
+### How the key reaches a device
+
+Every install mints an X25519 keypair, keeps the secret in the keychain and
+publishes the public half to `device_keys`. A device that already holds the
+couple key wraps it to a published public key; the two people compare a
+twelve-character **safety number** first, which is what stops the server
+substituting a key of its own. The wrap is static-static ECDH, not a sealed
+box — with a sealed box anyone holding the recipient's public key could forge a
+plausible wrap, so the tag would prove nothing about who sent it.
+
+**There is a fourth app state now: paired but keyless.** `SessionState.keyState`
+carries it and `routeIntent` in `packages/auth/src/route.ts` decides on it —
+one pure function, because the expression was duplicated character-for-character
+in both `_layout.tsx` files and a fourth state was not something to copy again.
+A keyless session routes to `/unlock`, never to the tabs. `usePairedSession()`
+asserts the same thing, so a screen that slips past the router fails loudly
+instead of meeting `MissingCoupleKeyError` inside a mapper.
+
+`/approve` is deliberately exempt from that redirect for a session that _has_
+the key: gating the approver behind an approval is the deadlock the screen
+exists to break.
+
+**Approving your own device is a normal path, not a workaround.** SecureStore is
+scoped per app bundle, so installing the second app on one phone produces a
+paired, keyless device belonging to _you_. `pendingDevices` therefore returns
+devices of either member with an `isMine` flag. Without that, "installing the
+second app finds the couple already connected" would have stopped being true the
+moment encryption shipped.
+
+Two keychain items with two different accessibility levels, and the difference
+is deliberate: the **device secret** is `WHEN_UNLOCKED_THIS_DEVICE_ONLY`, so a
+restored backup does not produce two phones answering to one `device_keys` row;
+the **couple key** is `AFTER_FIRST_UNLOCK`, so it rides an encrypted backup to a
+new phone. Neither uses `requireAuthentication` — such keys are invalidated when
+biometrics change, which would make every row unreadable with no recovery, and
+the flag does not combine with `keychainService`. A lock screen belongs at the
+app layer, where `AppLockGate` already puts it.
+
+Note one asymmetry worth remembering: a wrap row is the **only** evidence any
+other device can see that a device holds the key. That is why the founding
+device wraps the key to itself — not for recovery (a reinstall mints a new
+keypair and could not open it), but so its own second install does not offer to
+re-approve it.
+
 ### What this does not protect
 
 The first item is the deliberate limit of the whole design, not a gap in it.
@@ -204,6 +248,12 @@ The first item is the deliberate limit of the whole design, not a gap in it.
   cannot be enumerated through the table API. The code rotates once redeemed —
   and again whenever the couple loses a member, because leaving reopens the
   seat and would otherwise make a circulated code live again.
+- **`PairScreen` must not refresh the session while it is showing the invite
+  code.** Refreshing sets `couple`, the router replaces the screen, and the
+  founder's only sight of their own code is the render it is unmounted on. The
+  Continue button is what advances instead. This was a real bug before
+  encryption and would have been permanent after it, since minting the couple
+  key makes `keyState` ready on the same tick.
 - **A couple with no members left is deleted, not kept.** Nothing can reach an
   empty couple's rows through any policy, so retaining them serves nobody and
   leaves intimate history sitting behind a redeemable code.

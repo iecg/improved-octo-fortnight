@@ -16,11 +16,11 @@ import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Text, TextInput, View } from 'react-native';
 
+import type { KeyService } from './keys';
+import { CODE_CLASS, INPUT_CLASS } from './style';
+
 /** Must match `generate_invite_code()` in the pairing-hardening migration. */
 export const INVITE_CODE_LENGTH = 8;
-
-const INPUT_CLASS =
-  'rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark';
 
 export function SignInScreen({
   client,
@@ -132,12 +132,21 @@ export function SignInScreen({
 
 export function PairScreen({
   accounts,
+  keys,
+  profileId,
   timeZone,
   initialCode,
   onPaired,
   seedCadences,
 }: {
   accounts: AccountRepository;
+  /**
+   * Pairing is also where key material begins: the founder mints the couple
+   * key, and the joiner publishes the device key their partner will wrap to.
+   * Neither can happen before there is a couple to bind them to.
+   */
+  keys: KeyService;
+  profileId: string;
   timeZone: string;
   /** Present when arriving from an invite link. */
   initialCode?: string;
@@ -168,15 +177,22 @@ export function PairScreen({
     try {
       const created = await accounts.createCouple(timeZone);
       await seedCadences(created.id);
+      // The couple key is minted here and nowhere else. Exactly one device ever
+      // runs this, which is what makes "one key per couple" a fact rather than
+      // a convention — every other device receives it wrapped.
+      await keys.createCoupleKey(created.id, profileId);
       setInviteCode(created.inviteCode);
       setMode('created');
-      await onPaired();
+      // Deliberately *not* `onPaired()` here. It refreshes the session, which
+      // sets `couple` and `keyState: 'ready'` together, and the router would
+      // replace this screen before the invite code below could be read. The
+      // Continue button calls it instead.
     } catch {
       setErrorKey('auth:pair.error.unknown');
     } finally {
       setBusy(false);
     }
-  }, [accounts, onPaired, seedCadences, timeZone]);
+  }, [accounts, keys, profileId, seedCadences, timeZone]);
 
   const joinCouple = useCallback(async () => {
     setBusy(true);
@@ -188,13 +204,17 @@ export function PairScreen({
         return;
       }
       await seedCadences(result.coupleId);
+      // Publish this device's public key on the way in, so the partner's
+      // approval screen has something to show the moment they look at it. The
+      // key itself arrives later, on `/unlock`.
+      await keys.ensureDeviceKey(profileId);
       await onPaired();
     } catch {
       setErrorKey('auth:pair.error.unknown');
     } finally {
       setBusy(false);
     }
-  }, [accounts, code, onPaired, seedCadences]);
+  }, [accounts, code, keys, onPaired, profileId, seedCadences]);
 
   return (
     <Screen>
@@ -223,14 +243,19 @@ export function PairScreen({
           <Card>
             <View className="gap-3">
               <Heading>{t('auth:pair.yourCodeLabel')}</Heading>
-              <Text
-                selectable
-                className="text-center text-3xl font-semibold tracking-[6px] text-ink dark:text-ink-dark"
-              >
+              <Text selectable className={CODE_CLASS}>
                 {inviteCode}
               </Text>
               <Muted>{t('auth:pair.shareHint')}</Muted>
               <Muted>{t('auth:pair.waiting')}</Muted>
+              {/*
+                Without this button the founder never sees their own invite
+                code. `startCouple` used to call `onPaired()` itself, which set
+                `couple` and let the router replace this screen on the same
+                tick — the card below rendered and was gone. Advancing on a tap
+                instead is what makes the code readable long enough to send.
+              */}
+              <Button label={t('common:action.next')} onPress={() => void onPaired()} />
             </View>
           </Card>
         ) : null}

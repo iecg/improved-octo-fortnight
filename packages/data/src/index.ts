@@ -13,5 +13,8 @@ export type { CheckinRepository, RecordCheckinInput } from './checkins';
 export { createIdeaRepository } from './ideas';
 export type { IdeaRepository, SaveIdeaInput } from './ideas';
 
+export { createKeyRepository } from './keys';
+export type { CoupleKeyWrap, DeviceKey, KeyRepository } from './keys';
+
 export * from './mappers';
 export type { Database, Json } from './database.types';
