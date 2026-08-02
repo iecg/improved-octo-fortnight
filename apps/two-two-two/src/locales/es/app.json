@@ -26,5 +26,9 @@
     "allow": "Permitir",
     "allowed": "Permitido",
     "signOut": "Cerrar sesión"
+  },
+  "notification": {
+    "title": "Two22",
+    "body": "Se acerca algo."
   }
 }
