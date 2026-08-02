@@ -42,6 +42,14 @@ describe('routeIntent', () => {
     expect(routeIntent({ ...LOCKED, group: 'unlock' }).misplaced).toBe(false);
   });
 
+  it('lets a keyless device reach the ways back in', () => {
+    // `/recovery` is where a device goes when waiting for a partner is not
+    // going to work. Bouncing it back to `/unlock` would be the same deadlock
+    // `approve` has, from the other side: the screen that exists for a device
+    // that cannot get in, unreachable by a device that cannot get in.
+    expect(routeIntent({ ...LOCKED, group: 'recovery' }).misplaced).toBe(false);
+  });
+
   it('lets a device that holds the key stand on the approval screen', () => {
     // If this were misplaced, nobody could ever approve anybody: the only
     // device allowed to approve is one that already has the key, and it would
@@ -49,8 +57,12 @@ describe('routeIntent', () => {
     expect(routeIntent({ ...READY, group: 'approve' }).misplaced).toBe(false);
   });
 
-  it('sends a ready device out of the three pre-key screens', () => {
-    for (const group of ['sign-in', 'pair', 'unlock']) {
+  it('sends a ready device out of the four pre-key screens', () => {
+    // Including `/recovery`: a device that can read the couple's rows has
+    // nothing to recover, and the one thing it might want from there — saving
+    // a code — is in Settings. Recovering successfully is what makes this
+    // fire, on the same tick the session refreshes.
+    for (const group of ['sign-in', 'pair', 'unlock', 'recovery']) {
       expect(routeIntent({ ...READY, group })).toEqual({ misplaced: true, target: '/(tabs)' });
     }
   });
@@ -64,7 +76,7 @@ describe('routeIntent', () => {
     // `target` is read only when `misplaced`, but a wrong one would send a user
     // in a loop, so it is checked on every combination rather than the ones the
     // cases above happen to visit.
-    const groups = ['(tabs)', 'sign-in', 'pair', 'unlock', 'approve', undefined];
+    const groups = ['(tabs)', 'sign-in', 'pair', 'unlock', 'recovery', 'approve', undefined];
     for (const state of [SIGNED_OUT, UNPAIRED, LOCKED, READY]) {
       const expected = !state.session
         ? '/sign-in'

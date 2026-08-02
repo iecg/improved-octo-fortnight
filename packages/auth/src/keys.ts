@@ -25,17 +25,32 @@ import {
   fromBase64,
   generateCoupleRootKey,
   generateDeviceKeypair,
+  generateRecoveryCode,
   safetyNumber,
   toBase64,
   unwrapCoupleKey,
+  unwrapWithRecoveryCode,
   wrapCoupleKey,
+  wrapWithRecoveryCode,
 } from '@couple/crypto';
 import type { KeyRepository } from '@couple/data';
 
 /** Whether this device can read the couple's rows. */
 export type KeyState = 'ready' | 'absent';
 
-/** The epoch a couple starts at. Rotation (stage 6) is what ever changes it. */
+/**
+ * The epoch a couple starts at, and — today — the only one any couple has.
+ *
+ * Nothing advances it, deliberately. Recovery's last resort is unpairing, not a
+ * new root at `epoch + 1`: a rotation would leave every existing row sealed
+ * under a key nobody holds, and the client cannot delete them
+ * (`checkins_delete_own` scopes deletion to your own rows), so the history would
+ * sit there permanently as unreadable placeholders. Deleting the couple reaches
+ * everything, through a cascade rather than through a policy.
+ *
+ * The epoch columns and `createFieldCipher`'s refusal to cross one are for a
+ * rotation that re-seals every row, which is a real feature and not this one.
+ */
 export const INITIAL_EPOCH = 0;
 
 /**
@@ -61,6 +76,35 @@ export interface PendingDevice {
 }
 
 export type WrapOutcome = { ok: true } | { ok: false; reason: 'key_changed' | 'gone' };
+
+/**
+ * Why a recovery code did not work.
+ *
+ * A code that is the wrong length, has a stray character, or is simply the
+ * wrong code all report the same thing. Separating them would say which part
+ * was wrong to whoever is guessing, and would tell the person holding the right
+ * piece of paper nothing they can act on.
+ */
+export type RecoveryOutcome = { ok: true } | { ok: false; reason: 'no_envelope' | 'bad_code' };
+
+/**
+ * A device of this couple, as Settings lists it.
+ *
+ * Distinct from `PendingDevice` in the two ways that matter for a list rather
+ * than for an approval: it includes the device you are holding, and it says
+ * whether each one can actually read anything.
+ */
+export interface DeviceSummary {
+  deviceKeyId: string;
+  profileId: string;
+  createdAt: string;
+  isMine: boolean;
+  isThisDevice: boolean;
+  /** Whether a wrap exists for it at the epoch this device holds. */
+  hasKey: boolean;
+  /** Null for this device: a number you compare against yourself says nothing. */
+  safetyNumber: string | null;
+}
 
 export interface KeyService {
   /** This device's identity, minted on first call and published every time. */
@@ -95,6 +139,36 @@ export interface KeyService {
   /** Those of the above with no wrap yet at the epoch this device holds. */
   pendingDevices(coupleId: string, profileId: string): Promise<PendingDevice[]>;
   verifyAndWrap(coupleId: string, profileId: string, device: PendingDevice): Promise<WrapOutcome>;
+  /**
+   * Every device of this couple, including this one, for Settings to list.
+   *
+   * Needs the couple key, because `hasKey` is relative to an epoch. A device
+   * that cannot read anything has no business drawing conclusions about which
+   * other devices can.
+   */
+  listDevices(coupleId: string, profileId: string): Promise<DeviceSummary[]>;
+  /** Withdraw a device. Only your own rows; `device_keys_delete_own` is why. */
+  withdrawDevice(deviceKeyId: string): Promise<void>;
+
+  /**
+   * Seal the couple key under a freshly generated code, and hand the code back
+   * exactly once.
+   *
+   * Nothing stores it. The envelope cannot be turned back into the code — that
+   * is the entire point of the KDF — so a code not written down at this moment
+   * is a code that never existed.
+   */
+  saveRecoveryCode(coupleId: string, profileId: string): Promise<string>;
+  /** Whether this person has an envelope for this couple. */
+  recoveryStatus(coupleId: string): Promise<boolean>;
+  /**
+   * The last way back in that does not throw the history away.
+   *
+   * Adopts the key *and* wraps it to this device, for the reason
+   * `createCoupleKey` self-wraps: without that row, a device that recovered by
+   * code stays "waiting to be let in" as far as every other device can tell.
+   */
+  recoverWithCode(coupleId: string, profileId: string, code: string): Promise<RecoveryOutcome>;
   /** Try to open a wrap addressed to this device. Idempotent; safe to poll. */
   tryAdoptWrap(coupleId: string, profileId: string): Promise<KeyState>;
   watchKeys(coupleId: string, onChange: () => void): () => void;
@@ -182,6 +256,48 @@ export function createKeyService(deps: {
       }));
   }
 
+  /**
+   * Wrap the key to the very device that already holds it.
+   *
+   * Load-bearing rather than ceremonial. A wrap is the only evidence *other*
+   * devices can see that a device holds the key — nothing else in the schema
+   * says so, and nothing could, since holding it is a fact about a keychain.
+   * Without this row the device shows up as "waiting to be let in" on its own
+   * second install, and sits in its partner's approval list indefinitely.
+   *
+   * It is not a recovery mechanism: a reinstall mints a new device keypair, so
+   * this wrap would be unopenable by the very device it names. What survives a
+   * reinstall is the keychain copy, a partner re-wrapping, or the code.
+   *
+   * Both ways of coming by the key call this — founding a couple, and opening a
+   * recovery envelope — because in both cases the device has a key that nobody
+   * else has any way of knowing about.
+   */
+  async function selfWrap(
+    root: CoupleRootKey,
+    coupleId: string,
+    profileId: string,
+    epoch: number,
+  ): Promise<void> {
+    const { keypair, deviceKeyId } = await ensureDeviceKey(profileId);
+
+    await keys.putWrap({
+      coupleId,
+      deviceKeyId,
+      epoch,
+      wrappedKey: wrapCoupleKey({
+        root,
+        mySecret: keypair.secretKey,
+        myPublic: keypair.publicKey,
+        theirPublic: keypair.publicKey,
+        coupleId,
+        epoch,
+        random,
+      }),
+      wrappedBy: profileId,
+    });
+  }
+
   return {
     ensureDeviceKey,
 
@@ -230,34 +346,7 @@ export function createKeyService(deps: {
     async createCoupleKey(coupleId, profileId) {
       const root = generateCoupleRootKey(random);
       await adopt(root, coupleId, INITIAL_EPOCH);
-
-      const { keypair, deviceKeyId } = await ensureDeviceKey(profileId);
-
-      // The founding device wraps the key to itself, and this row is
-      // load-bearing rather than ceremonial. A wrap is the only evidence *other*
-      // devices can see that a device already holds the key — nothing else in
-      // the schema says so, and nothing could, since holding it is a fact about
-      // a keychain. Without this row the founder's own phone shows up as
-      // "waiting to be let in" on the second app it installs.
-      //
-      // It is not a recovery mechanism: a reinstall mints a new device keypair,
-      // so this wrap would be unopenable by the very device it names. What
-      // survives a reinstall is the keychain copy, or a partner re-wrapping.
-      await keys.putWrap({
-        coupleId,
-        deviceKeyId,
-        epoch: INITIAL_EPOCH,
-        wrappedKey: wrapCoupleKey({
-          root,
-          mySecret: keypair.secretKey,
-          myPublic: keypair.publicKey,
-          theirPublic: keypair.publicKey,
-          coupleId,
-          epoch: INITIAL_EPOCH,
-          random,
-        }),
-        wrappedBy: profileId,
-      });
+      await selfWrap(root, coupleId, profileId, INITIAL_EPOCH);
     },
 
     visibleDevices,
@@ -314,6 +403,97 @@ export function createKeyService(deps: {
         }),
         wrappedBy: profileId,
       });
+
+      return { ok: true };
+    },
+
+    async listDevices(coupleId, profileId) {
+      const held = await heldKey(coupleId);
+      if (!held) return [];
+
+      const keypair = await loadDeviceKeypair();
+      const mine = toBase64(keypair.publicKey);
+
+      const [devices, wraps] = await Promise.all([keys.listDeviceKeys(), keys.listWraps(coupleId)]);
+
+      const wrapped = new Set(
+        wraps.filter((wrap) => wrap.epoch === held.epoch).map((wrap) => wrap.deviceKeyId),
+      );
+
+      return devices.map((device) => {
+        const isThisDevice = device.publicKey === mine && device.profileId === profileId;
+        return {
+          deviceKeyId: device.id,
+          profileId: device.profileId,
+          createdAt: device.createdAt,
+          isMine: device.profileId === profileId,
+          isThisDevice,
+          hasKey: wrapped.has(device.id),
+          safetyNumber: isThisDevice
+            ? null
+            : safetyNumber(keypair.publicKey, fromBase64(device.publicKey), coupleId),
+        };
+      });
+    },
+
+    async withdrawDevice(deviceKeyId) {
+      await keys.deleteDeviceKey(deviceKeyId);
+    },
+
+    async saveRecoveryCode(coupleId, profileId) {
+      const held = await heldKey(coupleId);
+      // Only a device that can read the key can seal it under a code. A screen
+      // should never offer this without one, so reaching here is a bug rather
+      // than a state to render.
+      if (!held) throw new Error('this device does not hold the couple key');
+
+      const code = generateRecoveryCode(random);
+
+      await keys.putRecovery({
+        profileId,
+        coupleId,
+        epoch: held.epoch,
+        envelope: wrapWithRecoveryCode({
+          root: held.root,
+          code,
+          coupleId,
+          epoch: held.epoch,
+          random,
+        }),
+      });
+
+      return code;
+    },
+
+    async recoveryStatus(coupleId) {
+      const stored = await keys.getRecovery();
+      // An envelope for a couple this device is no longer in is not an
+      // envelope. It cannot happen while the row cascades with the couple, but
+      // saying "you have a code" on the strength of a row nobody checked is
+      // the kind of claim this screen must not make.
+      return stored !== null && stored.coupleId === coupleId;
+    },
+
+    async recoverWithCode(coupleId, profileId, code) {
+      const stored = await keys.getRecovery();
+      if (!stored || stored.coupleId !== coupleId) return { ok: false, reason: 'no_envelope' };
+
+      let root: CoupleRootKey;
+      try {
+        // Both the shape check inside `normalizeRecoveryCode` and the Poly1305
+        // tag land here, and they are deliberately indistinguishable.
+        root = unwrapWithRecoveryCode({
+          envelope: stored.envelope,
+          code,
+          coupleId,
+          epoch: stored.epoch,
+        });
+      } catch {
+        return { ok: false, reason: 'bad_code' };
+      }
+
+      await adopt(root, coupleId, stored.epoch);
+      await selfWrap(root, coupleId, profileId, stored.epoch);
 
       return { ok: true };
     },

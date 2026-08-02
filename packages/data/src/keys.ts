@@ -13,6 +13,8 @@
  * invariant 2 separates the two apps' *content*, and there is exactly one
  * couple key underneath both.
  */
+import type { RecoveryEnvelope, ScryptParams } from '@couple/crypto';
+
 import type { AppSupabaseClient } from './client';
 
 export interface DeviceKey {
@@ -79,11 +81,64 @@ export interface KeyRepository {
     wrappedBy: string;
   }): Promise<void>;
 
+  /**
+   * This person's recovery envelope, if they have written a code down.
+   *
+   * No `.eq('profile_id', …)`. `couple_key_recovery_all_own` already narrows
+   * this to exactly one row, and adding the filter would suggest the filter is
+   * what protects it — the mistake invariant 2 exists to prevent, in the one
+   * place where RLS genuinely is the whole guarantee.
+   */
+  getRecovery(): Promise<StoredRecovery | null>;
+  /**
+   * Seal a code's envelope, replacing any earlier one.
+   *
+   * An upsert on the primary key, so "save a code" and "replace the code" are
+   * the same call — there is no state where a person has two.
+   */
+  putRecovery(input: {
+    profileId: string;
+    coupleId: string;
+    epoch: number;
+    envelope: RecoveryEnvelope;
+  }): Promise<void>;
+
   /** Fires on any change to either key table. Returns its own unsubscribe. */
   watchKeys(coupleId: string, onChange: () => void): () => void;
 }
 
+export interface StoredRecovery {
+  coupleId: string;
+  epoch: number;
+  envelope: RecoveryEnvelope;
+}
+
 const UNIQUE_VIOLATION = '23505';
+
+/**
+ * What `kdf_params` is allowed to say.
+ *
+ * The params come back from the server and are fed straight to scrypt, so an
+ * operator who edited this row could ask a phone for `N = 2 ** 30` and hang it —
+ * the one place in this schema where a server-controlled value turns into work
+ * rather than into a failed tag. Bounding it costs nothing: the only params
+ * this app has ever written are `SCRYPT_PARAMS`, and anything outside these
+ * bounds is either tampering or a future version that will bump `kdf` anyway.
+ */
+const MAX_SCRYPT = { N: 2 ** 20, r: 16, p: 4, dkLen: 32 };
+
+function toScryptParams(value: unknown): ScryptParams | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+
+  const { N, r, p, dkLen } = value as Record<string, unknown>;
+  if (typeof N !== 'number' || typeof r !== 'number') return null;
+  if (typeof p !== 'number' || typeof dkLen !== 'number') return null;
+  if (N < 2 || N > MAX_SCRYPT.N || (N & (N - 1)) !== 0) return null;
+  if (r < 1 || r > MAX_SCRYPT.r || p < 1 || p > MAX_SCRYPT.p) return null;
+  if (dkLen !== MAX_SCRYPT.dkLen) return null;
+
+  return { N, r, p, dkLen };
+}
 
 function toDeviceKey(row: {
   id: string;
@@ -162,6 +217,53 @@ export function createKeyRepository(client: AppSupabaseClient): KeyRepository {
       });
       // Approving the same device twice is a double tap, not a failure.
       if (error && error.code !== UNIQUE_VIOLATION) throw new Error(error.message);
+    },
+
+    async getRecovery() {
+      const { data, error } = await client.from('couple_key_recovery').select('*').maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) return null;
+
+      const params = toScryptParams(data.kdf_params);
+      // A row this client cannot make sense of is treated as no row at all.
+      // Reporting "you have a code" and then failing to open it would send
+      // someone hunting for a piece of paper that was never going to work.
+      if (data.kdf !== 'scrypt-v1' || params === null) return null;
+
+      return {
+        coupleId: data.couple_id,
+        epoch: data.epoch,
+        envelope: {
+          kdf: 'scrypt-v1' as const,
+          salt: data.kdf_salt,
+          params,
+          wrapped: data.wrapped_key,
+        },
+      };
+    },
+
+    async putRecovery(input) {
+      const { error } = await client.from('couple_key_recovery').upsert(
+        {
+          profile_id: input.profileId,
+          couple_id: input.coupleId,
+          epoch: input.epoch,
+          kdf: input.envelope.kdf,
+          kdf_salt: input.envelope.salt,
+          // Written out rather than spread, so the four numbers this column
+          // may contain are stated in the same file that checks them on the
+          // way back. `jsonb` would take anything; `toScryptParams` will not.
+          kdf_params: {
+            N: input.envelope.params.N,
+            r: input.envelope.params.r,
+            p: input.envelope.params.p,
+            dkLen: input.envelope.params.dkLen,
+          },
+          wrapped_key: input.envelope.wrapped,
+        },
+        { onConflict: 'profile_id' },
+      );
+      if (error) throw new Error(error.message);
     },
 
     watchKeys(coupleId, onChange) {

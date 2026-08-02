@@ -230,6 +230,51 @@ delivered under RLS over a websocket — and these are the only screens where a
 missed update is a dead end, with no pull-to-refresh and no way to tell "nobody
 has joined" from "the socket is dead".
 
+### The three ways back in
+
+`/unlock` is one of them, and for a long time it was the only one: a partner
+approves you. That covers everything except both phones losing the key at once,
+where `/unlock` waits for a partner who is also waiting. `/recovery` — reachable
+from "I can't get in", keyless-only, grouped with `/unlock` in `routeIntent` —
+presents all three in ascending destructiveness, and the order on screen is the
+order to try them in.
+
+**The recovery code is one person's, not the couple's.**
+`couple_key_recovery.profile_id` is the primary key and `couple_key_recovery_all_own`
+is the only policy in this schema that hides a row from the _partner_. It has to:
+partner re-wrap is a different rung and does not touch this row, so there is no
+reason for the other person to hold a second offline-attackable copy of the key.
+The code is generated rather than chosen — 125 bits — which is what makes a pure-JS
+scrypt sufficient, and it is shown exactly once because the envelope cannot be
+turned back into it. `kdf_params` comes back from the server and is fed to a KDF,
+so `packages/data` bounds it before use: it is the one value in this schema an
+operator could edit into work rather than into a failed tag.
+
+**Starting over is unpairing, not a key rotation, and the reason is arithmetic
+rather than taste.** A rotation would mint a new root at `epoch + 1` and leave
+every existing row sealed under a key nobody holds — and the client _cannot_
+clear them, because `checkins_delete_own` and `plan_proposals_delete_own` scope
+deletion to your own rows, so one partner's check-ins would outlive whatever the
+other did. They would render as `unreadable` placeholders on every list, forever.
+Leaving the couple deletes it through `handle_member_departure` and a cascade
+instead, which reaches every table regardless of who is asking
+(`tests/rls/policies.test.ts` asserts it for content and for key material both).
+
+It takes both people, and the screen says so: leaving reopens the seat, and the
+couple dies only when the second person leaves. If the partner can still open the
+app, the right rung is the first one.
+
+So **the `epoch` columns stay unused on purpose.** They are for a rotation that
+re-seals every row — a real feature, needing a cipher that holds two keys at once
+and a migration that survives being interrupted. `createFieldCipher` refusing to
+cross an epoch is that feature's first line, not an oversight to "use up".
+
+**There is no revoke, and Settings' device list says so.** `device_keys_delete_own`
+means you can withdraw your own rows and never your partner's, and withdrawing
+takes back nothing — the key is in that device's keychain, not in this table. The
+card lists every device, whether each holds the key, and the safety number to
+compare, and states both limits rather than implying a control it does not have.
+
 ### What this does not protect
 
 The first item is the deliberate limit of the whole design, not a gap in it.

@@ -35,6 +35,17 @@ export function routeIntent(input: {
   const onSignIn = group === 'sign-in';
   const onPairing = group === 'pair';
   const onUnlock = group === 'unlock';
+  /**
+   * The three ways back in, for a device that has none of them yet.
+   *
+   * Grouped with `unlock` rather than given its own clause because it is the
+   * same predicament seen from one screen further along: `unlock` is waiting
+   * for a partner, `recovery` is what to do when waiting is not going to work.
+   * Both are keyless-only — a device that can read the couple's rows has
+   * nothing to recover, and the one thing it might want from here, saving a
+   * code, lives in Settings where it belongs.
+   */
+  const onRecovery = group === 'recovery';
 
   /**
    * Paired, but this device cannot read anything yet. The fourth state, and the
@@ -47,13 +58,13 @@ export function routeIntent(input: {
   const misplaced =
     (!session && !onSignIn) ||
     (session && !couple && !onPairing) ||
-    (locked && !onUnlock) ||
+    (locked && !onUnlock && !onRecovery) ||
     // `approve` is deliberately absent from this clause. It is reachable only
     // from a device that already holds the key, and bouncing the approver back
     // to the tabs is exactly the deadlock the screen exists to break: the
     // waiting device cannot be let in by anyone who is not allowed to stand on
     // the screen that lets it in.
-    (session && couple && !locked && (onSignIn || onPairing || onUnlock));
+    (session && couple && !locked && (onSignIn || onPairing || onUnlock || onRecovery));
 
   const target: RouteTarget = !session
     ? '/sign-in'

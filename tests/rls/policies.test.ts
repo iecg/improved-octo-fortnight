@@ -655,6 +655,73 @@ describe('leaving a couple', () => {
     expect(checkins.rowCount).toBe(0);
   });
 
+  /**
+   * The guarantee "start over" rests on, and the reason it is unpairing rather
+   * than a key rotation.
+   *
+   * A rotation would have to erase the old rows from the client, and the client
+   * cannot: `checkins_delete_own` and `plan_proposals_delete_own` scope deletion
+   * to your own rows, so one partner's check-ins would survive whatever the
+   * other did — sitting in the database forever, sealed under a key nobody
+   * holds, rendering as `unreadable` on every list. Leaving deletes the couple
+   * through a `security definer` trigger and a cascade instead, which reaches
+   * every table regardless of who is asking.
+   *
+   * The test above proves that for content. This proves it for the key material
+   * itself, which is the part a start-over must not leave behind: an envelope
+   * that outlived its couple is a wrapped key sitting next to a redeemable
+   * invite code.
+   */
+  it('takes the key material with the couple when the last member leaves', async () => {
+    const { couple, a, b } = await freshPair('last-member-keys');
+
+    const deviceKeyId = await asUser(pool, a, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        'insert into public.device_keys (profile_id, public_key) values ($1, $2) returning id',
+        [a, `QWxpY${'A'.repeat(39)}=`],
+      );
+      return rows[0]!.id;
+    });
+
+    await asUser(pool, a, async (client) => {
+      await client.query(
+        `insert into public.couple_key_wraps (couple_id, device_key_id, wrapped_key, wrapped_by)
+         values ($1, $2, $3, $4)`,
+        [couple, deviceKeyId, `d3JhcH${'W'.repeat(40)}=`, a],
+      );
+      await client.query(
+        `insert into public.couple_key_recovery
+           (profile_id, couple_id, kdf, kdf_salt, kdf_params, wrapped_key)
+         values ($1, $2, 'scrypt-v1', 'c2FsdA==', '{"N":16384,"r":8,"p":1,"dkLen":32}'::jsonb, $3)`,
+        [a, couple, `cmVjb3Zlcn${'R'.repeat(40)}=`],
+      );
+    });
+
+    for (const member of [a, b]) {
+      await asUser(pool, member, (client) =>
+        client.query('delete from public.couple_members where profile_id = $1', [member]),
+      );
+    }
+
+    const wraps = await pool.query('select 1 from public.couple_key_wraps where couple_id = $1', [
+      couple,
+    ]);
+    const recovery = await pool.query(
+      'select 1 from public.couple_key_recovery where couple_id = $1',
+      [couple],
+    );
+    expect(wraps.rowCount).toBe(0);
+    expect(recovery.rowCount).toBe(0);
+
+    // The device key itself stays: it hangs off `profiles`, not `couples`, and
+    // it is a public key belonging to a person who still exists. Nothing it
+    // could open survives, and the next pairing republishes it unchanged.
+    const device = await pool.query('select 1 from public.device_keys where id = $1', [
+      deviceKeyId,
+    ]);
+    expect(device.rowCount).toBe(1);
+  });
+
   it('leaves no abandoned couple for a stranger to join', async () => {
     const { couple, a, b } = await freshPair('abandoned');
     const circulated = await currentInviteCode(a, couple);

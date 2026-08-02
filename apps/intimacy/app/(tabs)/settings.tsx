@@ -6,7 +6,7 @@
  * in reverse: they protect this phone, and syncing them would let one partner
  * turn off the other's lock.
  */
-import { InvitePanel } from '@couple/auth';
+import { DeviceListCard, InvitePanel, RecoveryCodeCard } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
@@ -174,6 +174,19 @@ export default function Settings() {
           profileId={session.user.id}
           code={partner ? null : couple.inviteCode}
         />
+      ) : null}
+
+      {/*
+        Both of these need the couple key — one seals it, the other reports
+        which devices hold it — and this tab is only reachable with it. The
+        router is what makes that true; `usePairedSession` is what makes it
+        loud if it ever stops being.
+      */}
+      {session && couple ? (
+        <>
+          <RecoveryCodeCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+          <DeviceListCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+        </>
       ) : null}
     </Screen>
   );

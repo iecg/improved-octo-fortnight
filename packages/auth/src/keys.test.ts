@@ -10,7 +10,7 @@ import {
   type RandomSource,
   type StoredCoupleKey,
 } from '@couple/crypto';
-import type { CoupleKeyWrap, DeviceKey, KeyRepository } from '@couple/data';
+import type { CoupleKeyWrap, DeviceKey, KeyRepository, StoredRecovery } from '@couple/data';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createKeyService, type KeyService } from './keys';
@@ -39,13 +39,22 @@ function counterRandom(seed: number): RandomSource {
     });
 }
 
-/** The two key tables, shared by every device in a test. */
+/**
+ * The three key tables, shared by every device in a test.
+ *
+ * `repositoryFor(profileId)` rather than one repository, because
+ * `getRecovery()` takes no argument: `couple_key_recovery_all_own` narrows it
+ * to the caller's own row, and a fake that let any device read any envelope
+ * would be a fake of a schema without that policy — which is the one policy
+ * this table has.
+ */
 function fakeDatabase() {
   const devices: DeviceKey[] = [];
   const wraps: CoupleKeyWrap[] = [];
+  const envelopes = new Map<string, StoredRecovery>();
   let nextId = 0;
 
-  const repository: KeyRepository = {
+  const repositoryFor = (profileId: string): KeyRepository => ({
     async listDeviceKeys() {
       return devices.map((device) => ({ ...device }));
     },
@@ -93,12 +102,25 @@ function fakeDatabase() {
         wrappedBy: input.wrappedBy,
       });
     },
+    async getRecovery() {
+      return envelopes.get(profileId) ?? null;
+    },
+    async putRecovery(input) {
+      // Upsert on the primary key: replacing a code is the same call, and
+      // nobody ever has two.
+      envelopes.set(input.profileId, {
+        coupleId: input.coupleId,
+        epoch: input.epoch,
+        envelope: input.envelope,
+      });
+    },
+
     watchKeys() {
       return () => {};
     },
-  };
+  });
 
-  return { devices, wraps, repository };
+  return { devices, wraps, envelopes, repositoryFor, repository: repositoryFor('') };
 }
 
 function memoryVault(): CoupleKeyVault {
@@ -438,5 +460,191 @@ describe('createKeyService', () => {
 
     expect(await founder.service.verifyAndWrap(COUPLE, ALICE, ours[0]!)).toEqual({ ok: true });
     expect(await joiner.service.tryAdoptWrap(COUPLE, BOB)).toBe('ready');
+  });
+});
+
+/**
+ * The recovery code: the rung between "ask your partner" and "start over".
+ *
+ * Everything here runs the real scrypt and the real AEAD, so a passing test is
+ * a statement about the envelope rather than about the fake. The founder is
+ * built against a profile-scoped repository throughout, because reading an
+ * envelope is the one operation in this service that RLS narrows to one row.
+ */
+describe('the recovery code', () => {
+  let db: ReturnType<typeof fakeDatabase>;
+  let founder: ReturnType<typeof device>;
+
+  beforeEach(async () => {
+    db = fakeDatabase();
+    founder = device(db.repositoryFor(ALICE), 1);
+    await founder.service.createCoupleKey(COUPLE, ALICE);
+  });
+
+  /** Alice's phone after a reinstall: her profile, a fresh keychain. */
+  function replacementPhone(seed = 7) {
+    return device(db.repositoryFor(ALICE), seed);
+  }
+
+  it('says whether one has been saved', async () => {
+    expect(await founder.service.recoveryStatus(COUPLE)).toBe(false);
+    await founder.service.saveRecoveryCode(COUPLE, ALICE);
+    expect(await founder.service.recoveryStatus(COUPLE)).toBe(true);
+  });
+
+  it('opens on a device that has never seen the key', async () => {
+    const code = await founder.service.saveRecoveryCode(COUPLE, ALICE);
+
+    const replacement = replacementPhone();
+    expect(replacement.keyStore.status()).toBe('absent');
+
+    expect(await replacement.service.recoverWithCode(COUPLE, ALICE, code)).toEqual({ ok: true });
+
+    // Byte-identical, which is the only thing that matters: a key that merely
+    // decrypts something is not the same claim as the same 32 bytes.
+    const original = await founder.vault.readCoupleKey();
+    const recovered = await replacement.vault.readCoupleKey();
+    expect(bytesEqual(original!.root, recovered!.root)).toBe(true);
+    expect(recovered!.epoch).toBe(0);
+    expect(replacement.keyStore.status()).toBe('ready');
+  });
+
+  it('stops looking like a device waiting to be let in', async () => {
+    const code = await founder.service.saveRecoveryCode(COUPLE, ALICE);
+    const replacement = replacementPhone();
+    await replacement.service.recoverWithCode(COUPLE, ALICE, code);
+
+    // The non-obvious half of `recoverWithCode`. A wrap is the only shadow a
+    // held key casts on the server, so without the self-wrap this device would
+    // sit in its partner's approval list for good — asking to be let in to
+    // something it can already read.
+    expect(await founder.service.pendingDevices(COUPLE, ALICE)).toEqual([]);
+
+    const summaries = await replacement.service.listDevices(COUPLE, ALICE);
+    expect(summaries.filter((entry) => entry.hasKey)).toHaveLength(2);
+  });
+
+  it('is normalised the way someone reading it aloud would mean it', async () => {
+    const code = await founder.service.saveRecoveryCode(COUPLE, ALICE);
+
+    // Crockford: case-insensitive, hyphens optional, and the glyphs that look
+    // alike folded. Someone copying twenty-five characters off paper gets all
+    // three of these wrong at some point.
+    const mangled = code.toLowerCase().replace(/-/g, ' ');
+    expect(await replacementPhone().service.recoverWithCode(COUPLE, ALICE, mangled)).toEqual({
+      ok: true,
+    });
+  });
+
+  it('reports a wrong code without saying which part was wrong', async () => {
+    await founder.service.saveRecoveryCode(COUPLE, ALICE);
+    const replacement = replacementPhone();
+
+    // A well-formed code that is not the code, and a code that is not
+    // well-formed at all. Distinguishing them would tell whoever is guessing
+    // how far they got, and tells the person holding the right paper nothing.
+    const wrong = await replacement.service.recoverWithCode(
+      COUPLE,
+      ALICE,
+      'K7M29-QXV3T-B5HN4-2PWRY-8CZGK',
+    );
+    const malformed = await replacement.service.recoverWithCode(COUPLE, ALICE, 'nope');
+
+    expect(wrong).toEqual({ ok: false, reason: 'bad_code' });
+    expect(malformed).toEqual({ ok: false, reason: 'bad_code' });
+
+    // And nothing was adopted on the way past.
+    expect(replacement.keyStore.status()).toBe('absent');
+    expect(await replacement.vault.readCoupleKey()).toBeNull();
+  });
+
+  it('is one person’s, not the couple’s', async () => {
+    const code = await founder.service.saveRecoveryCode(COUPLE, ALICE);
+
+    // Bob's device reads Bob's row, and there isn't one. This is the fake
+    // honouring `couple_key_recovery_all_own`; the policy itself is asserted
+    // against the real schema in `tests/rls/policies.test.ts`.
+    const bobsPhone = device(db.repositoryFor(BOB), 8);
+    expect(await bobsPhone.service.recoverWithCode(COUPLE, BOB, code)).toEqual({
+      ok: false,
+      reason: 'no_envelope',
+    });
+  });
+
+  it('replaces an old code rather than accumulating them', async () => {
+    const first = await founder.service.saveRecoveryCode(COUPLE, ALICE);
+    const second = await founder.service.saveRecoveryCode(COUPLE, ALICE);
+
+    expect(second).not.toBe(first);
+    expect(db.envelopes.size).toBe(1);
+
+    // The paper with the old code on it stops working, which is the point of
+    // replacing it and needs to be true rather than assumed.
+    expect(await replacementPhone(9).service.recoverWithCode(COUPLE, ALICE, first)).toEqual({
+      ok: false,
+      reason: 'bad_code',
+    });
+    expect(await replacementPhone(10).service.recoverWithCode(COUPLE, ALICE, second)).toEqual({
+      ok: true,
+    });
+  });
+
+  it('refuses to seal a key this device does not have', async () => {
+    const keyless = device(db.repositoryFor(BOB), 11);
+    await expect(keyless.service.saveRecoveryCode(COUPLE, BOB)).rejects.toThrow();
+  });
+});
+
+describe('the device list', () => {
+  let db: ReturnType<typeof fakeDatabase>;
+  let founder: ReturnType<typeof device>;
+
+  beforeEach(async () => {
+    db = fakeDatabase();
+    founder = device(db.repository, 1);
+    await founder.service.createCoupleKey(COUPLE, ALICE);
+  });
+
+  it('includes the device you are holding', async () => {
+    const joiner = device(db.repository, 2);
+    await joiner.service.ensureDeviceKey(BOB);
+
+    const listed = await founder.service.listDevices(COUPLE, ALICE);
+    expect(listed).toHaveLength(2);
+
+    // `visibleDevices` filters this device out, which is right for an approval
+    // list and wrong for a list of devices — a list that omits the phone in
+    // your hand is a puzzle rather than an inventory.
+    const self = listed.find((entry) => entry.isThisDevice)!;
+    expect(self.isMine).toBe(true);
+    expect(self.hasKey).toBe(true);
+    // Nothing to compare against yourself.
+    expect(self.safetyNumber).toBeNull();
+
+    const theirs = listed.find((entry) => !entry.isThisDevice)!;
+    expect(theirs.isMine).toBe(false);
+    expect(theirs.hasKey).toBe(false);
+    expect(theirs.safetyNumber).not.toBeNull();
+  });
+
+  it('says nothing at all from a device that cannot read anything', async () => {
+    const joiner = device(db.repository, 2);
+    await joiner.service.ensureDeviceKey(BOB);
+
+    // `hasKey` is relative to an epoch, and the epoch is a property of the key
+    // this device holds. Without one there is no question to answer.
+    expect(await joiner.service.listDevices(COUPLE, BOB)).toEqual([]);
+  });
+
+  it('takes a withdrawn device’s wraps with it', async () => {
+    const secondApp = device(db.repository, 3);
+    await secondApp.service.ensureDeviceKey(ALICE);
+    const waiting = (await founder.service.pendingDevices(COUPLE, ALICE))[0]!;
+    await founder.service.verifyAndWrap(COUPLE, ALICE, waiting);
+
+    await founder.service.withdrawDevice(waiting.deviceKeyId);
+
+    expect(await founder.service.listDevices(COUPLE, ALICE)).toHaveLength(1);
+    expect(db.wraps.filter((wrap) => wrap.deviceKeyId === waiting.deviceKeyId)).toEqual([]);
   });
 });

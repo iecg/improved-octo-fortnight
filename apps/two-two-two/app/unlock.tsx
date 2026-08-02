@@ -6,12 +6,14 @@
  * queries, and meets `MissingCoupleKeyError` inside a mapper.
  */
 import { UnlockScreen } from '@couple/auth';
+import { useRouter } from 'expo-router';
 
 import { keyService } from '../src/runtime';
 import { useSession } from '../src/session';
 
 export default function Unlock() {
   const { session, couple, refresh } = useSession();
+  const router = useRouter();
   if (!session || !couple) return null;
 
   return (
@@ -20,6 +22,7 @@ export default function Unlock() {
       coupleId={couple.id}
       profileId={session.user.id}
       onUnlocked={refresh}
+      onStuck={() => router.replace('/recovery')}
     />
   );
 }

@@ -30,11 +30,20 @@ export function UnlockScreen({
   coupleId,
   profileId,
   onUnlocked,
+  onStuck,
 }: {
   keys: KeyService;
   coupleId: string;
   profileId: string;
   onUnlocked: () => Promise<void>;
+  /**
+   * Where "I can't get in" goes.
+   *
+   * Kept off this screen deliberately. Two of the three things behind it —
+   * a recovery code, and unpairing — are last resorts, and a last resort next
+   * to the thing you should actually be doing is an invitation to take it.
+   */
+  onStuck: () => void;
 }) {
   const { t } = useTranslation(['auth', 'common']);
   const [numbers, setNumbers] = useState<PendingDevice[] | null>(null);
@@ -136,6 +145,8 @@ export function UnlockScreen({
             ) : null}
           </View>
         </Card>
+
+        <Button label={t('auth:keys.unlock.stuck')} variant="ghost" onPress={onStuck} />
 
         {errorKey ? (
           <Card>

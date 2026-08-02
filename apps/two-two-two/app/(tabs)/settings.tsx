@@ -1,4 +1,4 @@
-import { InvitePanel } from '@couple/auth';
+import { DeviceListCard, InvitePanel, RecoveryCodeCard } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import { hasCalendarAccess, requestCalendarAccess } from '@couple/device';
 import { Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
@@ -90,6 +90,15 @@ export default function Settings() {
           profileId={session.user.id}
           code={partner ? null : couple.inviteCode}
         />
+      ) : null}
+
+      {/* One couple key underneath both apps, so these say the same thing in
+          either — and saving a code in one app saves it for both. */}
+      {session && couple ? (
+        <>
+          <RecoveryCodeCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+          <DeviceListCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+        </>
       ) : null}
     </Screen>
   );

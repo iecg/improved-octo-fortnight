@@ -60,6 +60,7 @@ function RootNavigator() {
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="pair" />
       <Stack.Screen name="unlock" />
+      <Stack.Screen name="recovery" />
       <Stack.Screen name="approve" options={{ presentation: 'modal' }} />
       <Stack.Screen name="plan/new" options={{ presentation: 'modal' }} />
     </Stack>

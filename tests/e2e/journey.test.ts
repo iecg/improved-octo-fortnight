@@ -30,12 +30,16 @@ import type { Pool } from 'pg';
 import {
   generateCoupleRootKey,
   generateDeviceKeypair,
+  generateRecoveryCode,
   safetyNumber,
   toBase64,
   unwrapCoupleKey,
+  unwrapWithRecoveryCode,
   wrapCoupleKey,
+  wrapWithRecoveryCode,
   type CoupleRootKey,
   type FieldCipher,
+  type ScryptParams,
 } from '@couple/crypto';
 
 import { cipherWithKey, testRandom } from '../support/crypto';
@@ -82,6 +86,14 @@ const devices: Record<
 
 /** The couple key itself, minted in 2b and re-checked when a third device joins. */
 let coupleRoot: CoupleRootKey;
+
+/**
+ * Written by Alice in step 4, in her own words: accents, an em dash, an
+ * apostrophe. Module-scoped rather than local to that step because step 8
+ * reads the same row back through a key that arrived a different way, and the
+ * whole assertion is that it says the same thing.
+ */
+const NOTE = "I'll bring dessert — ¿a las ocho?";
 
 function cipherOf(actor: string): FieldCipher {
   const cipher = devices[actor]?.cipher;
@@ -429,9 +441,6 @@ describe('3. two partners, two languages', () => {
 });
 
 describe('4. proposing a time', () => {
-  /** Written by Alice, in her own words: accents, an em dash, an apostrophe. */
-  const NOTE = "I'll bring dessert — ¿a las ocho?";
-
   it('creates the plan and the proposal', async () => {
     // Mirrors useProposeTime: a `proposed` plan plus a proposal row.
     const start = new Date('2026-09-12T23:00:00.000Z'); // 19:00 in New York
@@ -778,5 +787,131 @@ describe('7. countering a suggestion', () => {
     expect(row.responded_by).toBe(alice);
     // And the plan — the thing that reaches a calendar — is untouched.
     expect(plan.status).toBe('proposed');
+  });
+});
+
+/**
+ * The last rung, and the one nothing else in the repo walks end to end.
+ *
+ * Step 2b covers the ordinary way a device gets the key: a partner wraps it.
+ * This covers the case that has no partner in it — both phones gone at once —
+ * where the only thing standing between a couple and an empty database is
+ * twenty-five characters on a piece of paper. It runs the real scrypt against
+ * a real row and reads a real plan back through the real mapper, because the
+ * question it answers is whether the key that comes out is the same key, not
+ * whether the envelope round-trips in isolation.
+ */
+describe('8. losing both devices', () => {
+  /** The paper. Written down in Settings, on a phone that no longer exists. */
+  let code: string;
+
+  it('seals the couple key under a code Alice writes down', async () => {
+    code = generateRecoveryCode(testRandom);
+
+    const envelope = wrapWithRecoveryCode({
+      root: coupleRoot,
+      code,
+      coupleId: world.coupleId,
+      epoch: 0,
+      random: testRandom,
+    });
+
+    await asUser(pool, alice, (client) =>
+      client.query(
+        `insert into public.couple_key_recovery
+           (profile_id, couple_id, epoch, kdf, kdf_salt, kdf_params, wrapped_key)
+         values ($1, $2, 0, $3, $4, $5::jsonb, $6)`,
+        [
+          alice,
+          world.coupleId,
+          envelope.kdf,
+          envelope.salt,
+          JSON.stringify(envelope.params),
+          envelope.wrapped,
+        ],
+      ),
+    );
+
+    // Bob cannot see it, and does not need to: it is Alice's way back into a
+    // couple he is also in, not a second copy of the couple key for him.
+    const bobSees = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query('select 1 from public.couple_key_recovery');
+      return rows;
+    });
+    expect(bobSees).toEqual([]);
+  });
+
+  /** The row as the replacement phone reads it: `jsonb` back as an object. */
+  async function storedEnvelope(): Promise<{
+    epoch: number;
+    envelope: { kdf: 'scrypt-v1'; salt: string; params: ScryptParams; wrapped: string };
+  }> {
+    return asUser(pool, alice, async (client) => {
+      const { rows } = await client.query<{
+        epoch: number;
+        kdf: 'scrypt-v1';
+        kdf_salt: string;
+        kdf_params: ScryptParams;
+        wrapped_key: string;
+      }>(
+        `select epoch, kdf, kdf_salt, kdf_params, wrapped_key
+         from public.couple_key_recovery`,
+      );
+      const row = rows[0]!;
+      return {
+        epoch: row.epoch,
+        envelope: {
+          kdf: row.kdf,
+          salt: row.kdf_salt,
+          params: row.kdf_params,
+          wrapped: row.wrapped_key,
+        },
+      };
+    });
+  }
+
+  it('opens on a replacement phone and reads what was written before it existed', async () => {
+    const stored = await storedEnvelope();
+
+    // Typed off paper: lower case, spaces instead of hyphens. Crockford folds
+    // all of it, which is the difference between a recovery code and a puzzle.
+    const asTyped = code.toLowerCase().replace(/-/g, ' ');
+
+    const root: CoupleRootKey = unwrapWithRecoveryCode({
+      envelope: stored.envelope,
+      code: asTyped,
+      coupleId: world.coupleId,
+      epoch: stored.epoch,
+    });
+
+    expect(Array.from(root)).toEqual(Array.from(coupleRoot));
+
+    // The assertion that matters. A key that merely decrypts *something* is not
+    // the claim being made — this is the plan Alice wrote in step 4, on a
+    // device that has never met either of the two phones that could read it.
+    const plans = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select * from public.plans order by created_at');
+      return rows.map((row) => toPlan(row, cipherWithKey(root, world.coupleId, 'intimacy')));
+    });
+
+    expect(plans[0]!.unreadable).toBe(false);
+    expect(plans[0]!.notes).toBe(NOTE);
+  });
+
+  it('refuses a code that is nearly right', async () => {
+    const stored = await storedEnvelope();
+
+    // One character out of twenty-five. There is no checksum in this format —
+    // the Poly1305 tag is the checksum, and it fails closed.
+    const wrong = code.slice(0, -1) + (code.endsWith('0') ? '1' : '0');
+
+    expect(() =>
+      unwrapWithRecoveryCode({
+        envelope: stored.envelope,
+        code: wrong,
+        coupleId: world.coupleId,
+        epoch: stored.epoch,
+      }),
+    ).toThrow();
   });
 });
