@@ -142,7 +142,12 @@ describe('pairing', () => {
       ),
     );
 
-    expect(error.message).toMatch(/row-level security|at most two members/i);
+    // Three defences stand behind this, and which one answers depends on how
+    // far the statement gets. There is no insert privilege on the table at all
+    // (membership is only ever written inside create_couple/join_couple), so
+    // in practice it stops there — before RLS, and long before the size
+    // trigger. Any of the three is a pass; silence is not.
+    expect(error.message).toMatch(/permission denied|row-level security|at most two members/i);
   });
 });
 

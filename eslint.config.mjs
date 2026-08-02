@@ -14,6 +14,11 @@ export default tseslint.config(
       '**/ios/**',
       '**/android/**',
       '**/*.config.js',
+      // Written by the Supabase CLI while the local stack runs — it drops a
+      // minified edge-runtime bundle in here. Gitignored, but flat config does
+      // not read .gitignore.
+      'supabase/.temp/**',
+      'supabase/.branches/**',
     ],
   },
 
