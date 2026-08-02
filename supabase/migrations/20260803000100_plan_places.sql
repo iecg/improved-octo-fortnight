@@ -91,6 +91,23 @@ create trigger plan_places_touch_updated_at
   before update on public.plan_places
   for each row execute function public.touch_updated_at();
 
+-- Same pin as every other table with an authorship column.
+--
+-- The update policy tests membership and nothing else — deliberately, since
+-- either partner may correct a place on a shared plan. Without this, "either
+-- partner may edit" would also mean "either partner may reassign this row to
+-- another couple, or claim the other's attribution", and the insert-time
+-- `with check` on `attached_by` would be one UPDATE away from meaningless.
+--
+-- `plan_id` and `idea_id` are pinned for the same reason the composite foreign
+-- key exists: what a place is attached to is not something an edit changes.
+create trigger plan_places_immutable_authorship
+  before update on public.plan_places
+  for each row
+  execute function public.enforce_immutable_columns(
+    'couple_id', 'plan_id', 'idea_id', 'attached_by'
+  );
+
 alter table public.plan_places enable row level security;
 
 create policy plan_places_select_member on public.plan_places
@@ -118,7 +135,11 @@ create policy plan_places_delete_member on public.plan_places
 revoke all on public.plan_places from anon;
 grant select, insert, update, delete on public.plan_places to authenticated;
 
--- Deliberately NOT added to the supabase_realtime publication. Attaching a
--- place also writes plans.location, which already fires the plans channel that
--- useRealtimeSync listens to. That is the tripwire; coordinates never
--- replicate.
+-- Published, because the 2-2-2 app subscribes to it and a subscription to an
+-- unpublished table connects, reports success, and silently never fires — the
+-- exact failure `plan_ideas` had until it was found. Where a plan is happening
+-- is as shared as when it is happening, and leaning on the plans channel
+-- instead would leave the other phone holding a new location with no name,
+-- address or map beside it. `tests/guards/realtime-subscriptions.test.ts` holds
+-- this and the client's subscription list together.
+alter publication supabase_realtime add table public.plan_places;

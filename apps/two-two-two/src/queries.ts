@@ -10,12 +10,20 @@
  * are intimacy-owned and reachable only through their own factory.
  */
 import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
-import type { Cadence, Coordinates, IdeaSource, Locale, PlaceProvider, Plan } from '@couple/core';
+import type {
+  Cadence,
+  Coordinates,
+  CostBand,
+  IdeaSource,
+  Locale,
+  PlaceProvider,
+  Plan,
+} from '@couple/core';
 import { createDomainRepository, createIdeaRepository, createPlaceRepository } from '@couple/data';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { placeLabel } from '../features/places/label';
+import { placeLabel } from './features/places/label';
 import { supabase } from './runtime';
 
 export const DOMAIN = 'two_two_two' as const;
@@ -210,6 +218,8 @@ export function useSaveIdea(coupleId: string, profileId: string) {
       kind: string;
       title: string;
       summary?: string | null;
+      /** Only suggestions carry one; the library and manual entry leave it null. */
+      estCostBand?: CostBand | null;
       source: IdeaSource;
       /** Which provider named it, for the sources that came from one. */
       sourceDomain?: string | null;
@@ -221,6 +231,7 @@ export function useSaveIdea(coupleId: string, profileId: string) {
         savedBy: profileId,
         title: input.title,
         summary: input.summary ?? null,
+        estCostBand: input.estCostBand ?? null,
         source: input.source,
         sourceDomain: input.sourceDomain ?? null,
         locale: input.locale,
@@ -241,6 +252,17 @@ export function useRemoveIdea(coupleId: string) {
   });
 }
 
+/**
+ * Keep this device in step with the other one.
+ *
+ * Mounted once, in the tabs layout, rather than per screen: both tabs stay
+ * mounted, so a per-screen call opened the same topic more than once for no
+ * benefit.
+ *
+ * Every handler invalidates and refetches rather than patching the cache from
+ * the payload. That is not only for consistency — a delete event carries just
+ * the primary key, so there is nothing to patch a row from.
+ */
 export function useRealtimeSync(coupleId: string | null): void {
   const client = useQueryClient();
 
@@ -250,6 +272,23 @@ export function useRealtimeSync(coupleId: string | null): void {
       .channel(`two22:${coupleId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
         void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+      })
+      // The shortlist is shared, and both partners read it while deciding what
+      // to book. Requires `plan_ideas` in the `supabase_realtime` publication —
+      // `tests/guards/realtime-subscriptions.test.ts` holds the two together.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plan_ideas' }, () => {
+        void client.invalidateQueries({ queryKey: keys.ideas(coupleId) });
+      })
+      // Where a plan is happening is as shared as when it is happening.
+      //
+      // Attaching a place also writes `plans.location`, so the plans channel
+      // above already fires — but that only refreshes the label, leaving the
+      // other phone with the plan's new location and a stale place list, and no
+      // name, address or map to show beside it. Toggling the calendar opt-in
+      // does not touch `plans` at all. Subscribing directly is the version with
+      // no cases in it.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plan_places' }, () => {
+        void client.invalidateQueries({ queryKey: keys.places(coupleId) });
       })
       .subscribe();
     return () => {

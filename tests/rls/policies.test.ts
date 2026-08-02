@@ -359,6 +359,296 @@ describe('authorship', () => {
     expect(row.responded_by).toBe(bob);
     expect(row.responded_at).not.toBeNull();
   });
+
+  /**
+   * The two ways the responder check used to be forgeable. It compared
+   * `new.responded_by` against `new.proposed_by`, and the caller supplied both
+   * in the same statement, so naming the partner on either side of that
+   * comparison let a proposer accept their own proposal — leaving a row saying
+   * the partner had agreed to a time they had never been shown.
+   */
+  async function seedProposal(offsetDays: number): Promise<string> {
+    const planId = await seedPlan(alice, coupleA, 'intimacy');
+    return asUser(pool, alice, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plan_proposals (plan_id, couple_id, proposed_by, starts_at, ends_at)
+         values ($1, $2, $3,
+                 now() + ($4 || ' days')::interval,
+                 now() + ($4 || ' days')::interval + interval '2 hours')
+         returning id`,
+        [planId, coupleA, alice, String(offsetDays)],
+      );
+      return rows[0]!.id;
+    });
+  }
+
+  it('will not let anyone rewrite who proposed', async () => {
+    const proposalId = await seedProposal(5);
+
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query('update public.plan_proposals set proposed_by = $2 where id = $1', [
+          proposalId,
+          bob,
+        ]),
+      ),
+    );
+    expect(error.message).toMatch(/proposed_by cannot be changed/i);
+  });
+
+  /**
+   * Both guards cover this one. The responder check gets there first — it
+   * compares against `old.proposed_by`, so it holds whether or not the
+   * immutability trigger runs before it — and the immutability trigger would
+   * refuse the same statement on its own. Asserted on the outcome rather than
+   * the message, since which one speaks is down to trigger name ordering.
+   */
+  it('will not let a proposer accept by renaming the proposer', async () => {
+    const proposalId = await seedProposal(8);
+
+    await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `update public.plan_proposals
+           set proposed_by = $2, response = 'accepted'
+           where id = $1`,
+          [proposalId, bob],
+        ),
+      ),
+    );
+
+    const row = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query(
+        'select proposed_by, response from public.plan_proposals where id = $1',
+        [proposalId],
+      );
+      return rows[0]!;
+    });
+    expect(row.proposed_by).toBe(alice);
+    expect(row.response).toBe('pending');
+  });
+
+  it('will not let a proposer accept by naming the partner as responder', async () => {
+    const proposalId = await seedProposal(6);
+
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `update public.plan_proposals
+           set responded_by = $2, response = 'accepted'
+           where id = $1`,
+          [proposalId, bob],
+        ),
+      ),
+    );
+    expect(error.message).toMatch(/answered by the other partner/i);
+  });
+
+  it('records the partner as responder even when the client claims otherwise', async () => {
+    const proposalId = await seedProposal(7);
+
+    // Bob may answer, but the stamp comes from auth.uid(), not from the write.
+    await asUser(pool, bob, (client) =>
+      client.query(
+        `update public.plan_proposals
+         set responded_by = $2, response = 'accepted'
+         where id = $1`,
+        [proposalId, alice],
+      ),
+    );
+
+    const row = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query(
+        'select responded_by from public.plan_proposals where id = $1',
+        [proposalId],
+      );
+      return rows[0]!;
+    });
+    expect(row.responded_by).toBe(bob);
+  });
+
+  /**
+   * Every authorship rule in the RLS migration is an insert-time `with check`.
+   * The update policies check only membership, so without these the pins were
+   * one UPDATE away from meaningless.
+   */
+  it('will not let a partner reattribute a plan', async () => {
+    const planId = await seedPlan(alice, coupleA, 'intimacy');
+
+    const error = await expectRejected(
+      asUser(pool, bob, (client) =>
+        client.query('update public.plans set created_by = $2 where id = $1', [planId, bob]),
+      ),
+    );
+    expect(error.message).toMatch(/created_by cannot be changed/i);
+  });
+
+  it('will not let a partner reattribute a check-in', async () => {
+    const checkinId = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.checkins (couple_id, profile_id, on_date, interest)
+         values ($1, $2, current_date + 40, 'maybe') returning id`,
+        [coupleA, alice],
+      );
+      return rows[0]!.id;
+    });
+
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query('update public.checkins set profile_id = $2 where id = $1', [checkinId, bob]),
+      ),
+    );
+    expect(error.message).toMatch(/profile_id cannot be changed/i);
+  });
+
+  it('will not let a partner reattribute a saved idea', async () => {
+    const ideaId = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plan_ideas (couple_id, domain, kind, title, source, locale, saved_by)
+         values ($1, 'two_two_two', 'date_night', 'a picnic', 'manual', 'en', $2) returning id`,
+        [coupleA, alice],
+      );
+      return rows[0]!.id;
+    });
+
+    const error = await expectRejected(
+      asUser(pool, bob, (client) =>
+        client.query('update public.plan_ideas set saved_by = $2 where id = $1', [ideaId, bob]),
+      ),
+    );
+    expect(error.message).toMatch(/saved_by cannot be changed/i);
+
+    // Editing the idea itself is still fine — only the attribution is pinned.
+    const edited = await asUser(pool, bob, async (client) => {
+      const result = await client.query('update public.plan_ideas set title = $2 where id = $1', [
+        ideaId,
+        'a picnic, but earlier',
+      ]);
+      return result.rowCount;
+    });
+    expect(edited).toBe(1);
+  });
+});
+
+/**
+ * What happens to a couple's data when a member leaves.
+ *
+ * Leaving is a plain delete from `couple_members` and nothing followed it, so
+ * two things were left open: the invite code that circulated while the couple
+ * was full went live again the moment a slot reopened, and a couple whose last
+ * member left kept every row it had — reachable by anyone who redeemed that
+ * still-valid code.
+ *
+ * These use their own users throughout; the shared couples have to survive the
+ * file.
+ */
+describe('leaving a couple', () => {
+  async function freshPair(tag: string): Promise<{ couple: string; a: string; b: string }> {
+    const a = await createUser(pool, `${tag}-a-${Date.now()}@example.test`);
+    const b = await createUser(pool, `${tag}-b-${Date.now()}@example.test`);
+    const couple = await createCouple(a);
+    expect((await joinCouple(b, couple.inviteCode)).ok).toBe(true);
+    return { couple: couple.id, a, b };
+  }
+
+  it('rotates the invite code when a partner leaves', async () => {
+    const { couple, a, b } = await freshPair('rotate-on-leave');
+    const circulated = await currentInviteCode(a, couple);
+
+    await asUser(pool, b, (client) =>
+      client.query('delete from public.couple_members where profile_id = $1', [b]),
+    );
+
+    expect(await currentInviteCode(a, couple)).not.toBe(circulated);
+
+    // The code from the screenshot no longer opens the seat it reopened.
+    const stranger = await createUser(pool, `rotate-stranger-${Date.now()}@example.test`);
+    expect(await joinCouple(stranger, circulated)).toMatchObject({
+      ok: false,
+      reason: 'invalid_code',
+    });
+  });
+
+  it('deletes a couple once its last member is gone', async () => {
+    const { couple, a, b } = await freshPair('last-member');
+    await asUser(pool, a, (client) =>
+      client.query(
+        `insert into public.checkins (couple_id, profile_id, on_date, interest, note)
+         values ($1, $2, current_date, 'yes', 'a private note')`,
+        [couple, a],
+      ),
+    );
+
+    for (const member of [a, b]) {
+      await asUser(pool, member, (client) =>
+        client.query('delete from public.couple_members where profile_id = $1', [member]),
+      );
+    }
+
+    // Checked as owner: no policy could see these rows either way, and the
+    // point is that they are gone rather than merely hidden.
+    const couples = await pool.query('select 1 from public.couples where id = $1', [couple]);
+    const checkins = await pool.query('select 1 from public.checkins where couple_id = $1', [
+      couple,
+    ]);
+    expect(couples.rowCount).toBe(0);
+    expect(checkins.rowCount).toBe(0);
+  });
+
+  it('leaves no abandoned couple for a stranger to join', async () => {
+    const { couple, a, b } = await freshPair('abandoned');
+    const circulated = await currentInviteCode(a, couple);
+
+    for (const member of [a, b]) {
+      await asUser(pool, member, (client) =>
+        client.query('delete from public.couple_members where profile_id = $1', [member]),
+      );
+    }
+
+    const stranger = await createUser(pool, `abandoned-stranger-${Date.now()}@example.test`);
+    expect(await joinCouple(stranger, circulated)).toMatchObject({
+      ok: false,
+      reason: 'invalid_code',
+    });
+  });
+
+  it('cleans up after the last member deletes their account', async () => {
+    const { couple, a, b } = await freshPair('last-account');
+
+    await pool.query('delete from auth.users where id = any($1)', [[a, b]]);
+
+    const couples = await pool.query('select 1 from public.couples where id = $1', [couple]);
+    expect(couples.rowCount).toBe(0);
+  });
+});
+
+describe('the push token', () => {
+  /**
+   * `profiles.expo_push_token` was never written — reminders are local — and a
+   * partner can read the whole profile row. An Expo token is a bearer
+   * credential for posting arbitrary text to that device's lock screen, which
+   * is the one thing this product must not do, so the column is gone rather
+   * than merely unused.
+   */
+  it('is not a column anyone can store a credential in', async () => {
+    const { rows } = await pool.query(
+      `select 1 from information_schema.columns
+       where table_schema = 'public' and table_name = 'profiles'
+         and column_name = 'expo_push_token'`,
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('leaves the client able to write only the three fields it owns', async () => {
+    const { rows } = await pool.query<{ column_name: string }>(
+      `select column_name from information_schema.column_privileges
+       where grantee = 'authenticated' and table_schema = 'public'
+         and table_name = 'profiles' and privilege_type = 'UPDATE'
+       order by column_name`,
+    );
+
+    expect(rows.map((row) => row.column_name)).toEqual(['display_name', 'locale', 'timezone']);
+  });
 });
 
 describe('pairing hardening', () => {
@@ -465,23 +755,34 @@ describe('plan integrity', () => {
     expect(error.message).toMatch(/plans_completed_has_timestamp/i);
   });
 
+  /**
+   * The couple is two people on purpose: the plan has to survive *for the
+   * partner still using it*, which is the whole reason `created_by` is
+   * `on delete set null` rather than `on delete cascade`. A one-member couple
+   * would leave nobody to keep the history for, and is now cleaned up instead
+   * — see 'deletes a couple once its last member is gone'.
+   */
   it('keeps shared history when a partner deletes their account', async () => {
-    const founder = await createUser(pool, `history-${Date.now()}@example.test`);
-    const couple = await createCouple(founder);
-    const planId = await asUser(pool, founder, async (client) => {
+    const leaver = await createUser(pool, `history-leaver-${Date.now()}@example.test`);
+    const stayer = await createUser(pool, `history-stayer-${Date.now()}@example.test`);
+    const couple = await createCouple(leaver);
+    expect((await joinCouple(stayer, couple.inviteCode)).ok).toBe(true);
+
+    const planId = await asUser(pool, leaver, async (client) => {
       const { rows } = await client.query<{ id: string }>(
         `insert into public.plans (couple_id, domain, kind, title, status, created_by)
          values ($1, 'intimacy', 'intimacy', 'a shared evening', 'idea', $2) returning id`,
-        [couple.id, founder],
+        [couple.id, leaver],
       );
       return rows[0]!.id;
     });
 
-    await pool.query('delete from auth.users where id = $1', [founder]);
+    await pool.query('delete from auth.users where id = $1', [leaver]);
 
-    const survivor = await pool.query('select title, created_by from public.plans where id = $1', [
-      planId,
-    ]);
+    // Still there, still readable by the partner, and no longer attributed.
+    const survivor = await asUser(pool, stayer, (client) =>
+      client.query('select title, created_by from public.plans where id = $1', [planId]),
+    );
     expect(survivor.rows[0]?.title).toBe('a shared evening');
     expect(survivor.rows[0]?.created_by).toBeNull();
   });
@@ -539,6 +840,25 @@ describe('2-2-2 owned tables', () => {
       return rows;
     });
     expect(readable).toEqual([]);
+  });
+
+  /**
+   * `tests/guards/realtime-subscriptions.test.ts` checks that a migration says
+   * this; this checks that the database agrees. The two catch different
+   * mistakes — a statement that is present but misspelled, or in a migration
+   * that never applied, reads fine to a grep and still leaves the shortlist
+   * frozen on the partner's phone.
+   */
+  it('streams the shortlist to both devices', async () => {
+    const { rows } = await pool.query(
+      `select tablename from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public'`,
+    );
+    const published = rows.map((row) => row.tablename as string);
+
+    expect(published).toContain('plan_ideas');
+    // A counter that streamed live is a scoreboard waiting to happen.
+    expect(published).not.toContain('ai_usage');
   });
 });
 
@@ -699,6 +1019,29 @@ describe('places on a 2-2-2 plan', () => {
       return rows;
     });
     expect(left).toEqual([]);
+  });
+
+  it('pins who attached a place, and what it is attached to', async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    const placeId = await attachManualPlace(alice, coupleA, planId);
+
+    // The update policy tests membership only, so without the trigger "either
+    // partner may correct a place" would also mean "either partner may claim
+    // the other's attribution, or move the row to another couple".
+    for (const [column, value] of [
+      ['attached_by', bob],
+      ['couple_id', coupleB],
+    ] as const) {
+      const error = await expectRejected(
+        asUser(pool, alice, (client) =>
+          client.query(`update public.plan_places set ${column} = $1 where id = $2`, [
+            value,
+            placeId,
+          ]),
+        ),
+      );
+      expect(error.message).toMatch(/cannot be changed after insert|row-level security/i);
+    }
   });
 
   it('keeps the places usage counter readable but not writable', async () => {

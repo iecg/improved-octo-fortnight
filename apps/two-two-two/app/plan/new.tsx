@@ -21,9 +21,9 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
-import { normalizeManualPlace } from '../../features/places/label';
-import type { PlaceResult } from '../../features/places/maps/types';
-import { PlaceSearch } from '../../features/places/PlaceSearch';
+import { normalizeManualPlace } from '../../src/features/places/label';
+import type { PlaceResult } from '../../src/features/places/maps/types';
+import { PlaceSearch } from '../../src/features/places/PlaceSearch';
 import { useCreatePlan } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 

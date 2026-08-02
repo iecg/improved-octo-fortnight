@@ -15,7 +15,7 @@
  */
 import type { Coordinates } from '@couple/core';
 
-import { supabase } from '../../../src/runtime';
+import { supabase } from '../../../runtime';
 import { NO_CAPABILITIES, type PlaceResult, type PlacesCapabilities, type PlacesOutcome } from './types';
 
 export * from './types';

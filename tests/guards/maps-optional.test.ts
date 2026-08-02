@@ -24,20 +24,26 @@ import { readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { normalizeManualPlace, placeLabel, PLAN_LOCATION_MAX } from '../../apps/two-two-two/features/places/label';
-import { mapsLinkFor } from '../../apps/two-two-two/features/places/link';
-import { NO_CAPABILITIES } from '../../apps/two-two-two/features/places/maps/types';
+import { normalizeManualPlace, placeLabel, PLAN_LOCATION_MAX } from '../../apps/two-two-two/src/features/places/label';
+import { mapsLinkFor } from '../../apps/two-two-two/src/features/places/link';
+import { NO_CAPABILITIES } from '../../apps/two-two-two/src/features/places/maps/types';
 import { isFeatureSegmentPath, REPO_ROOT, scannedFiles } from './sources';
 
 /**
  * Anything that only makes sense when a mapping key is reachable. Reaching the
  * proxy counts: invoking it is itself the assumption that a key might exist.
+ *
+ * Deliberately per-host rather than a bare `googleapis.com`. The BYOK ideas
+ * feature legitimately names `generativelanguage.googleapis.com` inside its own
+ * `ai/` directory, and a marker broad enough to catch that would be this rule
+ * reporting on a rule it does not own. `ai-optional.test.ts` guards that one.
  */
 const PROVIDER_MARKERS = [
-  /googleapis\.com/,
+  /maps\.googleapis\.com/,
+  /places\.googleapis\.com/,
+  /routes\.googleapis\.com/,
   /GOOGLE_MAPS_API_KEY/,
   /GOOGLE_PLACES_API_KEY/,
-  /X-Goog-/,
   /functions\.invoke\(\s*['"`]places['"`]/,
 ];
 

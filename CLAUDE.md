@@ -128,9 +128,32 @@ but no automated test covers them, so treat a green suite accordingly.
 - `plans.calendar_event_ids` is a `profile_id -> event id` map because each
   partner's phone returns its own identifier for the same logical event.
 - Pairing is the `join_couple` RPC, never a client insert, so invite codes
-  cannot be enumerated through the table API. The code rotates once redeemed.
+  cannot be enumerated through the table API. The code rotates once redeemed —
+  and again whenever the couple loses a member, because leaving reopens the
+  seat and would otherwise make a circulated code live again.
+- **A couple with no members left is deleted, not kept.** Nothing can reach an
+  empty couple's rows through any policy, so retaining them serves nobody and
+  leaves intimate history sitting behind a redeemable code.
+- Authorship columns (`created_by`, `saved_by`, `profile_id`, `proposed_by`)
+  and `couple_id` are pinned immutable by trigger. Every authorship rule in RLS
+  is an insert-time `with check` and the update policies test only membership,
+  so without the pin each rule was one `UPDATE` away from meaningless.
+- **Never store a push token.** Reminders are local (invariant 3), a partner
+  can read the whole profile row, and an Expo token is a bearer credential for
+  writing to that device's lock screen. `profiles.expo_push_token` was carried
+  and never written; it is gone. Push would need its own table and its own
+  argument for overriding discretion.
 - All RLS lives in one migration so the access surface is reviewable at a
   glance.
+- A table read live on both phones needs **two** things that live far apart: a
+  `postgres_changes` handler in the app's `useRealtimeSync`, and a migration
+  adding it to the `supabase_realtime` publication. Subscribing to a table that
+  was never published connects, reports success, and then silently never fires
+  — `plan_ideas` shipped that way, so the shortlist was the one shared list in
+  either app that did not update live.
+  `tests/guards/realtime-subscriptions.test.ts` holds the two lists together,
+  and doubles as the register of what streams at all: `ai_usage` is
+  deliberately absent, since a live counter is a scoreboard waiting to happen.
 
 ## Environment
 
@@ -209,11 +232,11 @@ Per app: its screens, its `app` translation namespace, its kind catalog, and
 its `createDomainRepository(client, '<domain>')` binding.
 
 2-2-2-owned tables are `plan_ideas`, `plan_places`, `ai_usage` and
-`places_usage`, plus the planned `suggest-ideas` Edge Function and the
-`places` one that exists. They are reached through `createIdeaRepository` and
-`createPlaceRepository` in `packages/data` — their own factories, next to the
-intimacy-owned `createCheckinRepository`, so the other app has nothing to
-import even by accident. Both hard-code their domain rather than taking one,
+`places_usage`, plus the `places` Edge Function. They are reached through
+`createIdeaRepository` and `createPlaceRepository` in `packages/data` — their
+own factories, next to the intimacy-owned `createCheckinRepository`, so the
+other app has nothing to import even by accident. Both hard-code their domain
+rather than taking one,
 because a domain parameter is the exact shape invariant 2 forbids.
 
 `plan_places` is a side table rather than columns on `plans` because `plans` is
@@ -251,12 +274,31 @@ either. `EXPO_PUBLIC_` values ship inside the app and can be read back out of
 it; that is fine for the anon key, which has RLS behind it, and not for a
 billed third-party key, where possession is the authorization.
 
+Suggestions are the optional third source, in
+`apps/two-two-two/src/features/date-planner/ai/`, and they are **BYOK**: each
+partner stores their own OpenRouter or Gemini key in the device keychain
+(`expo-secure-store`), and requests go from that device straight to that
+provider. There is no Edge Function and no server of ours in the path — which
+is why `ai_usage` stays empty in practice as well as in principle: it is
+`select`-only to clients and only a service role could ever write it. A key is
+per person and per device; it is never written to a table and the partner never
+sees it. The prompt in `prompt.ts` is the only thing that leaves the device, and
+it carries the kind, the language, a count and whatever the user typed — never a
+plan, a check-in, an id, the couple's timezone, or the shortlist.
+
+Because the rule is only worth what its markers catch, `MODEL_MARKERS` in the
+guard covers both providers' hosts and keychain item names, not just Anthropic.
+Adding a third provider means adding its markers in the same commit.
+
 The library is _ours_, so it is translated like any other chrome and each
 partner reads it in their own language. Manually entered ideas are the other
 case — partner-authored, shown verbatim, and labelled with the language they
-were written in when that differs from the reader's. A place's name and address
-follow the same rule: a venue name is a proper noun and is never labelled, and
-its address is labelled rather than translated.
+were written in when that differs from the reader's. A suggestion is a model's
+words rather than ours, so it is treated the same way as a partner's: generated
+in the asker's language, stored with that `locale`, shown verbatim, and labelled
+rather than machine-translated for the partner reading in the other one. A
+place follows the same rule with one wrinkle: a venue name is a proper noun and
+is never labelled, while its address is.
 
 A place's address reaches a device calendar only when that place carries
 `share_with_calendar`, which is off by default —

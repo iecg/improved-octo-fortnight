@@ -12,9 +12,9 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
 
-import { mapsLinkFor } from '../../features/places/link';
-import { StaticMap } from '../../features/places/maps/StaticMap';
-import { plans as repository, usePlaces, usePlans, useRealtimeSync } from '../../src/queries';
+import { mapsLinkFor } from '../../src/features/places/link';
+import { StaticMap } from '../../src/features/places/maps/StaticMap';
+import { plans as repository, usePlaces, usePlans } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 export default function Plans() {
@@ -26,7 +26,6 @@ export default function Plans() {
   const locale = i18n.language === 'es' ? 'es' : 'en';
   const timeZone = couple.timezone;
 
-  useRealtimeSync(couple.id);
   const plansQuery = usePlans(couple.id);
   const placesQuery = usePlaces(couple.id);
 
