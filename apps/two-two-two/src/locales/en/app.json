@@ -26,5 +26,9 @@
     "allow": "Allow",
     "allowed": "Allowed",
     "signOut": "Sign out"
+  },
+  "notification": {
+    "title": "Two22",
+    "body": "Something's coming up."
   }
 }
