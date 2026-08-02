@@ -62,6 +62,22 @@ export function atHourInZone(anchor: Date, hour: number, timeZone: string): Date
   return fromZonedTime(wall, timeZone);
 }
 
+/**
+ * Whether a candidate collides with anything already booked.
+ *
+ * The other direction from `suggestWindows`: that one asks "where could this
+ * go", this one asks "is this particular time taken". A screen that offers
+ * fixed choices rather than searching for them needs the second question, and
+ * answering it here keeps every screen's idea of "busy" the same one.
+ *
+ * Half-open, matching `mergeRanges` — a block ending exactly when the
+ * candidate starts is back-to-back, not a conflict.
+ */
+export function overlapsAny(candidate: TimeRange, busy: TimeRange[]): boolean {
+  if (candidate.end <= candidate.start) return false;
+  return busy.some((block) => block.start < candidate.end && block.end > candidate.start);
+}
+
 /** Subtract busy blocks from a band, returning what is left. */
 function subtract(band: TimeRange, busy: TimeRange[]): TimeRange[] {
   const free: TimeRange[] = [];

@@ -1,3 +1,4 @@
+import { ConnectedAppsCard } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import { hasCalendarAccess, requestCalendarAccess } from '@couple/device';
 import { Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
@@ -5,13 +6,23 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { AiKeyCard } from '../../src/features/date-planner/ai';
+import { AiKeyCard, resetPlannerInputs } from '../../src/features/date-planner/ai';
 import { useSession } from '../../src/session';
 
 export default function Settings() {
   const { t } = useTranslation(['app', 'common']);
   const { profile, partner, setLocale, signOut } = useSession();
   const [calendarOk, setCalendarOk] = useState(false);
+
+  /**
+   * The planner's form fields outlive every screen that fills them, so they
+   * have to be emptied here rather than by unmounting anything. Signing out
+   * should not leave the next person holding the last one's city.
+   */
+  async function leave() {
+    resetPlannerInputs();
+    await signOut();
+  }
 
   useEffect(() => {
     void hasCalendarAccess().then(setCalendarOk);
@@ -71,10 +82,14 @@ export default function Settings() {
           <Button
             label={t('app:settings.signOut')}
             variant="secondary"
-            onPress={() => void signOut()}
+            onPress={() => void leave()}
           />
         </View>
       </Card>
+
+      {/* Same component as the other app, so the two can never disagree about
+          what is shared. */}
+      <ConnectedAppsCard />
     </Screen>
   );
 }

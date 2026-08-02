@@ -11,7 +11,7 @@ import { calendarDateIn } from '@couple/i18n';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { supabase } from './runtime';
+import { DEFAULT_INTIMACY_CADENCES, supabase } from './runtime';
 
 export const DOMAIN = 'intimacy' as const;
 
@@ -37,6 +37,48 @@ export function useCadences(coupleId: string) {
     queryKey: keys.cadences(coupleId),
     queryFn: () => plans.listCadences(coupleId),
   });
+}
+
+/**
+ * Seed this app's standing rituals from its own kind catalog.
+ *
+ * Deliberately not a database trigger — a trigger on `couples` would give
+ * every couple every app's cadences whichever app they actually installed.
+ * Idempotent, because `upsertCadence` upserts on `(couple_id, domain, kind)`.
+ */
+export async function seedCadences(coupleId: string): Promise<void> {
+  for (const kind of DEFAULT_INTIMACY_CADENCES) {
+    await plans.upsertCadence({
+      coupleId,
+      kind: kind.kind,
+      intervalValue: kind.defaultIntervalValue,
+      intervalUnit: kind.defaultIntervalUnit,
+    });
+  }
+}
+
+/**
+ * Seed on first run of *this app*, not just on first pairing.
+ *
+ * Pairing happens once and serves both apps, so the partner who installs the
+ * second one never passes through the pairing screen — and that screen was the
+ * only thing that had ever called `seedCadences`. Without this the second app
+ * opens to an empty rhythm and there is no other way to create a cadence.
+ *
+ * Only a genuinely empty list seeds. A ritual switched off keeps its row with
+ * `enabled = false`, so turning one off never resurrects it here.
+ */
+export function useEnsureCadences(coupleId: string): void {
+  const client = useQueryClient();
+  const { data, isLoading } = useCadences(coupleId);
+  const empty = !isLoading && data?.length === 0;
+
+  useEffect(() => {
+    if (!empty) return;
+    void seedCadences(coupleId).then(() =>
+      client.invalidateQueries({ queryKey: keys.cadences(coupleId) }),
+    );
+  }, [client, coupleId, empty]);
 }
 
 export function usePendingProposals(coupleId: string) {
@@ -183,6 +225,13 @@ export function useCompletePlan(coupleId: string) {
  *
  * Without this, a partner's reply only appears on the next manual refresh —
  * and the whole point of the loop is that the other person sees it.
+ *
+ * Every subscription carries a `filter`. On `plans` it is the domain, which is
+ * the boundary RLS cannot express and the one thing keeping the two apps'
+ * rows apart; on the other two it is the couple, which RLS already enforces
+ * but which costs nothing to say twice. `postgres_changes` accepts a single
+ * `column=op.value`, so each table gets the filter that does the most work —
+ * and `plan_proposals` has no `domain` column to filter on anyway.
  */
 export function useRealtimeSync(coupleId: string | null): void {
   const client = useQueryClient();
@@ -192,15 +241,32 @@ export function useRealtimeSync(coupleId: string | null): void {
 
     const channel = supabase
       .channel(`couple:${coupleId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
-        void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'plan_proposals' }, () => {
-        void client.invalidateQueries({ queryKey: keys.proposals(coupleId) });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, () => {
-        void client.invalidateQueries({ queryKey: ['checkins', coupleId] });
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'plans', filter: `domain=eq.${DOMAIN}` },
+        () => {
+          void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'plan_proposals',
+          filter: `couple_id=eq.${coupleId}`,
+        },
+        () => {
+          void client.invalidateQueries({ queryKey: keys.proposals(coupleId) });
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'checkins', filter: `couple_id=eq.${coupleId}` },
+        () => {
+          void client.invalidateQueries({ queryKey: ['checkins', coupleId] });
+        },
+      )
       .subscribe();
 
     return () => {

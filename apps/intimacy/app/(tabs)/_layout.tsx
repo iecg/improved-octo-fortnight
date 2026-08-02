@@ -1,11 +1,11 @@
-import { useDeviceSync } from '@couple/device';
+import { hasSeenConnectedAppsNotice, useDeviceSync } from '@couple/device';
 import type { Plan } from '@couple/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { plans as repository, usePlans } from '../../src/queries';
+import { plans as repository, useEnsureCadences, usePlans } from '../../src/queries';
 import { getCalendarLabel } from '../../src/runtime';
 import { usePairedSession } from '../../src/session';
 
@@ -17,6 +17,20 @@ export default function TabsLayout() {
   const { profile, couple } = usePairedSession();
   const client = useQueryClient();
   const plansQuery = usePlans(couple.id);
+
+  // Whoever installed this app second never saw the pairing screen, which used
+  // to be the only thing that seeded the standing rituals.
+  useEnsureCadences(couple.id);
+
+  // Explain the shared account once. Reaching the tabs is the right moment:
+  // the couple exists by now, so the notice describes something true rather
+  // than something about to happen.
+  const router = useRouter();
+  useEffect(() => {
+    void hasSeenConnectedAppsNotice().then((seen) => {
+      if (!seen) router.push('/connected');
+    });
+  }, [router]);
 
   const [calendarLabel, setCalendarLabel] = useState<string | null>(null);
   useEffect(() => {

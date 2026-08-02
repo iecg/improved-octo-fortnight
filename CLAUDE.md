@@ -183,6 +183,12 @@ Even if it launched, Expo Go could not grant calendar, notification, or
 biometric permissions, so `packages/device` would be inert in it —
 `hasCalendarAccess()` returns false and `useDeviceSync` correctly does nothing.
 
+**`docs/manual-verification.md` is the walk to do on that build.** It covers
+what no suite reaches — OTP delivery, PostgREST, the device calendar, the
+keychain and any live model — as numbered steps with an expected result each.
+Anything touching pairing, the calendar, or the BYOK suggestion path should be
+walked there before it is believed.
+
 ```bash
 cd apps/intimacy && npm run ios     # local dev build, ~5 min the first time
 ```
@@ -283,8 +289,20 @@ is why `ai_usage` stays empty in practice as well as in principle: it is
 `select`-only to clients and only a service role could ever write it. A key is
 per person and per device; it is never written to a table and the partner never
 sees it. The prompt in `prompt.ts` is the only thing that leaves the device, and
-it carries the kind, the language, a count and whatever the user typed — never a
-plan, a check-in, an id, the couple's timezone, or the shortlist.
+it carries the kind, the language, a count and three free-text fields the user
+filled in — where, what budget, and anything else — never a plan, a check-in, an
+id, the couple's timezone, or the shortlist. A location leaves and a timezone
+does not, which is not a contradiction: a city typed into a labelled field is
+chosen and as coarse as the user wants, where an inferred timezone is neither.
+
+Those three fields live in a session store (`session-inputs.ts`, the repo's only
+zustand use) rather than in the card, because the card unmounts on a tab change
+and nobody should retype their city for that. **Budget is keyed by kind** — a
+casual evening and a fortnight away are different numbers — while location is
+shared across kinds. None of it is persisted: no `persist` middleware, nothing
+in `expo-secure-store`, and it is emptied on sign-out. Session-lived is the
+whole convenience; on-disk would leave a place-you-go at rest to save two
+seconds of typing.
 
 Because the rule is only worth what its markers catch, `MODEL_MARKERS` in the
 guard covers both providers' hosts and keychain item names, not just Anthropic.
