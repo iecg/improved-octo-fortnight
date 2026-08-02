@@ -79,7 +79,8 @@ packages/i18n/      i18next bootstrap, shared namespaces, date formatting
 packages/ui/        Shared components (no strings)
 packages/device/    expo-calendar / notifications / local-auth wrappers
 supabase/migrations/  SINGLE source of truth for both apps
-supabase/functions/   Edge Functions — the only place a third-party key lives
+supabase/functions/   Edge Functions — where *our* third-party keys live (a
+                      model key is the user's own and never comes here)
 tests/i18n/, tests/rls/, tests/e2e/, tests/guards/
 ```
 
@@ -301,11 +302,25 @@ enforced by a guard rather than remembered:
 - **AI-optional** — no path outside `features/<name>/ai/` may assume a model
   exists (`tests/guards/ai-optional.test.ts`).
 - **Maps-optional** — no path outside `features/<name>/maps/` may name a
-  mapping provider, and _no path anywhere_ may put a provider key in an
-  `EXPO_PUBLIC_` variable (`tests/guards/maps-optional.test.ts`).
+  mapping provider's _endpoint or key_, and _no path anywhere_ may put a
+  provider key in an `EXPO_PUBLIC_` variable
+  (`tests/guards/maps-optional.test.ts`). The bare string `'google'` is fine
+  and appears in several places: it is a stored enum value in `PLACE_PROVIDERS`,
+  not a call to anyone.
 
-Both exempt `supabase/functions/`, which is where a key legitimately lives.
-They share one walker in `tests/guards/sources.ts`.
+Both exempt exactly one directory, `supabase/functions/places/`, and they share
+one walker in `tests/guards/sources.ts`.
+
+**The two keys are not the same kind of thing, and the exemption is narrow for
+that reason.** A mapping key is ours: it cannot ship in a bundle, so it lives on
+a server we run and the places function is that server. A model key is the
+user's own — kept in their keychain, spent from their device, never seen by us
+or by their partner. The AI guard briefly exempted the whole of
+`supabase/functions/`, on the reasoning that an Edge Function is where a key
+should live. That is true of the first kind and the exact reverse of the second,
+and while it stood, a `suggest-ideas` function holding an OpenRouter key passed
+`npm test`. A second Edge Function means deciding in review which of the two
+rules it falls under.
 
 Each guard also checks that the no-dependency path still _works_, by importing
 the modules it actually runs through — a grep that passes over a feature nobody
@@ -353,9 +368,10 @@ Suggestions are the optional third source, in
 `apps/two-two-two/src/features/date-planner/ai/`, and they are **BYOK**: each
 partner stores their own OpenRouter or Gemini key in the device keychain
 (`expo-secure-store`), and requests go from that device straight to that
-provider. There is no Edge Function and no server of ours in the path — which
-is why `ai_usage` stays empty in practice as well as in principle: it is
-`select`-only to clients and only a service role could ever write it. A key is
+provider. There is no Edge Function and no server of ours in this path — unlike
+places, deliberately, because the key is theirs rather than ours — which is why
+`ai_usage` stays empty in practice as well as in principle: it is `select`-only
+to clients and only a service role could ever write it. A key is
 per person and per device; it is never written to a table and the partner never
 sees it. The prompt in `prompt.ts` is the only thing that leaves the device, and
 it carries the kind, the language, a count and three free-text fields the user

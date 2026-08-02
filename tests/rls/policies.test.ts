@@ -823,8 +823,9 @@ describe('2-2-2 owned tables', () => {
   });
 
   it('keeps the AI usage counter readable but not writable', async () => {
-    // Only the Edge Function's service role increments it; a client that could
-    // write here could reset its own daily cap.
+    // Nothing increments it — suggestions are BYOK and reach no server of ours
+    // — but a client that could write here could reset its own daily cap if a
+    // metered path ever existed, so the grant stays `select`-only.
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
         client.query(

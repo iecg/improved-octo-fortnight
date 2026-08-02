@@ -54,16 +54,28 @@ const MODEL_MARKERS = [
 ];
 
 /**
- * The server half.
+ * The one server-side exemption, and it is not about models.
  *
- * `SCANNED` includes `supabase/`, so the planned `suggest-ideas` function would
- * have tripped this rule the moment it was written — and it is precisely where
- * a key *should* live, since an Edge Function secret never reaches a phone.
- * The client half of the rule is unchanged: nothing under `apps/` may assume a
- * model exists outside its own feature folder.
+ * `SCANNED` includes `supabase/`, and the places function legitimately sends
+ * `X-Goog-Api-Key` — which trips a marker above, because Gemini and Google Maps
+ * share a vendor and very nearly share a header. So one directory has to be
+ * exempt.
+ *
+ * It is scoped to `places/` rather than to `supabase/functions/`, which is the
+ * whole point. This guard briefly exempted the entire tree, on the argument
+ * that an Edge Function is "precisely where a key should live" — true of a
+ * mapping key, and the exact opposite of how this repo handles a model key. A
+ * model key here is the user's own, kept in their own keychain, and requests go
+ * from their device straight to the provider. A `suggest-ideas` function
+ * holding an OpenRouter key is the thing this rule exists to prevent, and under
+ * the broad exemption it passed `npm test`.
+ *
+ * `tests/guards/maps-optional.test.ts` scopes its own exemption the same way,
+ * to the same directory. Adding a second Edge Function means deciding, in
+ * review, which of the two rules it belongs to.
  */
-function isEdgeFunctionPath(relativePath: string): boolean {
-  return relativePath.startsWith(join('supabase', 'functions') + sep);
+function isPlacesFunctionPath(relativePath: string): boolean {
+  return relativePath.startsWith(join('supabase', 'functions', 'places') + sep);
 }
 
 const files = scannedFiles();
@@ -76,7 +88,7 @@ describe('the AI-optional rule', () => {
   it('keeps every assumption that a model exists inside features/*/ai/', () => {
     const offenders = files
       .map((file) => relative(REPO_ROOT, file))
-      .filter((path) => !isFeatureSegmentPath(path, 'ai') && !isEdgeFunctionPath(path))
+      .filter((path) => !isFeatureSegmentPath(path, 'ai') && !isPlacesFunctionPath(path))
       .filter((path) => {
         const contents = readFileSync(join(REPO_ROOT, path), 'utf8');
         return MODEL_MARKERS.some((marker) => marker.test(contents));

@@ -66,8 +66,15 @@ create policy plan_ideas_delete_member on public.plan_ideas
   for delete to authenticated
   using (public.is_couple_member(couple_id));
 
--- Readable so the UI can show what is left today; only the Edge Function's
--- service role increments it, so there is no insert or update policy here.
+-- Readable so the UI can show what is left today; only a service role could
+-- increment it, so there is no insert or update policy here.
+--
+-- Nothing increments it today. Suggestions are BYOK: the key is the user's own
+-- and the request goes from their device straight to the provider, so there is
+-- no server of ours in that path to do the counting. This is the table a
+-- metered path would write from, and it stays empty until there is one. (The
+-- places function is the other case — it holds *our* key, so it really does
+-- write `places_usage` with a service role.)
 create policy ai_usage_select_member on public.ai_usage
   for select to authenticated
   using (public.is_couple_member(couple_id));
