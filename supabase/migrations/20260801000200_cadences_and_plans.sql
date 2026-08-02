@@ -50,11 +50,17 @@ create table public.plans (
   couple_id uuid not null references public.couples (id) on delete cascade,
   domain public.slug not null,
   kind public.slug not null,
-  -- Partner-authored text. Stored and displayed verbatim in whatever language
-  -- it was written; never machine-translated.
-  title text check (title is null or length(title) <= 200),
-  notes text check (notes is null or length(notes) <= 4000),
-  location text check (location is null or length(location) <= 200),
+  -- Title, notes and location, sealed on the device that wrote them. Still
+  -- partner-authored text displayed verbatim in whatever language it was
+  -- written and never machine-translated — that has not changed. What has
+  -- changed is that nothing outside the two phones can read it.
+  --
+  -- One blob rather than three columns, and not to save space: with a column
+  -- each, `notes is null` would tell anyone reading this table whether a note
+  -- exists on every plan in it, which for this product is close to the
+  -- interesting part. The format and what its AAD binds to are in
+  -- packages/crypto/src/cipher.ts.
+  payload text not null,
   starts_at timestamptz,
   ends_at timestamptz,
   status public.plan_status not null default 'idea',
@@ -68,7 +74,12 @@ create table public.plans (
   constraint plans_window_ordered
     check (ends_at is null or starts_at is null or ends_at > starts_at),
   constraint plans_scheduled_needs_time
-    check (status <> 'scheduled' or starts_at is not null)
+    check (status <> 'scheduled' or starts_at is not null),
+  constraint plans_payload_format check (payload ~ '^[A-Za-z0-9+/]+={0,2}$'),
+  -- The old per-field length limits (title 200, notes 4000, location 200) are
+  -- enforced client-side now, before sealing. This is only a ceiling on how
+  -- much can be parked in the column.
+  constraint plans_payload_bounded check (length(payload) between 64 and 24000)
 );
 
 -- Lets plan_proposals carry a denormalized couple_id that Postgres itself

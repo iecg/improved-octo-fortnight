@@ -13,7 +13,11 @@ export type IntervalUnitEnum = 'day' | 'week' | 'month' | 'year';
 export type PlanStatusEnum =
   'idea' | 'proposed' | 'scheduled' | 'completed' | 'skipped' | 'declined';
 export type ProposalResponseEnum = 'pending' | 'accepted' | 'declined' | 'countered';
-export type CheckinInterestEnum = 'yes' | 'maybe' | 'not_tonight';
+
+// There is no CheckinInterestEnum here any more. `yes` / `maybe` /
+// `not_tonight` is the most revealing value in the schema, so it moved inside
+// the sealed payload; the type that describes it now is `CheckinInterest` in
+// `@couple/core`, where it belongs, because it is no longer a database enum.
 
 export interface Database {
   public: {
@@ -21,20 +25,18 @@ export interface Database {
       profiles: {
         Row: {
           id: string;
-          display_name: string | null;
+          /** Sealed under the couple's `shared` key. Null until pairing. */
+          name_payload: string | null;
           timezone: string;
           locale: LocaleEnum;
           created_at: string;
           updated_at: string;
         };
-        Insert: {
-          id: string;
-          display_name?: string | null;
-          timezone?: string;
-          locale?: LocaleEnum;
-        };
+        // Rows are created by the on_auth_user_created trigger, with nothing
+        // in them but the id.
+        Insert: never;
         Update: {
-          display_name?: string | null;
+          name_payload?: string | null;
           timezone?: string;
           locale?: LocaleEnum;
         };
@@ -95,9 +97,8 @@ export interface Database {
           couple_id: string;
           domain: string;
           kind: string;
-          title: string | null;
-          notes: string | null;
-          location: string | null;
+          /** Title, notes and location. */
+          payload: string;
           starts_at: string | null;
           ends_at: string | null;
           status: PlanStatusEnum;
@@ -108,13 +109,13 @@ export interface Database {
           updated_at: string;
         };
         Insert: {
-          id?: string;
+          // Required, not optional: the payload's AAD binds to the row id, so
+          // the client mints it rather than letting gen_random_uuid() do it.
+          id: string;
           couple_id: string;
           domain: string;
           kind: string;
-          title?: string | null;
-          notes?: string | null;
-          location?: string | null;
+          payload: string;
           starts_at?: string | null;
           ends_at?: string | null;
           status?: PlanStatusEnum;
@@ -123,9 +124,7 @@ export interface Database {
           calendar_event_ids?: Json;
         };
         Update: {
-          title?: string | null;
-          notes?: string | null;
-          location?: string | null;
+          payload?: string;
           starts_at?: string | null;
           ends_at?: string | null;
           status?: PlanStatusEnum;
@@ -168,26 +167,21 @@ export interface Database {
           couple_id: string;
           profile_id: string;
           on_date: string;
-          interest: CheckinInterestEnum;
-          energy: number | null;
-          note: string | null;
+          /** interest, energy and the note. */
+          payload: string;
           created_at: string;
           updated_at: string;
         };
+        // No client-supplied id: record() upserts on (profile_id, on_date) and
+        // Postgres keeps the existing row's id on conflict, which is exactly
+        // why this payload's AAD binds to that natural key instead.
         Insert: {
-          id?: string;
           couple_id: string;
           profile_id: string;
           on_date: string;
-          interest: CheckinInterestEnum;
-          energy?: number | null;
-          note?: string | null;
+          payload: string;
         };
-        Update: {
-          interest?: CheckinInterestEnum;
-          energy?: number | null;
-          note?: string | null;
-        };
+        Update: { payload?: string };
         Relationships: [];
       };
       // 2-2-2-owned. Reachable only through createIdeaRepository.
@@ -197,36 +191,23 @@ export interface Database {
           couple_id: string;
           domain: string;
           kind: string;
-          title: string;
-          summary: string | null;
-          url: string | null;
-          source_domain: string | null;
-          est_cost_band: string | null;
+          /** Title, summary, url, cost band, and the language it is written in. */
+          payload: string;
           source: string;
-          locale: LocaleEnum;
           saved_by: string | null;
           created_at: string;
         };
         Insert: {
-          id?: string;
+          /** Required: the payload's AAD binds to the row id. */
+          id: string;
           couple_id: string;
           domain: string;
           kind: string;
-          title: string;
-          summary?: string | null;
-          url?: string | null;
-          source_domain?: string | null;
-          est_cost_band?: string | null;
+          payload: string;
           source: string;
-          locale: LocaleEnum;
           saved_by?: string | null;
         };
-        Update: {
-          title?: string;
-          summary?: string | null;
-          url?: string | null;
-          est_cost_band?: string | null;
-        };
+        Update: { payload?: string };
         Relationships: [];
       };
       // Read-only to clients; only the Edge Function's service role writes it.
@@ -234,6 +215,58 @@ export interface Database {
         Row: { couple_id: string; day: string; request_count: number };
         Insert: { couple_id: string; day: string; request_count?: number };
         Update: { request_count?: number };
+        Relationships: [];
+      };
+      // ------------------------------------------------------ key exchange
+      // A public key is replaced, never edited, so there is no Update here and
+      // no update grant in the migration either.
+      device_keys: {
+        Row: { id: string; profile_id: string; public_key: string; created_at: string };
+        Insert: { id?: string; profile_id: string; public_key: string };
+        Update: never;
+        Relationships: [];
+      };
+      couple_key_wraps: {
+        Row: {
+          couple_id: string;
+          device_key_id: string;
+          epoch: number;
+          wrapped_key: string;
+          wrapped_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          couple_id: string;
+          device_key_id: string;
+          epoch?: number;
+          wrapped_key: string;
+          wrapped_by: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
+      couple_key_recovery: {
+        Row: {
+          profile_id: string;
+          couple_id: string;
+          epoch: number;
+          kdf: string;
+          kdf_salt: string;
+          kdf_params: Json;
+          wrapped_key: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          profile_id: string;
+          couple_id: string;
+          epoch?: number;
+          kdf: string;
+          kdf_salt: string;
+          kdf_params: Json;
+          wrapped_key: string;
+        };
+        Update: { kdf?: string; kdf_salt?: string; kdf_params?: Json; wrapped_key?: string };
         Relationships: [];
       };
     };
@@ -255,7 +288,6 @@ export interface Database {
       interval_unit: IntervalUnitEnum;
       plan_status: PlanStatusEnum;
       proposal_response: ProposalResponseEnum;
-      checkin_interest: CheckinInterestEnum;
     };
     CompositeTypes: Record<string, never>;
   };

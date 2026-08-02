@@ -7,6 +7,7 @@
  * app's Supabase client and i18n instance rather than a copy per app.
  */
 import type { Couple, Locale, Profile } from '@couple/core';
+import type { FieldCipher } from '@couple/crypto';
 import { createAccountRepository, type AppSupabaseClient } from '@couple/data';
 import type { Session } from '@supabase/supabase-js';
 import type { i18n as I18nInstance } from 'i18next';
@@ -35,9 +36,15 @@ export interface SessionModule {
 export function createSessionModule(deps: {
   supabase: AppSupabaseClient;
   i18n: I18nInstance;
+  /**
+   * The `shared` cipher, which is what a partner's name is sealed under. Passed
+   * in rather than built here so both apps use the one key store their
+   * repositories already share.
+   */
+  sharedCipher: FieldCipher;
 }): SessionModule {
   const { supabase, i18n } = deps;
-  const accounts = createAccountRepository(supabase);
+  const accounts = createAccountRepository(supabase, deps.sharedCipher);
 
   function SessionProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);

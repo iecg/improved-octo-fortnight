@@ -18,20 +18,24 @@ create table public.plan_ideas (
   couple_id uuid not null references public.couples (id) on delete cascade,
   domain public.slug not null,
   kind public.slug not null,
-  title text not null check (length(title) between 1 and 200),
-  summary text check (summary is null or length(summary) <= 2000),
-  url text,
-  source_domain text,
-  est_cost_band text check (est_cost_band is null or est_cost_band in ('free', 'low', 'medium', 'high')),
+  -- Title, summary, url, cost band, and the language the text is written in.
+  --
+  -- The locale is in here with them rather than beside them because it
+  -- describes the *content*: it exists so a reader can be told "this was
+  -- written in Spanish" rather than have it machine-translated, and that is a
+  -- fact about the words, which are sealed.
+  payload text not null,
   -- 'library' (bundled, offline), 'manual' (written by a partner), or 'ai'.
   -- The first two are what make the feature work with no model available.
+  --
+  -- Stays readable because it is provenance rather than content — it says
+  -- where an idea came from, never what it is, and it is what the `ai_usage`
+  -- story reasons about.
   source text not null check (source in ('library', 'ai', 'manual')),
-  -- The language this idea's text is written in. Ideas are generated or
-  -- written in one partner's language; we label them rather than
-  -- machine-translate, exactly as with any other partner-authored text.
-  locale public.locale not null,
   saved_by uuid references public.profiles (id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint plan_ideas_payload_format check (payload ~ '^[A-Za-z0-9+/]+={0,2}$'),
+  constraint plan_ideas_payload_bounded check (length(payload) between 64 and 16000)
 );
 
 create index plan_ideas_couple_kind_idx on public.plan_ideas (couple_id, domain, kind);

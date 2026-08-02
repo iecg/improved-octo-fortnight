@@ -8,6 +8,7 @@
  */
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { cipherFor, newId, sealCheckin, sealIdea, sealPlan } from '../support/crypto';
 import { asAnon, asUser, createTestDatabase, createUser, expectRejected } from './harness';
 
 let pool: Pool;
@@ -56,15 +57,49 @@ async function joinCouple(userId: string, code: string): Promise<JoinResult> {
   });
 }
 
+/** The id is minted here because the payload's AAD binds to it. */
 async function seedPlan(userId: string, coupleId: string, domain: string): Promise<string> {
+  const id = newId();
   return asUser(pool, userId, async (client) => {
     const { rows } = await client.query<{ id: string }>(
-      `insert into public.plans (couple_id, domain, kind, title, status, created_by)
-       values ($1, $2, 'intimacy', 'seed', 'idea', $3) returning id`,
-      [coupleId, domain, userId],
+      `insert into public.plans (id, couple_id, domain, kind, payload, status, created_by)
+       values ($1, $2, $3, 'intimacy', $4, 'idea', $5) returning id`,
+      [id, coupleId, domain, sealPlan(coupleId, id, { title: 'seed' }), userId],
     );
     return rows[0]!.id;
   });
+}
+
+/**
+ * A payload for a row the statement is expected never to create. RLS refuses it
+ * before the bytes matter, but the column is `not null`, so something has to be
+ * there or the test would pass on a constraint violation instead of a policy.
+ */
+const sealPlaceholder = sealPlan(
+  '00000000-0000-4000-8000-000000000000',
+  '00000000-0000-4000-8000-000000000001',
+  { title: 'never written' },
+);
+
+const sealPlaceholderIdea = sealIdea(
+  '00000000-0000-4000-8000-000000000000',
+  '00000000-0000-4000-8000-000000000001',
+  { title: 'never written' },
+);
+
+/** `current_date` as the database will store it, so an AAD matches. */
+function todayIso(): string {
+  return dateIso(0);
+}
+
+function dateIso(daysAhead: number): string {
+  return new Date(Date.now() + daysAhead * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** What a plan actually says, read back the way the app would. */
+function planTitle(coupleId: string, id: string, payload: string): string | null {
+  const fields = cipherFor(coupleId).open(payload, { table: 'plans', coupleId, id });
+  return (fields.title as string | null) ?? null;
 }
 
 beforeAll(async () => {
@@ -164,7 +199,8 @@ describe('cross-couple isolation', () => {
   it.each([
     [
       'plans',
-      "insert into public.plans (couple_id, domain, kind, status, created_by) values ($1, 'intimacy', 'intimacy', 'idea', $2)",
+      `insert into public.plans (id, couple_id, domain, kind, payload, status, created_by)
+       values (gen_random_uuid(), $1, 'intimacy', 'intimacy', '${sealPlaceholder}', 'idea', $2)`,
     ],
     [
       'cadences',
@@ -172,7 +208,8 @@ describe('cross-couple isolation', () => {
     ],
     [
       'checkins',
-      "insert into public.checkins (couple_id, profile_id, on_date, interest) values ($1, $2, current_date, 'yes')",
+      `insert into public.checkins (couple_id, profile_id, on_date, payload)
+       values ($1, $2, current_date, '${sealCheckin('placeholder', 'placeholder', 'placeholder', { interest: 'yes' })}')`,
     ],
   ])("refuses writes to the other couple's %s", async (_table, sql) => {
     const error = await expectRejected(
@@ -201,10 +238,10 @@ describe('cross-couple isolation', () => {
     const planId = await seedPlan(alice, coupleA, 'intimacy');
 
     const updated = await asUser(pool, carol, async (client) => {
-      const result = await client.query(
-        "update public.plans set title = 'hijacked' where id = $1",
-        [planId],
-      );
+      const result = await client.query('update public.plans set payload = $2 where id = $1', [
+        planId,
+        sealPlan(coupleB, planId, { title: 'hijacked' }),
+      ]);
       return result.rowCount;
     });
     const deleted = await asUser(pool, carol, async (client) => {
@@ -219,8 +256,8 @@ describe('cross-couple isolation', () => {
     expect(deleted).toBe(0);
 
     const stillThere = await asUser(pool, alice, async (client) => {
-      const result = await client.query('select title from public.plans where id = $1', [planId]);
-      return result.rows[0]?.title as string | undefined;
+      const result = await client.query('select payload from public.plans where id = $1', [planId]);
+      return planTitle(coupleA, planId, result.rows[0]?.payload as string);
     });
     expect(stillThere).toBe('seed');
   });
@@ -240,9 +277,9 @@ describe('authorship', () => {
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
         client.query(
-          `insert into public.checkins (couple_id, profile_id, on_date, interest)
-           values ($1, $2, current_date, 'yes')`,
-          [coupleA, bob],
+          `insert into public.checkins (couple_id, profile_id, on_date, payload)
+           values ($1, $2, current_date, $3)`,
+          [coupleA, bob, sealCheckin(coupleA, bob, todayIso(), { interest: 'yes' })],
         ),
       ),
     );
@@ -253,10 +290,16 @@ describe('authorship', () => {
   it('lets each partner record their own check-in', async () => {
     const inserted = await asUser(pool, alice, async (client) => {
       const result = await client.query(
-        `insert into public.checkins (couple_id, profile_id, on_date, interest, note)
-         values ($1, $2, date '2026-05-01', 'maybe', 'escribí esto en español')
-         returning id`,
-        [coupleA, alice],
+        `insert into public.checkins (couple_id, profile_id, on_date, payload)
+         values ($1, $2, date '2026-05-01', $3) returning id`,
+        [
+          coupleA,
+          alice,
+          sealCheckin(coupleA, alice, '2026-05-01', {
+            interest: 'maybe',
+            note: 'escribí esto en español',
+          }),
+        ],
       );
       return result.rowCount;
     });
@@ -267,18 +310,30 @@ describe('authorship', () => {
   it('shows a check-in to the partner verbatim', async () => {
     await asUser(pool, bob, (client) =>
       client.query(
-        `insert into public.checkins (couple_id, profile_id, on_date, interest, note)
-         values ($1, $2, date '2026-05-02', 'yes', 'written in English')`,
-        [coupleA, bob],
+        `insert into public.checkins (couple_id, profile_id, on_date, payload)
+         values ($1, $2, date '2026-05-02', $3)`,
+        [
+          coupleA,
+          bob,
+          sealCheckin(coupleA, bob, '2026-05-02', { interest: 'yes', note: 'written in English' }),
+        ],
       ),
     );
 
+    // Alice reads what Bob wrote, through Bob's own row, with the couple key
+    // they share. Verbatim still means verbatim; it is simply sealed on the way.
     const note = await asUser(pool, alice, async (client) => {
       const { rows } = await client.query(
-        "select note from public.checkins where profile_id = $1 and on_date = date '2026-05-02'",
+        "select payload from public.checkins where profile_id = $1 and on_date = date '2026-05-02'",
         [bob],
       );
-      return rows[0]?.note as string;
+      const fields = cipherFor(coupleA).open(rows[0]?.payload as string, {
+        table: 'checkins',
+        coupleId: coupleA,
+        profileId: bob,
+        onDate: '2026-05-02',
+      });
+      return fields.note as string;
     });
 
     expect(note).toBe('written in English');
@@ -288,9 +343,9 @@ describe('authorship', () => {
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
         client.query(
-          `insert into public.plans (couple_id, domain, kind, status, created_by)
-           values ($1, 'intimacy', 'intimacy', 'idea', $2)`,
-          [coupleA, bob],
+          `insert into public.plans (id, couple_id, domain, kind, payload, status, created_by)
+           values (gen_random_uuid(), $1, 'intimacy', 'intimacy', $3, 'idea', $2)`,
+          [coupleA, bob, sealPlaceholder],
         ),
       ),
     );
@@ -486,9 +541,9 @@ describe('authorship', () => {
   it('will not let a partner reattribute a check-in', async () => {
     const checkinId = await asUser(pool, alice, async (client) => {
       const { rows } = await client.query<{ id: string }>(
-        `insert into public.checkins (couple_id, profile_id, on_date, interest)
-         values ($1, $2, current_date + 40, 'maybe') returning id`,
-        [coupleA, alice],
+        `insert into public.checkins (couple_id, profile_id, on_date, payload)
+         values ($1, $2, current_date + 40, $3) returning id`,
+        [coupleA, alice, sealCheckin(coupleA, alice, dateIso(40), { interest: 'maybe' })],
       );
       return rows[0]!.id;
     });
@@ -502,11 +557,12 @@ describe('authorship', () => {
   });
 
   it('will not let a partner reattribute a saved idea', async () => {
-    const ideaId = await asUser(pool, alice, async (client) => {
+    const ideaId = newId();
+    await asUser(pool, alice, async (client) => {
       const { rows } = await client.query<{ id: string }>(
-        `insert into public.plan_ideas (couple_id, domain, kind, title, source, locale, saved_by)
-         values ($1, 'two_two_two', 'date_night', 'a picnic', 'manual', 'en', $2) returning id`,
-        [coupleA, alice],
+        `insert into public.plan_ideas (id, couple_id, domain, kind, payload, source, saved_by)
+         values ($1, $2, 'two_two_two', 'date_night', $3, 'manual', $4) returning id`,
+        [ideaId, coupleA, sealIdea(coupleA, ideaId, { title: 'a picnic' }), alice],
       );
       return rows[0]!.id;
     });
@@ -520,9 +576,9 @@ describe('authorship', () => {
 
     // Editing the idea itself is still fine — only the attribution is pinned.
     const edited = await asUser(pool, bob, async (client) => {
-      const result = await client.query('update public.plan_ideas set title = $2 where id = $1', [
+      const result = await client.query('update public.plan_ideas set payload = $2 where id = $1', [
         ideaId,
-        'a picnic, but earlier',
+        sealIdea(coupleA, ideaId, { title: 'a picnic, but earlier' }),
       ]);
       return result.rowCount;
     });
@@ -573,9 +629,13 @@ describe('leaving a couple', () => {
     const { couple, a, b } = await freshPair('last-member');
     await asUser(pool, a, (client) =>
       client.query(
-        `insert into public.checkins (couple_id, profile_id, on_date, interest, note)
-         values ($1, $2, current_date, 'yes', 'a private note')`,
-        [couple, a],
+        `insert into public.checkins (couple_id, profile_id, on_date, payload)
+         values ($1, $2, current_date, $3)`,
+        [
+          couple,
+          a,
+          sealCheckin(couple, a, todayIso(), { interest: 'yes', note: 'a private note' }),
+        ],
       ),
     );
 
@@ -647,7 +707,7 @@ describe('the push token', () => {
        order by column_name`,
     );
 
-    expect(rows.map((row) => row.column_name)).toEqual(['display_name', 'locale', 'timezone']);
+    expect(rows.map((row) => row.column_name)).toEqual(['locale', 'name_payload', 'timezone']);
   });
 });
 
@@ -726,9 +786,9 @@ describe('plan integrity', () => {
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
         client.query(
-          `insert into public.plans (couple_id, domain, kind, status, created_by, starts_at)
-           values ($1, 'intimacy', 'intimacy', 'completed', $2, now())`,
-          [coupleA, alice],
+          `insert into public.plans (id, couple_id, domain, kind, payload, status, created_by, starts_at)
+           values (gen_random_uuid(), $1, 'intimacy', 'intimacy', $3, 'completed', $2, now())`,
+          [coupleA, alice, sealPlaceholder],
         ),
       ),
     );
@@ -768,34 +828,44 @@ describe('plan integrity', () => {
     const couple = await createCouple(leaver);
     expect((await joinCouple(stayer, couple.inviteCode)).ok).toBe(true);
 
-    const planId = await asUser(pool, leaver, async (client) => {
-      const { rows } = await client.query<{ id: string }>(
-        `insert into public.plans (couple_id, domain, kind, title, status, created_by)
-         values ($1, 'intimacy', 'intimacy', 'a shared evening', 'idea', $2) returning id`,
-        [couple.id, leaver],
-      );
-      return rows[0]!.id;
-    });
+    const planId = newId();
+    await asUser(pool, leaver, (client) =>
+      client.query(
+        `insert into public.plans (id, couple_id, domain, kind, payload, status, created_by)
+         values ($1, $2, 'intimacy', 'intimacy', $3, 'idea', $4)`,
+        [planId, couple.id, sealPlan(couple.id, planId, { title: 'a shared evening' }), leaver],
+      ),
+    );
 
     await pool.query('delete from auth.users where id = $1', [leaver]);
 
     // Still there, still readable by the partner, and no longer attributed.
+    // Readable in both senses: RLS lets the survivor select it, and the couple
+    // key still opens it — leaving the couple would have cleared that, deleting
+    // one account does not.
     const survivor = await asUser(pool, stayer, (client) =>
-      client.query('select title, created_by from public.plans where id = $1', [planId]),
+      client.query('select payload, created_by from public.plans where id = $1', [planId]),
     );
-    expect(survivor.rows[0]?.title).toBe('a shared evening');
+    expect(planTitle(couple.id, planId, survivor.rows[0]?.payload as string)).toBe(
+      'a shared evening',
+    );
     expect(survivor.rows[0]?.created_by).toBeNull();
   });
 });
 
 describe('2-2-2 owned tables', () => {
   it("hides one couple's ideas from another", async () => {
+    const noodleIdeaId = newId();
     await asUser(pool, alice, (client) =>
       client.query(
-        `insert into public.plan_ideas
-           (couple_id, domain, kind, title, source, locale, saved_by)
-         values ($1, 'two_two_two', 'date_night', 'the noodle place', 'manual', 'en', $2)`,
-        [coupleA, alice],
+        `insert into public.plan_ideas (id, couple_id, domain, kind, payload, source, saved_by)
+         values ($1, $2, 'two_two_two', 'date_night', $3, 'manual', $4)`,
+        [
+          noodleIdeaId,
+          coupleA,
+          sealIdea(coupleA, noodleIdeaId, { title: 'the noodle place' }),
+          alice,
+        ],
       ),
     );
 
@@ -811,10 +881,9 @@ describe('2-2-2 owned tables', () => {
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
         client.query(
-          `insert into public.plan_ideas
-             (couple_id, domain, kind, title, source, locale, saved_by)
-           values ($1, 'two_two_two', 'getaway', 'not mine', 'manual', 'en', $2)`,
-          [coupleA, bob],
+          `insert into public.plan_ideas (id, couple_id, domain, kind, payload, source, saved_by)
+           values (gen_random_uuid(), $1, 'two_two_two', 'getaway', $2, 'manual', $3)`,
+          [coupleA, sealPlaceholderIdea, bob],
         ),
       ),
     );
@@ -888,14 +957,184 @@ describe('anonymous access', () => {
   });
 });
 
+describe('the key-exchange tables', () => {
+  const aliceKey = 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWY=';
+  const bobKey = 'MTIzNDU2Nzg5MEFCQ0RFRkdISUpLTE1OT1BRUlNUVVY=';
+
+  it('lets a partner read the other partner device keys', async () => {
+    await asUser(pool, alice, (client) =>
+      client.query('insert into public.device_keys (profile_id, public_key) values ($1, $2)', [
+        alice,
+        aliceKey,
+      ]),
+    );
+    await asUser(pool, bob, (client) =>
+      client.query('insert into public.device_keys (profile_id, public_key) values ($1, $2)', [
+        bob,
+        bobKey,
+      ]),
+    );
+
+    // The partner's public key is what an approving device needs to compute
+    // the verification code the two people read to each other.
+    const seen = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query(
+        'select profile_id from public.device_keys order by profile_id',
+      );
+      return rows.map((row) => row.profile_id as string).sort();
+    });
+    expect(seen).toEqual([alice, bob].sort());
+  });
+
+  it('hides them from another couple entirely', async () => {
+    const seen = await asUser(pool, carol, async (client) => {
+      const { rows } = await client.query('select profile_id from public.device_keys');
+      return rows;
+    });
+    expect(seen).toEqual([]);
+  });
+
+  it('will not let one partner publish a key as the other', async () => {
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query('insert into public.device_keys (profile_id, public_key) values ($1, $2)', [
+          bob,
+          aliceKey,
+        ]),
+      ),
+    );
+    expect(error.message).toMatch(/row-level security/i);
+  });
+
+  it('has no update privilege on a key or a wrap: they are replaced, not edited', async () => {
+    const { rows } = await pool.query<{ table_name: string }>(
+      `select distinct table_name from information_schema.table_privileges
+       where grantee = 'authenticated' and table_schema = 'public'
+         and privilege_type = 'UPDATE'
+         and table_name in ('device_keys', 'couple_key_wraps')`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it("keeps one couple's recovery envelope from the other couple, and from the partner", async () => {
+    await asUser(pool, alice, (client) =>
+      client.query(
+        `insert into public.couple_key_recovery
+           (profile_id, couple_id, kdf, kdf_salt, kdf_params, wrapped_key)
+         values ($1, $2, 'scrypt-v1', 'c2FsdA==', '{"N":16384}'::jsonb, $3)`,
+        [alice, coupleA, aliceKey],
+      ),
+    );
+
+    // Not the partner's business, and never needed by them: partner re-wrap is
+    // a different path that does not touch this row.
+    const bobSees = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query('select profile_id from public.couple_key_recovery');
+      return rows;
+    });
+    expect(bobSees).toEqual([]);
+
+    const carolSees = await asUser(pool, carol, async (client) => {
+      const { rows } = await client.query('select profile_id from public.couple_key_recovery');
+      return rows;
+    });
+    expect(carolSees).toEqual([]);
+  });
+
+  it('takes the wraps with the key when a device is revoked', async () => {
+    const owner = await createUser(pool, `revoke-${Date.now()}@example.test`);
+    const couple = await createCouple(owner);
+
+    const keyId = await asUser(pool, owner, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        'insert into public.device_keys (profile_id, public_key) values ($1, $2) returning id',
+        [owner, aliceKey],
+      );
+      return rows[0]!.id;
+    });
+    await asUser(pool, owner, (client) =>
+      client.query(
+        `insert into public.couple_key_wraps (couple_id, device_key_id, wrapped_key, wrapped_by)
+         values ($1, $2, $3, $4)`,
+        [couple.id, keyId, aliceKey, owner],
+      ),
+    );
+
+    await asUser(pool, owner, (client) =>
+      client.query('delete from public.device_keys where id = $1', [keyId]),
+    );
+
+    const { rows } = await pool.query(
+      'select 1 from public.couple_key_wraps where device_key_id = $1',
+      [keyId],
+    );
+    expect(rows).toHaveLength(0);
+  });
+});
+
+/**
+ * The schema itself, asserted against `information_schema` rather than against
+ * a regex over the migration text. A grep can be fooled by a clever line; this
+ * cannot be fooled at all, because it reads the database that actually got
+ * built.
+ */
+describe('no plaintext content column survives anywhere', () => {
+  const EXPECTED: Record<string, string[]> = {
+    profiles: ['created_at', 'id', 'locale', 'name_payload', 'timezone', 'updated_at'],
+    plans: [
+      'calendar_event_ids',
+      'completed_at',
+      'couple_id',
+      'created_at',
+      'created_by',
+      'domain',
+      'ends_at',
+      'id',
+      'kind',
+      'payload',
+      'starts_at',
+      'status',
+      'updated_at',
+    ],
+    checkins: ['couple_id', 'created_at', 'id', 'on_date', 'payload', 'profile_id', 'updated_at'],
+    plan_ideas: [
+      'couple_id',
+      'created_at',
+      'domain',
+      'id',
+      'kind',
+      'payload',
+      'saved_by',
+      'source',
+    ],
+  };
+
+  it.each(Object.entries(EXPECTED))('%s holds only what it should', async (table, expected) => {
+    const { rows } = await pool.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+       where table_schema = 'public' and table_name = $1 order by column_name`,
+      [table],
+    );
+
+    // An allowlist rather than a denylist: this fails for a re-added `notes`
+    // and equally for a newly invented `mood_summary`.
+    expect(rows.map((row) => row.column_name)).toEqual(expected);
+  });
+
+  it('no longer defines the check-in interest as a database enum', async () => {
+    const { rows } = await pool.query("select 1 from pg_type where typname = 'checkin_interest'");
+    expect(rows).toHaveLength(0);
+  });
+});
+
 describe('constraints', () => {
   it('rejects a plan window that ends before it starts', async () => {
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
         client.query(
-          `insert into public.plans (couple_id, domain, kind, status, created_by, starts_at, ends_at)
-           values ($1, 'intimacy', 'intimacy', 'idea', $2, now(), now() - interval '1 hour')`,
-          [coupleA, alice],
+          `insert into public.plans (id, couple_id, domain, kind, payload, status, created_by, starts_at, ends_at)
+           values (gen_random_uuid(), $1, 'intimacy', 'intimacy', $3, 'idea', $2, now(), now() - interval '1 hour')`,
+          [coupleA, alice, sealPlaceholder],
         ),
       ),
     );
@@ -907,9 +1146,9 @@ describe('constraints', () => {
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
         client.query(
-          `insert into public.plans (couple_id, domain, kind, status, created_by)
-           values ($1, 'intimacy', 'intimacy', 'scheduled', $2)`,
-          [coupleA, alice],
+          `insert into public.plans (id, couple_id, domain, kind, payload, status, created_by)
+           values (gen_random_uuid(), $1, 'intimacy', 'intimacy', $3, 'scheduled', $2)`,
+          [coupleA, alice, sealPlaceholder],
         ),
       ),
     );
@@ -921,9 +1160,9 @@ describe('constraints', () => {
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
         client.query(
-          `insert into public.plans (couple_id, domain, kind, status, created_by)
-           values ($1, 'Not A Slug', 'intimacy', 'idea', $2)`,
-          [coupleA, alice],
+          `insert into public.plans (id, couple_id, domain, kind, payload, status, created_by)
+           values (gen_random_uuid(), $1, 'Not A Slug', 'intimacy', $3, 'idea', $2)`,
+          [coupleA, alice, sealPlaceholder],
         ),
       ),
     );
@@ -934,18 +1173,18 @@ describe('constraints', () => {
   it('allows only one check-in per person per day', async () => {
     await asUser(pool, alice, (client) =>
       client.query(
-        `insert into public.checkins (couple_id, profile_id, on_date, interest)
-         values ($1, $2, date '2026-06-01', 'yes')`,
-        [coupleA, alice],
+        `insert into public.checkins (couple_id, profile_id, on_date, payload)
+         values ($1, $2, date '2026-06-01', $3)`,
+        [coupleA, alice, sealCheckin(coupleA, alice, '2026-06-01', { interest: 'yes' })],
       ),
     );
 
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
         client.query(
-          `insert into public.checkins (couple_id, profile_id, on_date, interest)
-           values ($1, $2, date '2026-06-01', 'not_tonight')`,
-          [coupleA, alice],
+          `insert into public.checkins (couple_id, profile_id, on_date, payload)
+           values ($1, $2, date '2026-06-01', $3)`,
+          [coupleA, alice, sealCheckin(coupleA, alice, '2026-06-01', { interest: 'not_tonight' })],
         ),
       ),
     );

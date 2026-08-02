@@ -15,7 +15,8 @@
     "nothingBooked": "Nothing booked.",
     "rituals": "Your rhythm",
     "propose": "Suggest a time",
-    "dateNight": "Next date night"
+    "dateNight": "Next date night",
+    "partnerUnreadable": "{{name}}'s answer can't be read on this device"
   },
   "checkin": {
     "yes": "Yes",

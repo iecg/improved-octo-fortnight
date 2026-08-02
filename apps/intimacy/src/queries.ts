@@ -11,12 +11,12 @@ import { calendarDateIn } from '@couple/i18n';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { supabase } from './runtime';
+import { contentCipher, supabase } from './runtime';
 
 export const DOMAIN = 'intimacy' as const;
 
-export const plans = createDomainRepository(supabase, DOMAIN);
-export const checkins = createCheckinRepository(supabase);
+export const plans = createDomainRepository(supabase, DOMAIN, contentCipher);
+export const checkins = createCheckinRepository(supabase, contentCipher);
 
 const keys = {
   plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
@@ -80,13 +80,13 @@ export function useRespondToProposal(coupleId: string) {
       await plans.respond(input.proposal.id, input.response);
       // Accepting is what turns a suggestion into something on the calendar.
       if (input.response === 'accepted') {
-        await plans.updatePlan(input.proposal.planId, {
+        await plans.setPlanSchedule(input.proposal.planId, {
           status: 'scheduled',
           startsAt: input.proposal.startsAt,
           endsAt: input.proposal.endsAt,
         });
       } else {
-        await plans.updatePlan(input.proposal.planId, { status: 'declined' });
+        await plans.setPlanSchedule(input.proposal.planId, { status: 'declined' });
       }
     },
     onSuccess: () => {

@@ -73,3 +73,5 @@ export {
 } from './recovery';
 
 export { unwrapWithKey, WRAP_VERSION, wrapWithKey } from './wrap';
+
+export { randomUuid } from './uuid';

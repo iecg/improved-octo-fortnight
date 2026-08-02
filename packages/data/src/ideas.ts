@@ -14,6 +14,8 @@
  */
 import type { CostBand, IdeaSource, Locale, PlanIdea } from '@couple/core';
 
+import type { FieldCipher } from '@couple/crypto';
+
 import type { AppSupabaseClient } from './client';
 import { toPlanIdea } from './mappers';
 
@@ -40,7 +42,14 @@ export interface IdeaRepository {
   remove(ideaId: string): Promise<void>;
 }
 
-export function createIdeaRepository(client: AppSupabaseClient): IdeaRepository {
+export function createIdeaRepository(
+  client: AppSupabaseClient,
+  cipher: FieldCipher,
+): IdeaRepository {
+  if (cipher.scope !== DOMAIN) {
+    throw new Error(`ideas are ${DOMAIN}-owned; got a ${cipher.scope} cipher`);
+  }
+
   return {
     async list(coupleId) {
       const { data, error } = await client
@@ -50,7 +59,7 @@ export function createIdeaRepository(client: AppSupabaseClient): IdeaRepository 
         .eq('domain', DOMAIN)
         .order('created_at', { ascending: false });
       if (error) throw new Error(error.message);
-      return (data ?? []).map(toPlanIdea);
+      return (data ?? []).map((row) => toPlanIdea(row, cipher));
     },
 
     async listForKind(coupleId, kind) {
@@ -62,28 +71,41 @@ export function createIdeaRepository(client: AppSupabaseClient): IdeaRepository 
         .eq('kind', kind)
         .order('created_at', { ascending: false });
       if (error) throw new Error(error.message);
-      return (data ?? []).map(toPlanIdea);
+      return (data ?? []).map((row) => toPlanIdea(row, cipher));
     },
 
     async save(input) {
+      // Minted here because the payload's AAD binds to it.
+      const id = cipher.newId();
+
       const { data, error } = await client
         .from('plan_ideas')
         .insert({
+          id,
           couple_id: input.coupleId,
           domain: DOMAIN,
           kind: input.kind,
           saved_by: input.savedBy,
-          title: input.title,
-          summary: input.summary ?? null,
-          url: input.url ?? null,
-          est_cost_band: input.estCostBand ?? null,
+          // `source` stays outside: it is provenance, not content — where an
+          // idea came from rather than what it is — and it is what the
+          // ai_usage story reasons about. `locale` goes inside, because it
+          // describes the language of the words, which are sealed.
+          payload: cipher.seal(
+            {
+              title: input.title,
+              summary: input.summary ?? null,
+              url: input.url ?? null,
+              estCostBand: input.estCostBand ?? null,
+              locale: input.locale,
+            },
+            { table: 'plan_ideas', coupleId: input.coupleId, id },
+          ),
           source: input.source,
-          locale: input.locale,
         })
         .select()
         .single();
       if (error) throw new Error(error.message);
-      return toPlanIdea(data);
+      return toPlanIdea(data, cipher);
     },
 
     async remove(ideaId) {

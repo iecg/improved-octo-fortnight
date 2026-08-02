@@ -32,6 +32,8 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     createdBy: 'profile-1',
     completedAt: null,
     calendarEventIds: {},
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    unreadable: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };

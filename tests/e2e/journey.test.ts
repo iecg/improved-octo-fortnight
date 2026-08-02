@@ -27,6 +27,18 @@ import { differenceInCalendarDays } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import type { Pool } from 'pg';
 
+import {
+  generateCoupleRootKey,
+  generateDeviceKeypair,
+  safetyNumber,
+  toBase64,
+  unwrapCoupleKey,
+  wrapCoupleKey,
+  type CoupleRootKey,
+  type FieldCipher,
+} from '@couple/crypto';
+
+import { cipherWithKey, testRandom } from '../support/crypto';
 import { asUser, createTestDatabase, createUser } from '../rls/harness';
 
 /** The couple's timezone, deliberately not the host's. */
@@ -58,12 +70,32 @@ const world: {
   coupleCreatedAt: '',
 };
 
+/**
+ * Each device's own key material — separate on purpose. Alice's device and
+ * Bob's device derive their content keys independently, and a test that shared
+ * one cipher between them would prove nothing about the exchange.
+ */
+const devices: Record<
+  string,
+  { keypair: ReturnType<typeof generateDeviceKeypair>; cipher?: FieldCipher }
+> = {};
+
+function cipherOf(actor: string): FieldCipher {
+  const cipher = devices[actor]?.cipher;
+  if (!cipher) throw new Error(`${actor}'s device has no couple key yet`);
+  return cipher;
+}
+
 /** Read a plan back as a domain object, through the same mapper the app uses. */
 async function readPlans(actor: string): Promise<Plan[]> {
   return asUser(pool, actor, async (client) => {
     const { rows } = await client.query('select * from public.plans order by created_at');
-    return rows.map(toPlan);
+    return rows.map((row) => toPlan(row, cipherOf(actor)));
   });
+}
+
+function sealPlanFor(actor: string, id: string, fields: Record<string, unknown>): string {
+  return cipherOf(actor).seal(fields, { table: 'plans', coupleId: world.coupleId, id });
 }
 
 beforeAll(async () => {
@@ -149,6 +181,140 @@ describe('2. pairing', () => {
   });
 });
 
+/**
+ * The key exchange, walked for real.
+ *
+ * Both devices publish a public key through RLS, both compute the safety number
+ * independently from what each can actually see, Alice wraps and Bob unwraps.
+ * Nothing is shared between them but the rows in the database — which is
+ * exactly the position a malicious server would be in.
+ */
+describe('2b. exchanging keys', () => {
+  it('lets each device publish its own public key, and only its own', async () => {
+    for (const actor of [alice, bob]) {
+      devices[actor] = { keypair: generateDeviceKeypair(testRandom) };
+      await asUser(pool, actor, (client) =>
+        client.query('insert into public.device_keys (profile_id, public_key) values ($1, $2)', [
+          actor,
+          toBase64(devices[actor]!.keypair.publicKey),
+        ]),
+      );
+    }
+
+    // Publishing as your partner is refused: a device key is a claim about
+    // whose device it is.
+    await expect(
+      asUser(pool, alice, (client) =>
+        client.query('insert into public.device_keys (profile_id, public_key) values ($1, $2)', [
+          bob,
+          toBase64(devices[alice]!.keypair.publicKey),
+        ]),
+      ),
+    ).rejects.toThrow(/row-level security/i);
+  });
+
+  it('shows both partners the same safety number', async () => {
+    const partnerKey = async (actor: string, partner: string): Promise<Uint8Array> =>
+      asUser(pool, actor, async (client) => {
+        const { rows } = await client.query(
+          'select public_key from public.device_keys where profile_id = $1',
+          [partner],
+        );
+        return new Uint8Array(Buffer.from(rows[0].public_key as string, 'base64'));
+      });
+
+    // Each side computes from its own key plus what the database served it.
+    // A server substituting a key of its own would make these two differ, and
+    // the two people comparing them out loud is what catches it.
+    const aliceSees = safetyNumber(
+      devices[alice]!.keypair.publicKey,
+      await partnerKey(alice, bob),
+      world.coupleId,
+    );
+    const bobSees = safetyNumber(
+      await partnerKey(bob, alice),
+      devices[bob]!.keypair.publicKey,
+      world.coupleId,
+    );
+
+    expect(aliceSees).toBe(bobSees);
+    expect(aliceSees).toMatch(
+      /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{4}(-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{4}){2}$/,
+    );
+  });
+
+  it('hands the couple key from one device to the other', async () => {
+    const root = generateCoupleRootKey(testRandom);
+    devices[alice]!.cipher = cipherWithKey(root, world.coupleId, 'intimacy');
+
+    const deviceKeyId = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query(
+        'select id from public.device_keys where profile_id = $1',
+        [bob],
+      );
+      return rows[0].id as string;
+    });
+
+    await asUser(pool, alice, (client) =>
+      client.query(
+        `insert into public.couple_key_wraps (couple_id, device_key_id, epoch, wrapped_key, wrapped_by)
+         values ($1, $2, 0, $3, $4)`,
+        [
+          world.coupleId,
+          deviceKeyId,
+          wrapCoupleKey({
+            root,
+            mySecret: devices[alice]!.keypair.secretKey,
+            myPublic: devices[alice]!.keypair.publicKey,
+            theirPublic: devices[bob]!.keypair.publicKey,
+            coupleId: world.coupleId,
+            epoch: 0,
+            random: testRandom,
+          }),
+          alice,
+        ],
+      ),
+    );
+
+    // Bob's device opens it with its own secret and nothing else.
+    const wrapped = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query('select wrapped_key from public.couple_key_wraps');
+      return rows[0].wrapped_key as string;
+    });
+
+    const opened: CoupleRootKey = unwrapCoupleKey({
+      wrapped,
+      mySecret: devices[bob]!.keypair.secretKey,
+      myPublic: devices[bob]!.keypair.publicKey,
+      theirPublic: devices[alice]!.keypair.publicKey,
+      coupleId: world.coupleId,
+      epoch: 0,
+    });
+
+    expect(Array.from(opened)).toEqual(Array.from(root));
+    devices[bob]!.cipher = cipherWithKey(opened, world.coupleId, 'intimacy');
+  });
+
+  it('will not open for a device the wrap was not addressed to', async () => {
+    const carolDevice = generateDeviceKeypair(testRandom);
+    const wrapped = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select wrapped_key from public.couple_key_wraps');
+      return rows[0].wrapped_key as string;
+    });
+
+    expect(() =>
+      unwrapCoupleKey({
+        wrapped,
+        mySecret: carolDevice.secretKey,
+        myPublic: carolDevice.publicKey,
+        theirPublic: devices[alice]!.keypair.publicKey,
+        coupleId: world.coupleId,
+        epoch: 0,
+      }),
+    ).toThrow();
+  });
+});
+
 describe('3. two partners, two languages', () => {
   it('stores locale per person, not per couple', async () => {
     await asUser(pool, alice, (client) =>
@@ -205,12 +371,20 @@ describe('4. proposing a time', () => {
     world.endsAt = end.toISOString();
 
     const ids = await asUser(pool, alice, async (client) => {
+      const planId = cipherOf(alice).newId();
       const { rows: planRows } = await client.query(
         `insert into public.plans
-           (couple_id, domain, kind, notes, starts_at, ends_at, status, created_by)
-         values ($1, 'intimacy', 'intimacy', $2, $3, $4, 'proposed', $5)
+           (id, couple_id, domain, kind, payload, starts_at, ends_at, status, created_by)
+         values ($1, $2, 'intimacy', 'intimacy', $3, $4, $5, 'proposed', $6)
          returning id`,
-        [world.coupleId, NOTE, world.startsAt, world.endsAt, alice],
+        [
+          planId,
+          world.coupleId,
+          sealPlanFor(alice, planId, { title: null, notes: NOTE, location: null }),
+          world.startsAt,
+          world.endsAt,
+          alice,
+        ],
       );
       const { rows: proposalRows } = await client.query(
         `insert into public.plan_proposals
@@ -233,6 +407,26 @@ describe('4. proposing a time', () => {
     // Byte-identical. Partner-written text is never machine-translated, and
     // Bob reading Spanish does not change what Alice wrote.
     expect(plan!.notes).toBe(NOTE);
+  });
+
+  /**
+   * The assertion this entire piece of work exists for.
+   *
+   * `pool` connects as the owning superuser, which is precisely the position
+   * whoever runs the database is in: no policy applies, every row is visible.
+   * What they get is a base64 blob.
+   */
+  it('is unreadable to whoever runs the database', async () => {
+    const { rows } = await pool.query('select * from public.plans where id = $1', [world.planId]);
+    const asText = JSON.stringify(rows[0]);
+
+    expect(asText).not.toContain('dessert');
+    expect(asText).not.toContain('ocho');
+    expect(asText).not.toContain(NOTE);
+
+    // And the shape is what we think it is — no leftover column to read it from.
+    expect(Object.keys(rows[0]!)).not.toContain('notes');
+    expect(Object.keys(rows[0]!)).toContain('payload');
   });
 
   it('translates the chrome around it into Bob’s language', async () => {
@@ -385,10 +579,18 @@ describe('7. countering a suggestion', () => {
   it('closes the original and chains the reply to it', async () => {
     // Alice suggests a time.
     const created = await asUser(pool, alice, async (client) => {
+      const counterPlanId = cipherOf(alice).newId();
       const { rows: planRows } = await client.query(
-        `insert into public.plans (couple_id, domain, kind, starts_at, ends_at, status, created_by)
-         values ($1, 'intimacy', 'intimacy', $2, $3, 'proposed', $4) returning id`,
-        [world.coupleId, '2026-10-01T23:00:00.000Z', '2026-10-02T01:00:00.000Z', alice],
+        `insert into public.plans (id, couple_id, domain, kind, payload, starts_at, ends_at, status, created_by)
+         values ($1, $2, 'intimacy', 'intimacy', $3, $4, $5, 'proposed', $6) returning id`,
+        [
+          counterPlanId,
+          world.coupleId,
+          sealPlanFor(alice, counterPlanId, { title: null, notes: null, location: null }),
+          '2026-10-01T23:00:00.000Z',
+          '2026-10-02T01:00:00.000Z',
+          alice,
+        ],
       );
       const { rows: proposalRows } = await client.query(
         `insert into public.plan_proposals (plan_id, couple_id, proposed_by, starts_at, ends_at)

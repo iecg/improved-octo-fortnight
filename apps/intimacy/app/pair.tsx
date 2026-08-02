@@ -4,10 +4,10 @@ import { useLocalSearchParams } from 'expo-router';
 import { useCallback } from 'react';
 
 import { plans } from '../src/queries';
-import { DEFAULT_INTIMACY_CADENCES, supabase } from '../src/runtime';
+import { DEFAULT_INTIMACY_CADENCES, sharedCipher, supabase } from '../src/runtime';
 import { useSession } from '../src/session';
 
-const accounts = createAccountRepository(supabase);
+const accounts = createAccountRepository(supabase, sharedCipher);
 
 export default function Pair() {
   const { refresh } = useSession();

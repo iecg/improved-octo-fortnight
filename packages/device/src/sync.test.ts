@@ -44,6 +44,8 @@ function bookedPlan(id: string, calendarEventIds: Record<string, string> = {}): 
     completedAt: null,
     calendarEventIds,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    unreadable: false,
   };
 }
 

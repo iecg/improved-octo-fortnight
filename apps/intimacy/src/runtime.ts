@@ -4,7 +4,8 @@
  */
 import { INTIMACY_KINDS, type Locale } from '@couple/core';
 import { createSupabaseClient } from '@couple/data';
-import { secureAuthStorage } from '@couple/device';
+import { createCoupleKeyStore, createFieldCipher } from '@couple/crypto';
+import { deviceRandom, secureAuthStorage } from '@couple/device';
 import { addAppNamespace, createI18n, resolveLocale } from '@couple/i18n';
 import { getLocales } from 'expo-localization';
 import * as SecureStore from 'expo-secure-store';
@@ -23,6 +24,27 @@ if (!url || !anonKey) {
 }
 
 export const supabase = createSupabaseClient({ url, anonKey, storage: secureAuthStorage });
+
+/**
+ * The couple key, and the two ciphers built over it.
+ *
+ * The store starts empty and is filled in once a device has unwrapped the key.
+ * That indirection exists because the repositories below are module-level
+ * singletons, so a cipher has to be constructible before any key exists — and
+ * because the alternative, passing a scope per call, is the exact shape
+ * invariant 2 forbids.
+ *
+ * Asking either cipher to work before the key arrives throws
+ * `MissingCoupleKeyError`. The router is what makes that unreachable: a paired
+ * session with no key does not route to a screen that reads rows.
+ */
+export const keyStore = createCoupleKeyStore();
+
+/** This app's own rows. A `intimacy` cipher cannot open the other app's. */
+export const contentCipher = createFieldCipher(keyStore, 'intimacy', deviceRandom);
+
+/** Rows both apps read — today just a partner's name. */
+export const sharedCipher = createFieldCipher(keyStore, 'shared', deviceRandom);
 
 /**
  * First launch follows the phone's language; once signed in, `profiles.locale`
