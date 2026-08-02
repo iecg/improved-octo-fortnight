@@ -26,9 +26,13 @@ begin
 end;
 $$;
 
-grant anon to postgres;
-grant authenticated to postgres;
-grant service_role to postgres;
+-- Granted to the connecting user rather than to `postgres`: Supabase and CI's
+-- postgres service both log in as `postgres`, but a Homebrew cluster names its
+-- superuser after the OS user and has no `postgres` role at all. Hardcoding it
+-- made "or any plain Postgres 16" untrue.
+grant anon to current_user;
+grant authenticated to current_user;
+grant service_role to current_user;
 
 create schema if not exists auth;
 grant usage on schema auth to anon, authenticated, service_role;

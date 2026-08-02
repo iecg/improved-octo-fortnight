@@ -11,7 +11,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['tests/rls/**/*.test.ts'],
+    include: ['tests/rls/**/*.test.ts', 'tests/e2e/**/*.test.ts'],
     // Each test file builds its own database; running them in parallel would
     // race on create/drop.
     fileParallelism: false,
