@@ -171,7 +171,17 @@ export interface PlanPlace {
   /** Null whenever the place was typed rather than searched. */
   coordinates: Coordinates | null;
   locale: Locale;
-  /** Opt-in, per place. Nothing reaches a calendar entry without it. */
+  /**
+   * Opt-in, per place. Nothing reaches a calendar entry without it.
+   *
+   * It governs the *device calendar*, not storage. The venue's label is written
+   * to `plans.location` either way, because that is what the plan is — and
+   * because a flag flipped on later would otherwise have nothing to show. What
+   * the opt-in decides is whether the address leaves this app for the OS,
+   * where a shared Mac or a family calendar can see it. `plan_busy_times`
+   * selects three columns and `location` is not one of them, so nothing crosses
+   * to the other app in either case.
+   */
   shareWithCalendar: boolean;
   /** Null once the person who attached it deletes their account. */
   attachedBy: string | null;
