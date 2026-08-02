@@ -10,17 +10,22 @@ import { Body, Button, Card, Divider, Heading, Loading, Muted, Screen, Title } f
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Linking, Platform, View } from 'react-native';
+import { View } from 'react-native';
 
-import { mapsLinkFor } from '../../src/features/places/link';
-import { StaticMap } from '../../src/features/places/maps/StaticMap';
-import { airbnbSearchUrl, needsSomewhereToStay } from '../../src/features/places/stays';
-import { plans as repository, usePlaces, usePlans } from '../../src/queries';
+import { PlanPlaceCard } from '../../src/features/places/PlanPlace';
+import {
+  plans as repository,
+  useAttachPlace,
+  useDetachPlace,
+  usePlaces,
+  usePlans,
+  useSetPlaceCalendarSharing,
+} from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 export default function Plans() {
   const { t, i18n } = useTranslation(['app', 'common', 'plans', 'places']);
-  const { couple } = usePairedSession();
+  const { profile, couple } = usePairedSession();
   const client = useQueryClient();
 
   const now = useMemo(() => new Date(), []);
@@ -29,6 +34,9 @@ export default function Plans() {
 
   const plansQuery = usePlans(couple.id);
   const placesQuery = usePlaces(couple.id);
+  const attach = useAttachPlace(couple.id, profile.id);
+  const detach = useDetachPlace(couple.id);
+  const share = useSetPlaceCalendarSharing(couple.id);
 
   const placeByPlan = useMemo(() => {
     const map = new Map<string, PlanPlace>();
@@ -65,65 +73,6 @@ export default function Plans() {
     return t('plans:proposal.window', { start: parts.start, end: parts.end });
   }
 
-  /**
-   * The place, if there is one.
-   *
-   * Shown verbatim — a venue name is a proper noun. The address is authored in
-   * one language, so it is labelled rather than translated when the reader is
-   * in the other, exactly as a saved idea is.
-   */
-  function Where({ plan, place }: { plan: Plan; place: PlanPlace }) {
-    /**
-     * A search for somewhere to stay, with the nights and the place already
-     * filled in — but only for the two commitments that involve sleeping
-     * somewhere, and only once the plan has a window to book. Null the rest of
-     * the time, which is most of the time.
-     */
-    const stayUrl =
-      needsSomewhereToStay(plan.kind) && plan.startsAt && plan.endsAt
-        ? airbnbSearchUrl({
-            // The address is what a person would type into the site; the name
-            // alone is a venue, which is not what you search for a bed near.
-            where: place.address ?? place.name,
-            startsAt: new Date(plan.startsAt),
-            endsAt: new Date(plan.endsAt),
-            timeZone,
-          })
-        : null;
-
-    return (
-      <View className="gap-1">
-        <Muted>{place.name}</Muted>
-        {place.address ? <Muted>{place.address}</Muted> : null}
-        {/* Nothing at all for a place typed by hand, or with no key set. */}
-        <StaticMap coordinates={place.coordinates} />
-        {place.address && place.locale !== locale ? (
-          <Muted>{t(`common:language.${place.locale}`)}</Muted>
-        ) : null}
-        <Button
-          label={t('places:action.openInMaps')}
-          variant="ghost"
-          onPress={() =>
-            void Linking.openURL(
-              // Whatever maps app the phone already has. No key, and no request
-              // to anyone until this is tapped.
-              mapsLinkFor(place, Platform.OS === 'ios' ? 'ios' : 'android'),
-            )
-          }
-        />
-        {stayUrl ? (
-          <Button
-            label={t('places:action.findAStay')}
-            variant="ghost"
-            // Airbnb has no API anyone can hold a key for, so this is a link
-            // and nothing else — the search runs on their site, as them.
-            onPress={() => void Linking.openURL(stayUrl)}
-          />
-        ) : null}
-      </View>
-    );
-  }
-
   if (plansQuery.isLoading) return <Loading />;
 
   return (
@@ -140,9 +89,24 @@ export default function Plans() {
               {/* Written by a partner, shown exactly as written. */}
               {plan.title ? <Body>{plan.title}</Body> : null}
               <Muted>{label(plan)}</Muted>
-              {placeByPlan.has(plan.id) ? (
-                <Where plan={plan} place={placeByPlan.get(plan.id)!} />
-              ) : null}
+              <PlanPlaceCard
+                plan={plan}
+                place={placeByPlan.get(plan.id) ?? null}
+                locale={locale}
+                timeZone={timeZone}
+                busy={attach.isPending || detach.isPending}
+                onAttach={(draft) =>
+                  attach.mutate({ planId: plan.id, place: { ...draft, locale } })
+                }
+                onRemove={() => {
+                  const place = placeByPlan.get(plan.id);
+                  if (place) detach.mutate({ placeId: place.id, planId: plan.id });
+                }}
+                onShareWithCalendar={(next) => {
+                  const place = placeByPlan.get(plan.id);
+                  if (place) share.mutate({ placeId: place.id, share: next });
+                }}
+              />
               <View className="flex-row gap-2">
                 <View className="grow basis-0">
                   <Button

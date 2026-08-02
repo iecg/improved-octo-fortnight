@@ -36,8 +36,7 @@ declare const Deno: { env: { get(name: string): string | undefined } };
 
 const PLACES_ENDPOINT = 'https://places.googleapis.com/v1/places:searchText';
 const GEOCODE_ENDPOINT = 'https://places.googleapis.com/v1/places:searchText';
-const ROUTES_ENDPOINT =
-  'https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix';
+const ROUTES_ENDPOINT = 'https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix';
 const STATIC_MAP_ENDPOINT = 'https://maps.googleapis.com/maps/api/staticmap';
 
 const DEFAULT_DAILY_LIMIT = 100;
@@ -178,10 +177,7 @@ async function handle(request: PlacesRequest, key: string): Promise<Response> {
       url.searchParams.set('zoom', String(request.zoom));
       url.searchParams.set('size', `${request.width}x${request.height}`);
       url.searchParams.set('scale', '2');
-      url.searchParams.set(
-        'markers',
-        `${request.center.latitude},${request.center.longitude}`,
-      );
+      url.searchParams.set('markers', `${request.center.latitude},${request.center.longitude}`);
       url.searchParams.set('key', key);
 
       const response = await fetch(url);

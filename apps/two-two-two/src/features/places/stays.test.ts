@@ -89,7 +89,9 @@ describe('airbnbSearchUrl', () => {
 
   it('returns null rather than a link to an error page', () => {
     // No place to search.
-    expect(airbnbSearchUrl({ ...base, where: '   ', startsAt: MADRID_MORNING, endsAt: MADRID_CHECKOUT })).toBeNull();
+    expect(
+      airbnbSearchUrl({ ...base, where: '   ', startsAt: MADRID_MORNING, endsAt: MADRID_CHECKOUT }),
+    ).toBeNull();
 
     // A window that does not span a night. Airbnb rejects these, so we do too
     // rather than sending someone to find that out.

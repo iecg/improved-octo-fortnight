@@ -256,7 +256,7 @@ export function useIdeas(coupleId: string) {
 export function useSaveIdea(coupleId: string, profileId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: {
+    mutationFn: async (input: {
       kind: string;
       title: string;
       summary?: string | null;
@@ -266,8 +266,17 @@ export function useSaveIdea(coupleId: string, profileId: string) {
       /** Which provider named it, for the sources that came from one. */
       sourceDomain?: string | null;
       locale: Locale;
-    }) =>
-      ideas.save({
+      /**
+       * A real venue behind the idea, when it came from a map.
+       *
+       * Kept as a row rather than flattened into `summary`, so the coordinates
+       * and the provider's id survive: without them a shortlisted venue is a
+       * sentence, and booking it later cannot carry a map, a drive time, or a
+       * stay search through.
+       */
+      place?: AttachPlaceDraft | null;
+    }) => {
+      const idea = await ideas.save({
         coupleId,
         kind: input.kind,
         savedBy: profileId,
@@ -277,9 +286,27 @@ export function useSaveIdea(coupleId: string, profileId: string) {
         source: input.source,
         sourceDomain: input.sourceDomain ?? null,
         locale: input.locale,
-      }),
+      });
+
+      if (input.place) {
+        await places.attach({
+          coupleId,
+          attachedBy: profileId,
+          ideaId: idea.id,
+          name: input.place.name,
+          address: input.place.address ?? null,
+          provider: input.place.provider,
+          providerPlaceId: input.place.providerPlaceId ?? null,
+          coordinates: input.place.coordinates ?? null,
+          locale: input.place.locale,
+        });
+      }
+
+      return idea;
+    },
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.ideas(coupleId) });
+      void client.invalidateQueries({ queryKey: keys.places(coupleId) });
     },
   });
 }

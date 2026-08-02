@@ -34,7 +34,5 @@ export function mapsLinkFor(target: MapsLinkTarget, platform: 'ios' | 'android')
       : `geo:${latitude},${longitude}?q=${latitude},${longitude}(${encoded})`;
   }
 
-  return platform === 'ios'
-    ? `https://maps.apple.com/?q=${encoded}`
-    : `geo:0,0?q=${encoded}`;
+  return platform === 'ios' ? `https://maps.apple.com/?q=${encoded}` : `geo:0,0?q=${encoded}`;
 }

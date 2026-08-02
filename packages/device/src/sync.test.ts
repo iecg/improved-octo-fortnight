@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./calendar', () => ({
   hasCalendarAccess: vi.fn(),
   writeCalendarEvent: vi.fn(),
+  updateCalendarEvent: vi.fn(),
   deleteCalendarEvent: vi.fn(),
 }));
 vi.mock('./notifications', () => ({
@@ -20,7 +21,12 @@ vi.mock('./notifications', () => ({
   scheduleReminder: vi.fn(),
 }));
 
-import { deleteCalendarEvent, hasCalendarAccess, writeCalendarEvent } from './calendar';
+import {
+  deleteCalendarEvent,
+  hasCalendarAccess,
+  updateCalendarEvent,
+  writeCalendarEvent,
+} from './calendar';
 import { cancelAllReminders, hasNotificationPermission, scheduleReminder } from './notifications';
 import { reconcileDevice, type DeviceSyncOptions } from './sync';
 
@@ -66,6 +72,7 @@ beforeEach(() => {
   vi.mocked(hasCalendarAccess).mockResolvedValue(true);
   vi.mocked(hasNotificationPermission).mockResolvedValue(true);
   vi.mocked(writeCalendarEvent).mockResolvedValue('event-new');
+  vi.mocked(updateCalendarEvent).mockResolvedValue(undefined);
   vi.mocked(deleteCalendarEvent).mockResolvedValue(undefined);
   vi.mocked(cancelAllReminders).mockResolvedValue(undefined);
   vi.mocked(scheduleReminder).mockResolvedValue(null);
@@ -178,6 +185,65 @@ describe('reconcileDevice', () => {
 
     expect(writeCalendarEvent).toHaveBeenCalledTimes(2);
     expect(cancelAllReminders).toHaveBeenCalled();
+    expect(scheduleReminder).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * An entry used to be written once and then frozen. Move a date night,
+   * rename it, or attach a place, and the phone kept showing whatever was true
+   * the first time — confidently wrong, which is worse than showing nothing.
+   */
+  it('brings an existing entry back into line with the plan', async () => {
+    const plan = bookedPlan('plan-1', { [ME]: 'mine' });
+
+    await reconcileDevice(
+      options([plan], {
+        calendarTitleFor: () => 'Renamed',
+        calendarLocationFor: () => 'Bar Nou',
+      }),
+      NEVER_CANCELLED,
+    );
+
+    // Nothing new is created — the entry already exists on this device.
+    expect(writeCalendarEvent).not.toHaveBeenCalled();
+    expect(updateCalendarEvent).toHaveBeenCalledTimes(1);
+
+    const [eventId, written] = vi.mocked(updateCalendarEvent).mock.calls[0]!;
+    expect(eventId).toBe('mine');
+    expect(written.title).toBe('Renamed');
+    expect(written.location).toBe('Bar Nou');
+  });
+
+  it('still writes no address into an updated entry by default', async () => {
+    // The opt-in governs a rewrite exactly as it governs the first write.
+    await reconcileDevice(options([bookedPlan('plan-1', { [ME]: 'mine' })]), NEVER_CANCELLED);
+
+    expect(vi.mocked(updateCalendarEvent).mock.calls[0]![1].location).toBeUndefined();
+  });
+
+  it('leaves a completed plan’s entry alone', async () => {
+    // It happened. Rewriting history is not reconciliation.
+    const done = { ...bookedPlan('plan-1', { [ME]: 'mine' }), status: 'completed' as const };
+
+    await reconcileDevice(options([done]), NEVER_CANCELLED);
+
+    expect(updateCalendarEvent).not.toHaveBeenCalled();
+    expect(deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it('keeps reconciling when one entry has been deleted from the Calendar app', async () => {
+    // A perfectly reasonable thing for someone to have done, and not a reason
+    // to abandon the rest of the pass.
+    vi.mocked(updateCalendarEvent).mockRejectedValueOnce(new Error('no such event'));
+
+    const opts = options([
+      bookedPlan('a', { [ME]: 'mine-a' }),
+      bookedPlan('b', { [ME]: 'mine-b' }),
+    ]);
+    await reconcileDevice(opts, NEVER_CANCELLED);
+
+    expect(updateCalendarEvent).toHaveBeenCalledTimes(2);
+    // And the reminders, which come last, still land.
     expect(scheduleReminder).toHaveBeenCalledTimes(2);
   });
 

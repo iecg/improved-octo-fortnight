@@ -12,7 +12,8 @@
     "openInMaps": "Open in Maps",
     "remove": "Remove the place",
     "use": "Use this one",
-    "findAStay": "Find somewhere to stay"
+    "findAStay": "Find somewhere to stay",
+    "add": "Add a place"
   },
   "empty": "No place set",
   "search": {

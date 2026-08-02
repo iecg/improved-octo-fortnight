@@ -24,7 +24,11 @@ import { readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { normalizeManualPlace, placeLabel, PLAN_LOCATION_MAX } from '../../apps/two-two-two/src/features/places/label';
+import {
+  normalizeManualPlace,
+  placeLabel,
+  PLAN_LOCATION_MAX,
+} from '../../apps/two-two-two/src/features/places/label';
 import { mapsLinkFor } from '../../apps/two-two-two/src/features/places/link';
 import { NO_CAPABILITIES } from '../../apps/two-two-two/src/features/places/maps/types';
 import { isFeatureSegmentPath, REPO_ROOT, scannedFiles } from './sources';

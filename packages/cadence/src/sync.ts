@@ -26,12 +26,29 @@ const KEEP_IF_PRESENT: readonly PlanStatus[] = ['scheduled', 'completed'];
 export interface CalendarActions {
   /** Booked plans this device has no event for yet. */
   toWrite: Plan[];
+  /**
+   * `[plan, eventId]` for entries that exist and should be brought back into
+   * line with the plan.
+   *
+   * Every still-booked plan with an entry, rather than only the ones that
+   * changed: nothing records what was actually written to the OS calendar, so
+   * there is nothing to compare against. Rewriting unconditionally is the
+   * version with no state to get wrong, and a couple has a handful of upcoming
+   * plans rather than thousands.
+   *
+   * Without this, an entry was written once and then frozen. Move a date night,
+   * rename it, or attach a place to it, and the phone kept showing whatever was
+   * true the first time — which is worse than showing nothing, because it is
+   * confidently wrong.
+   */
+  toUpdate: Array<[Plan, string]>;
   /** `[plan, eventId]` for entries that should no longer exist. */
   toRemove: Array<[Plan, string]>;
 }
 
 export function calendarActions(plans: Plan[], profileId: string): CalendarActions {
   const toWrite: Plan[] = [];
+  const toUpdate: Array<[Plan, string]> = [];
   const toRemove: Array<[Plan, string]> = [];
 
   for (const plan of plans) {
@@ -43,10 +60,17 @@ export function calendarActions(plans: Plan[], profileId: string): CalendarActio
     }
 
     // Declined, skipped, or pushed back to a proposal: the entry is now a lie.
-    if (!KEEP_IF_PRESENT.includes(plan.status)) toRemove.push([plan, eventId]);
+    if (!KEEP_IF_PRESENT.includes(plan.status)) {
+      toRemove.push([plan, eventId]);
+      continue;
+    }
+
+    // Still booked, and still has a time to be booked at. A completed plan is
+    // history and is left exactly as it was.
+    if (BOOKED.includes(plan.status) && plan.startsAt) toUpdate.push([plan, eventId]);
   }
 
-  return { toWrite, toRemove };
+  return { toWrite, toUpdate, toRemove };
 }
 
 export interface PlannedReminder {

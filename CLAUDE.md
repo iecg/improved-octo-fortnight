@@ -275,7 +275,7 @@ needs no key at all. `ai_usage` and `places_usage` simply stay empty.
 **The app never learns whether a mapping key exists.** It asks the `places`
 Edge Function (`op: 'capabilities'`), which is the only thing holding one, and
 every search control renders `null` when the answer is no. That is why there is
-no `EXPO_PUBLIC_` feature flag — the key's *name* never enters the bundle
+no `EXPO_PUBLIC_` feature flag — the key's _name_ never enters the bundle
 either. `EXPO_PUBLIC_` values ship inside the app and can be read back out of
 it; that is fine for the anon key, which has RLS behind it, and not for a
 billed third-party key, where possession is the authorization.
@@ -350,6 +350,15 @@ A place's address reaches a device calendar only when that place carries
 unaffected. A title is one thing; an address syncs to shared computers as "we
 are not home, and here is where we are".
 
+`calendarActions` returns `toUpdate` as well as `toWrite` and `toRemove`, and
+reconciliation rewrites every still-booked entry rather than diffing: nothing
+records what was actually written to the OS calendar, so there is nothing to
+compare against. Before that, an entry was written once and then frozen —
+renaming a plan, moving it, or attaching a place left the phone confidently
+showing something that was no longer true. The change detector in
+`useDeviceSync` therefore hashes the title and location an entry _would_ carry,
+not just the plan's own columns, or a pass that could fix it would never run.
+
 Ported from `iecg/legendary-bassoon` (now superseded). Two bugs found there
 and guarded against here, both with tests: a `count(*)`-based couple-size
 trigger cannot stop two concurrent redemptions of one invite code, and a
@@ -360,8 +369,8 @@ were adopted.
 
 ## Version notes
 
-Expo SDK 57 / React 19.2 / RN 0.86 / TypeScript 6. Two things that differ from
-older material an agent may have absorbed:
+Expo SDK 57 / React 19.2 / RN 0.86 / TypeScript 6. Three things that differ
+from older material an agent may have absorbed:
 
 - **`expo-calendar` replaced the `*Async` free functions with an
   object-oriented API.** The old names still exist but _throw at runtime_ when
@@ -373,6 +382,14 @@ older material an agent may have absorbed:
   transitive dependencies nested, and disabling the walk-up makes them
   unresolvable. `babel-preset-expo` is also declared explicitly for the same
   reason.
+- **`btoa`, `atob` and `Blob.arrayBuffer()` do not exist here.** They are Web
+  APIs; Hermes implements none of them and neither RN nor Expo polyfills them.
+  Node has all three, so a unit suite is no evidence — this shipped once as a
+  map thumbnail that silently never appeared, because the call threw inside a
+  `catch` that turned it into "no map". Use `FileReader` (which RN _does_
+  polyfill globally) — see `features/places/maps/blob.ts`.
 
 When touching a native module, read its `.d.ts` in `node_modules` rather than
-recalling the API. It has moved recently.
+recalling the API. It has moved recently. The same caution applies to anything
+that looks like a browser global: check it exists in Hermes before relying on
+a green Node suite.

@@ -29,6 +29,19 @@ export interface PlaceSearchProps {
   /** Called with the venue the couple picked. */
   onPick: (result: PlaceResult) => void;
   /**
+   * The town to search near, when a screen already has one.
+   *
+   * Controlled so that a screen showing this beside something else that asks
+   * the same question — the suggestion card, which keeps a location for the
+   * session — can hand both the same value instead of asking twice. Left out,
+   * this keeps its own.
+   *
+   * The composition is the screen's job rather than a dependency between the
+   * two features: neither owns "the town we are planning around".
+   */
+  town?: string;
+  onTownChange?: (value: string) => void;
+  /**
    * Which commitment this is for. Decides the drive budget: a getaway is worth
    * a couple of hours in the car, an evening out is not a distance question at
    * all. Omitted means no budget and no travel times.
@@ -36,12 +49,12 @@ export interface PlaceSearchProps {
   kind?: string;
 }
 
-export function PlaceSearch({ onPick, kind }: PlaceSearchProps) {
+export function PlaceSearch({ onPick, kind, town: sharedTown, onTownChange }: PlaceSearchProps) {
   const { t, i18n } = useTranslation(['places', 'common']);
   const capabilities = usePlacesCapabilities();
 
   const [query, setQuery] = useState('');
-  const [town, setTown] = useState('');
+  const [ownTown, setOwnTown] = useState('');
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [minutes, setMinutes] = useState<(number | null)[]>([]);
   const [status, setStatus] = useState<'idle' | 'searching' | 'empty' | 'failed' | 'rateLimited'>(
@@ -53,6 +66,8 @@ export function PlaceSearch({ onPick, kind }: PlaceSearchProps) {
   if (!capabilities.search) return null;
 
   const languageCode = i18n.language === 'es' ? 'es' : 'en';
+  const town = sharedTown ?? ownTown;
+  const setTown = onTownChange ?? setOwnTown;
 
   const budget = kind ? driveBudgetFor(kind) : null;
 
@@ -101,7 +116,10 @@ export function PlaceSearch({ onPick, kind }: PlaceSearchProps) {
     const destinations = outcome.data.map((result) => result.coordinates);
     if (destinations.some((value) => value === null)) return;
 
-    const travel = await fetchTravelMinutes(origin, destinations as NonNullable<typeof destinations[number]>[]);
+    const travel = await fetchTravelMinutes(
+      origin,
+      destinations as NonNullable<(typeof destinations)[number]>[],
+    );
     // A failure here is not a failed search: the results are already on screen
     // and simply have no distance beside them.
     if (travel.ok) setMinutes(travel.data);

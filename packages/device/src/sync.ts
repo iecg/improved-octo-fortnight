@@ -17,7 +17,12 @@ import { calendarActions, plannedReminders } from '@couple/cadence';
 import type { Plan } from '@couple/core';
 import { useEffect, useRef } from 'react';
 
-import { deleteCalendarEvent, hasCalendarAccess, writeCalendarEvent } from './calendar';
+import {
+  deleteCalendarEvent,
+  hasCalendarAccess,
+  updateCalendarEvent,
+  writeCalendarEvent,
+} from './calendar';
 import { cancelAllReminders, hasNotificationPermission, scheduleReminder } from './notifications';
 
 export interface DeviceSyncOptions {
@@ -47,12 +52,33 @@ export interface DeviceSyncOptions {
   onCalendarEvent: (plan: Plan, eventId: string | null) => Promise<void>;
 }
 
-/** Cheap change detector: re-run only when something we act on actually moved. */
-function signatureOf(plans: Plan[], profileId: string | null): string {
+/**
+ * Cheap change detector: re-run only when something we act on actually moved.
+ *
+ * Includes the title and location the entry *would* carry, not just the plan's
+ * own columns, because those are what a pass now writes. Rename a plan or
+ * attach a place to it and nothing else about the row changes — under the
+ * narrower signature this used to have, the pass never re-ran and the update
+ * below could never happen. The resolvers are called rather than compared, so
+ * a fresh closure on every render costs nothing here.
+ */
+function signatureOf(
+  plans: Plan[],
+  profileId: string | null,
+  calendarTitleFor: (plan: Plan) => string,
+  calendarLocationFor?: (plan: Plan) => string | undefined,
+): string {
   return plans
-    .map(
-      (plan) =>
-        `${plan.id}:${plan.status}:${plan.startsAt ?? ''}:${plan.calendarEventIds[profileId ?? ''] ?? ''}`,
+    .map((plan) =>
+      [
+        plan.id,
+        plan.status,
+        plan.startsAt ?? '',
+        plan.endsAt ?? '',
+        plan.calendarEventIds[profileId ?? ''] ?? '',
+        calendarTitleFor(plan),
+        calendarLocationFor?.(plan) ?? '',
+      ].join(':'),
     )
     .sort()
     .join('|');
@@ -81,27 +107,47 @@ export async function reconcileDevice(
   } = options;
   if (!profileId) return;
 
-  const { toWrite, toRemove } = calendarActions(plans, profileId);
+  const { toWrite, toUpdate, toRemove } = calendarActions(plans, profileId);
+
+  /** The entry a plan should have right now, wherever it is being written. */
+  function eventFor(plan: Plan, startsAt: string) {
+    // Absent unless the app opted this plan in, so the default entry is still
+    // a title, a time, and nothing else.
+    const location = calendarLocationFor?.(plan);
+    return {
+      title: calendarTitleFor(plan),
+      startsAt: new Date(startsAt),
+      // A plan with no end is treated as an hour, so the entry has a sensible
+      // shape in a week view.
+      endsAt: new Date(plan.endsAt ?? new Date(startsAt).getTime() + 3_600_000),
+      timeZone,
+      ...(location ? { location } : {}),
+    };
+  }
 
   // Permission is never requested here — that belongs to a screen where the
   // user can see why they are being asked. Without it, this silently does
   // nothing, which is the correct outcome.
-  if ((toWrite.length > 0 || toRemove.length > 0) && (await hasCalendarAccess())) {
+  const hasWork = toWrite.length > 0 || toUpdate.length > 0 || toRemove.length > 0;
+  if (hasWork && (await hasCalendarAccess())) {
     for (const plan of toWrite) {
       if (isCancelled() || !plan.startsAt) break;
-      // Absent unless the app opted this plan in, so the default entry is
-      // still a title, a time, and nothing else.
-      const location = calendarLocationFor?.(plan);
-      const eventId = await writeCalendarEvent({
-        title: calendarTitleFor(plan),
-        startsAt: new Date(plan.startsAt),
-        // A plan with no end is treated as an hour, so the entry has a
-        // sensible shape in a week view.
-        endsAt: new Date(plan.endsAt ?? new Date(plan.startsAt).getTime() + 3_600_000),
-        timeZone,
-        ...(location ? { location } : {}),
-      });
+      const eventId = await writeCalendarEvent(eventFor(plan, plan.startsAt));
       if (eventId) await onCalendarEvent(plan, eventId);
+    }
+
+    // Bring existing entries back into line. Nothing records what was written
+    // last time, so this rewrites rather than diffs — see `calendarActions`.
+    // A single failure is skipped rather than abandoning the pass: the event
+    // may have been deleted from the Calendar app, which is a reasonable thing
+    // for someone to have done and not a reason to stop reconciling.
+    for (const [plan, eventId] of toUpdate) {
+      if (isCancelled() || !plan.startsAt) break;
+      try {
+        await updateCalendarEvent(eventId, eventFor(plan, plan.startsAt));
+      } catch {
+        // Gone from under us. The next pass will notice nothing else changed.
+      }
     }
 
     for (const [plan, eventId] of toRemove) {
@@ -129,8 +175,8 @@ export async function reconcileDevice(
 }
 
 export function useDeviceSync(options: DeviceSyncOptions): void {
-  const { plans, profileId, enabled } = options;
-  const signature = signatureOf(plans, profileId);
+  const { plans, profileId, enabled, calendarTitleFor, calendarLocationFor } = options;
+  const signature = signatureOf(plans, profileId, calendarTitleFor, calendarLocationFor);
 
   /**
    * The run reads its inputs from here rather than closing over them.
