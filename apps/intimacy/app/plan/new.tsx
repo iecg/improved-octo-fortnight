@@ -17,7 +17,7 @@
  * lock. The 2-2-2 app asks first.
  */
 import { busyFromPlans, mergeRanges, suggestWindows, type TimeRange } from '@couple/cadence';
-import { INTIMACY_KINDS } from '@couple/core';
+import { INTIMACY_KINDS, findKind, kindLabelKey, kindsForDomain } from '@couple/core';
 import { hasCalendarAccess, readBusyBlocks, requestCalendarAccess } from '@couple/device';
 import { Body, Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -55,11 +55,27 @@ export default function NewPlan() {
    * fresh one. Both must be present to count — half a pair is a malformed
    * link, and answering the wrong proposal is worse than starting over.
    */
-  const params = useLocalSearchParams<{ counterOf?: string; planId?: string }>();
+  const params = useLocalSearchParams<{ counterOf?: string; planId?: string; kind?: string }>();
   const counterOf =
     params.counterOf && params.planId
       ? { proposalId: params.counterOf, planId: params.planId }
       : null;
+
+  /**
+   * Which ritual this suggestion is for.
+   *
+   * Arriving from a bar on Today preselects that one. An unrecognised param is
+   * ignored rather than trusted — it reaches a `kind` column with a slug
+   * constraint on it — which is what `findKind` is for.
+   *
+   * This used to be hard-coded to `intimacy`, and the other two rituals were
+   * therefore unreachable: Today drew a countdown for each, `computeCadenceStatus`
+   * re-anchors only on plans matching `(domain, kind)`, and nothing could ever
+   * produce one. Two clocks counted up forever.
+   */
+  const [kind, setKind] = useState<string>(
+    (params.kind && findKind('intimacy', params.kind)?.kind) ?? INTIMACY_KINDS.intimacy.kind,
+  );
 
   const propose = useProposeTime(couple.id, profile.id);
   const counter = useCounterProposal(couple.id, profile.id);
@@ -149,7 +165,7 @@ export default function NewPlan() {
       });
     } else {
       await propose.mutateAsync({
-        kind: INTIMACY_KINDS.intimacy.kind,
+        kind,
         startsAt: chosen.start,
         endsAt: chosen.end,
         notes: notes.trim() || null,
@@ -162,6 +178,26 @@ export default function NewPlan() {
     <Screen>
       <Title>{counterOf ? t('plans:proposal.counter') : t('app:propose.title')}</Title>
       {counterOf ? <Muted>{t('plans:proposal.counteredNote')}</Muted> : null}
+
+      {/* A counter answers the time on a plan that already exists, so its kind
+          is settled and not offered again. */}
+      {counterOf ? null : (
+        <Card>
+          <View className="gap-3">
+            <Heading>{t('app:propose.kind')}</Heading>
+            <View className="flex-row flex-wrap gap-2">
+              {kindsForDomain('intimacy').map((definition) => (
+                <Chip
+                  key={definition.kind}
+                  label={t(kindLabelKey(definition.domain, definition.kind))}
+                  selected={kind === definition.kind}
+                  onPress={() => setKind(definition.kind)}
+                />
+              ))}
+            </View>
+          </View>
+        </Card>
+      )}
 
       <Card>
         <View className="gap-3">

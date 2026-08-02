@@ -26,12 +26,28 @@ const KEEP_IF_PRESENT: readonly PlanStatus[] = ['scheduled', 'completed'];
 export interface CalendarActions {
   /** Booked plans this device has no event for yet. */
   toWrite: Plan[];
+  /**
+   * `[plan, eventId]` for entries that exist and should be re-asserted.
+   *
+   * Re-stating every booked plan rather than working out which one moved, for
+   * the same reason the reminders below are rebuilt rather than diffed: nothing
+   * records what time an event was written with, so the only honest way to know
+   * an entry still matches its plan is to write it again. The list is a handful
+   * of plans, and the caller only reconciles when a status, a time or an event
+   * id actually changed.
+   *
+   * Without this a rescheduled plan kept its original entry forever: the write
+   * arm skips a plan that already has an event id, and nothing else ever
+   * touched it.
+   */
+  toUpdate: Array<[Plan, string]>;
   /** `[plan, eventId]` for entries that should no longer exist. */
   toRemove: Array<[Plan, string]>;
 }
 
 export function calendarActions(plans: Plan[], profileId: string): CalendarActions {
   const toWrite: Plan[] = [];
+  const toUpdate: Array<[Plan, string]> = [];
   const toRemove: Array<[Plan, string]> = [];
 
   for (const plan of plans) {
@@ -43,10 +59,16 @@ export function calendarActions(plans: Plan[], profileId: string): CalendarActio
     }
 
     // Declined, skipped, or pushed back to a proposal: the entry is now a lie.
-    if (!KEEP_IF_PRESENT.includes(plan.status)) toRemove.push([plan, eventId]);
+    if (!KEEP_IF_PRESENT.includes(plan.status)) {
+      toRemove.push([plan, eventId]);
+      continue;
+    }
+
+    // Completed plans are history and are left exactly as they were.
+    if (BOOKED.includes(plan.status) && plan.startsAt) toUpdate.push([plan, eventId]);
   }
 
-  return { toWrite, toRemove };
+  return { toWrite, toUpdate, toRemove };
 }
 
 export interface PlannedReminder {

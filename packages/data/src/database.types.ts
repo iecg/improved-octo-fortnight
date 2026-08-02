@@ -169,7 +169,6 @@ export interface Database {
           profile_id: string;
           on_date: string;
           interest: CheckinInterestEnum;
-          energy: number | null;
           note: string | null;
           created_at: string;
           updated_at: string;
@@ -180,12 +179,10 @@ export interface Database {
           profile_id: string;
           on_date: string;
           interest: CheckinInterestEnum;
-          energy?: number | null;
           note?: string | null;
         };
         Update: {
           interest?: CheckinInterestEnum;
-          energy?: number | null;
           note?: string | null;
         };
         Relationships: [];

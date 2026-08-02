@@ -23,9 +23,9 @@ import {
   Title,
 } from '@couple/ui';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { TextInput, View } from 'react-native';
 
 import {
   cadenceStatuses,
@@ -82,6 +82,17 @@ export default function Today() {
   const myCheckin = checkinsQuery.data?.find((entry) => entry.profileId === profile.id);
   const theirCheckin = checkinsQuery.data?.find((entry) => entry.profileId !== profile.id);
 
+  /**
+   * The note, which used to be readable and not writable: the partner's was
+   * rendered below, and nothing in the app could produce one.
+   *
+   * `null` means "not edited on this device yet", so the stored note shows
+   * through until someone types — no effect, and no chance of a refetch
+   * landing on half-typed text.
+   */
+  const [edited, setEdited] = useState<string | null>(null);
+  const note = edited ?? myCheckin?.note ?? '';
+
   if (plansQuery.isLoading || cadencesQuery.isLoading) return <Loading />;
 
   return (
@@ -97,10 +108,32 @@ export default function Today() {
                 key={interest}
                 label={t(`app:checkin.${interest}`)}
                 selected={myCheckin?.interest === interest}
-                onPress={() => recordCheckin.mutate({ interest, now })}
+                onPress={() => recordCheckin.mutate({ interest, note: note.trim() || null, now })}
               />
             ))}
           </View>
+
+          {/* Sent with the answer rather than on its own: the chips are the
+              only commit point on this screen, and a note without an answer
+              is not a check-in. Blank stays blank — never an empty string. */}
+          <TextInput
+            className="min-h-16 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
+            value={note}
+            onChangeText={setEdited}
+            onBlur={() => {
+              // Only worth a write if there is already an answer to attach it
+              // to; otherwise it waits for the chip.
+              if (myCheckin)
+                recordCheckin.mutate({
+                  interest: myCheckin.interest,
+                  note: note.trim() || null,
+                  now,
+                });
+            }}
+            placeholder={t('app:checkin.notePlaceholder')}
+            accessibilityLabel={t('app:checkin.noteLabel')}
+            multiline
+          />
 
           {theirCheckin ? (
             <Muted>
@@ -142,12 +175,22 @@ export default function Today() {
           {statuses.map((status) => {
             const due = dueTranslation(status.daysUntilDue);
             return (
-              <View key={`${status.domain}.${status.kind}`} className="gap-1">
+              <View key={`${status.domain}.${status.kind}`} className="gap-2">
                 <Body>{t(kindLabelKeyFor(status.domain, status.kind))}</Body>
                 <CadenceBar
                   progress={status.progress}
                   health={status.health}
                   label={t(due.key, { count: due.count })}
+                />
+                {/* The only thing that ever resets this particular clock: a
+                    plan of this kind. Without it the bar is a countdown with
+                    no way to answer it. */}
+                <Button
+                  label={t('app:today.planIt')}
+                  variant="secondary"
+                  onPress={() =>
+                    router.push({ pathname: '/plan/new', params: { kind: status.kind } })
+                  }
                 />
               </View>
             );

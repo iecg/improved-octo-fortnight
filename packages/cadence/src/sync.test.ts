@@ -88,7 +88,24 @@ describe('calendarActions', () => {
     });
 
     // This device has nothing of its own to remove, and must not remove theirs.
-    expect(calendarActions([plan], ME)).toEqual({ toWrite: [], toRemove: [] });
+    expect(calendarActions([plan], ME)).toEqual({ toWrite: [], toUpdate: [], toRemove: [] });
+  });
+
+  it('re-asserts an entry this device already has, so a moved plan moves', () => {
+    const plan = makePlan({ calendarEventIds: { [ME]: 'my-event' } });
+    const { toWrite, toUpdate, toRemove } = calendarActions([plan], ME);
+
+    expect(toWrite).toEqual([]);
+    expect(toUpdate).toEqual([[plan, 'my-event']]);
+    expect(toRemove).toEqual([]);
+  });
+
+  it('leaves a completed plan alone — it happened, and it is history', () => {
+    const plan = makePlan({ status: 'completed', calendarEventIds: { [ME]: 'my-event' } });
+    const { toUpdate, toRemove } = calendarActions([plan], ME);
+
+    expect(toUpdate).toEqual([]);
+    expect(toRemove).toEqual([]);
   });
 });
 

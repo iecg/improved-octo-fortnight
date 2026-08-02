@@ -17,7 +17,6 @@ export interface RecordCheckinInput {
   /** `YYYY-MM-DD` in the couple's timezone. */
   onDate: string;
   interest: CheckinInterest;
-  energy?: number | null;
   note?: string | null;
 }
 
@@ -63,7 +62,6 @@ export function createCheckinRepository(client: AppSupabaseClient): CheckinRepos
             profile_id: input.profileId,
             on_date: input.onDate,
             interest: input.interest,
-            energy: input.energy ?? null,
             note: input.note ?? null,
           },
           { onConflict: 'profile_id,on_date' },

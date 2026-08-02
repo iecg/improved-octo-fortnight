@@ -156,7 +156,7 @@ export interface Checkin {
   /** Calendar date in the couple's timezone, `YYYY-MM-DD`. */
   onDate: string;
   interest: CheckinInterest;
-  energy: number | null;
+  /** Partner-authored, shown verbatim and never machine-translated. */
   note: string | null;
   createdAt: string;
 }

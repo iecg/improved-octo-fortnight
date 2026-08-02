@@ -61,6 +61,7 @@
     "allowed": "Permitido",
     "crossAppBusy": "Evitar horas ocupadas en la otra app",
     "crossAppBusyHint": "Marca las horas que ya tienen reservadas en su otra app. Solo las horas, nunca para qué son.",
+    "notificationAccess": "Recordatorios",
     "signOut": "Cerrar sesión"
   },
   "notification": {

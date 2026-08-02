@@ -6,8 +6,8 @@
  * in reverse: they protect this phone, and syncing them would let one partner
  * turn off the other's lock.
  */
-import { ConnectedAppsCard } from '@couple/auth';
-import { LOCALES, type Locale } from '@couple/core';
+import { ConnectedAppsCard, UnpairCard } from '@couple/auth';
+import { LOCALES, kindLabelKey, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
   isLockAvailable,
@@ -21,12 +21,17 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Switch, TextInput, View } from 'react-native';
 
+import { useCadences, useSetCadenceEnabled } from '../../src/queries';
 import { getCalendarLabel, setCalendarLabel } from '../../src/runtime';
-import { useSession } from '../../src/session';
+import { usePairedSession, useSession } from '../../src/session';
 
 export default function Settings() {
-  const { t } = useTranslation(['app', 'common']);
-  const { profile, partner, setLocale, signOut } = useSession();
+  const { t } = useTranslation(['app', 'cadence', 'common']);
+  const { profile, partner, setLocale, signOut, leaveCouple } = useSession();
+
+  const { couple } = usePairedSession();
+  const cadencesQuery = useCadences(couple.id);
+  const setCadenceEnabled = useSetCadenceEnabled(couple.id);
 
   const [lockAvailable, setLockAvailable] = useState(false);
   const [lockOn, setLockOn] = useState(false);
@@ -73,6 +78,30 @@ export default function Settings() {
           </View>
           {/* The single most important sentence on this screen. */}
           <Muted>{t('common:language.description')}</Muted>
+        </View>
+      </Card>
+
+      {/* Turning one off hides its countdown and stops its reminders. The plans
+          already made under it stay. There is nothing to break by pausing —
+          this is the opposite of a streak. */}
+      <Card>
+        <View className="gap-3">
+          <Heading>{t('app:settings.cadences')}</Heading>
+          {(cadencesQuery.data ?? []).map((cadence) => (
+            <View key={cadence.id} className="flex-row items-center justify-between gap-3">
+              <View className="shrink gap-1">
+                <Body>{t(kindLabelKey(cadence.domain, cadence.kind))}</Body>
+                <Muted>{t('cadence:action.pause')}</Muted>
+              </View>
+              <Switch
+                value={cadence.enabled}
+                onValueChange={(next) =>
+                  setCadenceEnabled.mutate({ cadenceId: cadence.id, enabled: next })
+                }
+                accessibilityLabel={t(kindLabelKey(cadence.domain, cadence.kind))}
+              />
+            </View>
+          ))}
         </View>
       </Card>
 
@@ -154,6 +183,9 @@ export default function Settings() {
       {/* Same component as the other app, so the two can never disagree about
           what is shared. */}
       <ConnectedAppsCard />
+
+      {/* One pairing across both apps, so this is the same act from either. */}
+      <UnpairCard onUnpair={leaveCouple} />
     </Screen>
   );
 }

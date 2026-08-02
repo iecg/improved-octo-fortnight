@@ -22,6 +22,16 @@ export interface SessionState {
   refresh: () => Promise<void>;
   setLocale: (locale: Locale) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Give up the seat in this couple, from either app.
+   *
+   * Lives here rather than in an app because there is one pairing across both,
+   * so leaving from Two22 and leaving from the intimacy app are the same act.
+   * The database does the rest: a trigger rotates the invite code so the one
+   * the departing partner circulated stops working, and deletes the couple
+   * outright once nobody is left.
+   */
+  leaveCouple: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionState | null>(null);
@@ -115,9 +125,30 @@ export function createSessionModule(deps: {
       await supabase.auth.signOut();
     }, []);
 
+    /**
+     * The account survives; only the pairing ends. Reloading rather than
+     * signing out is what puts the router back on `/pair` — the same three
+     * states as a fresh install, minus the sign-in.
+     */
+    const leaveCouple = useCallback(async () => {
+      if (!profile) return;
+      await accounts.leaveCouple(profile.id);
+      await refresh();
+    }, [profile, refresh]);
+
     const value = useMemo<SessionState>(
-      () => ({ loading, session, profile, couple, partner, refresh, setLocale, signOut }),
-      [loading, session, profile, couple, partner, refresh, setLocale, signOut],
+      () => ({
+        loading,
+        session,
+        profile,
+        couple,
+        partner,
+        refresh,
+        setLocale,
+        signOut,
+        leaveCouple,
+      }),
+      [loading, session, profile, couple, partner, refresh, setLocale, signOut, leaveCouple],
     );
 
     return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

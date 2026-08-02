@@ -52,6 +52,25 @@ export function useCadences(coupleId: string) {
 }
 
 /**
+ * Pause a ritual, or bring it back.
+ *
+ * A paused cadence keeps its row with `enabled = false` rather than being
+ * deleted, which is what lets `useEnsureCadences` tell "never seeded" from
+ * "switched off". The plans already made under it stay where they are: this
+ * turns off a countdown, not a history.
+ */
+export function useSetCadenceEnabled(coupleId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { cadenceId: string; enabled: boolean }) =>
+      plans.setCadenceEnabled(input.cadenceId, input.enabled),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+    },
+  });
+}
+
+/**
  * Seed this app's standing rituals from its own kind catalog.
  *
  * Deliberately not a database trigger — a trigger on `couples` would give

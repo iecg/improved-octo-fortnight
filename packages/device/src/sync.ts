@@ -17,7 +17,12 @@ import { calendarActions, plannedReminders } from '@couple/cadence';
 import type { Plan } from '@couple/core';
 import { useEffect, useRef } from 'react';
 
-import { deleteCalendarEvent, hasCalendarAccess, writeCalendarEvent } from './calendar';
+import {
+  deleteCalendarEvent,
+  hasCalendarAccess,
+  updateCalendarEvent,
+  writeCalendarEvent,
+} from './calendar';
 import { cancelAllReminders, hasNotificationPermission, scheduleReminder } from './notifications';
 
 export interface DeviceSyncOptions {
@@ -64,23 +69,36 @@ export async function reconcileDevice(
   const { plans, profileId, timeZone, calendarTitleFor, reminder, onCalendarEvent } = options;
   if (!profileId) return;
 
-  const { toWrite, toRemove } = calendarActions(plans, profileId);
+  const { toWrite, toUpdate, toRemove } = calendarActions(plans, profileId);
+
+  /** The one shape an entry ever takes: a title, a span, and nothing else. */
+  const entryFor = (plan: Plan) => ({
+    title: calendarTitleFor(plan),
+    startsAt: new Date(plan.startsAt as string),
+    // A plan with no end is treated as an hour, so the entry has a sensible
+    // shape in a week view.
+    endsAt: new Date(plan.endsAt ?? new Date(plan.startsAt as string).getTime() + 3_600_000),
+    timeZone,
+  });
 
   // Permission is never requested here — that belongs to a screen where the
   // user can see why they are being asked. Without it, this silently does
   // nothing, which is the correct outcome.
-  if ((toWrite.length > 0 || toRemove.length > 0) && (await hasCalendarAccess())) {
+  if (
+    (toWrite.length > 0 || toUpdate.length > 0 || toRemove.length > 0) &&
+    (await hasCalendarAccess())
+  ) {
     for (const plan of toWrite) {
       if (isCancelled() || !plan.startsAt) break;
-      const eventId = await writeCalendarEvent({
-        title: calendarTitleFor(plan),
-        startsAt: new Date(plan.startsAt),
-        // A plan with no end is treated as an hour, so the entry has a
-        // sensible shape in a week view.
-        endsAt: new Date(plan.endsAt ?? new Date(plan.startsAt).getTime() + 3_600_000),
-        timeZone,
-      });
+      const eventId = await writeCalendarEvent(entryFor(plan));
       if (eventId) await onCalendarEvent(plan, eventId);
+    }
+
+    // A moved plan. The stored event id stays the same, so nothing is written
+    // back to the row — only the OS entry changes.
+    for (const [plan, eventId] of toUpdate) {
+      if (isCancelled()) break;
+      await updateCalendarEvent(eventId, entryFor(plan));
     }
 
     for (const [plan, eventId] of toRemove) {

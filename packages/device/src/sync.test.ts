@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./calendar', () => ({
   hasCalendarAccess: vi.fn(),
   writeCalendarEvent: vi.fn(),
+  updateCalendarEvent: vi.fn(),
   deleteCalendarEvent: vi.fn(),
 }));
 vi.mock('./notifications', () => ({
@@ -20,7 +21,12 @@ vi.mock('./notifications', () => ({
   scheduleReminder: vi.fn(),
 }));
 
-import { deleteCalendarEvent, hasCalendarAccess, writeCalendarEvent } from './calendar';
+import {
+  deleteCalendarEvent,
+  hasCalendarAccess,
+  updateCalendarEvent,
+  writeCalendarEvent,
+} from './calendar';
 import { cancelAllReminders, hasNotificationPermission, scheduleReminder } from './notifications';
 import { reconcileDevice, type DeviceSyncOptions } from './sync';
 
@@ -66,6 +72,7 @@ beforeEach(() => {
   vi.mocked(hasCalendarAccess).mockResolvedValue(true);
   vi.mocked(hasNotificationPermission).mockResolvedValue(true);
   vi.mocked(writeCalendarEvent).mockResolvedValue('event-new');
+  vi.mocked(updateCalendarEvent).mockResolvedValue(undefined);
   vi.mocked(deleteCalendarEvent).mockResolvedValue(undefined);
   vi.mocked(cancelAllReminders).mockResolvedValue(undefined);
   vi.mocked(scheduleReminder).mockResolvedValue(null);
@@ -86,6 +93,36 @@ describe('reconcileDevice', () => {
 
     expect(opts.onCalendarEvent).toHaveBeenCalledWith(opts.plans[0], 'event-new');
     expect(scheduleReminder).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves the existing entry when a plan is rescheduled', async () => {
+    const plan = bookedPlan('plan-1', { [ME]: 'my-event' });
+    const opts = options([plan]);
+
+    await reconcileDevice(opts, NEVER_CANCELLED);
+
+    // The entry already exists, so nothing new is written and the stored id is
+    // untouched — but the OS entry is restated at the plan's current time.
+    expect(writeCalendarEvent).not.toHaveBeenCalled();
+    expect(opts.onCalendarEvent).not.toHaveBeenCalled();
+
+    expect(updateCalendarEvent).toHaveBeenCalledTimes(1);
+    const [eventId, entry] = vi.mocked(updateCalendarEvent).mock.calls[0]!;
+    expect(eventId).toBe('my-event');
+    expect(entry.startsAt.toISOString()).toBe(plan.startsAt);
+    // Still the neutral label, and still nothing else about the plan.
+    expect(entry.title).toBe('Evening');
+    expect(entry.notes).toBeUndefined();
+    expect(entry.location).toBeUndefined();
+  });
+
+  it('leaves a completed plan’s entry as history', async () => {
+    const plan = { ...bookedPlan('plan-1', { [ME]: 'my-event' }), status: 'completed' as const };
+
+    await reconcileDevice(options([plan]), NEVER_CANCELLED);
+
+    expect(updateCalendarEvent).not.toHaveBeenCalled();
+    expect(deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it('does nothing without calendar permission, rather than asking for it', async () => {

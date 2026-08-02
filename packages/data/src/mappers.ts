@@ -126,7 +126,6 @@ export function toCheckin(row: Tables['checkins']['Row']): Checkin {
     profileId: row.profile_id,
     onDate: row.on_date,
     interest: row.interest,
-    energy: row.energy,
     note: row.note,
     createdAt: row.created_at,
   };

@@ -155,6 +155,27 @@ export function useCreatePlan(coupleId: string, profileId: string) {
   });
 }
 
+/**
+ * Pause a commitment, or bring it back.
+ *
+ * A paused cadence keeps its row with `enabled = false` rather than being
+ * deleted, which is what lets `useEnsureCadences` tell "never seeded" from
+ * "switched off" — and what stops a pause being silently undone on next launch.
+ *
+ * The plans already made under it stay exactly where they are. This turns off a
+ * countdown, not a history.
+ */
+export function useSetCadenceEnabled(coupleId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { cadenceId: string; enabled: boolean }) =>
+      plans.setCadenceEnabled(input.cadenceId, input.enabled),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+    },
+  });
+}
+
 export function useIdeas(coupleId: string) {
   return useQuery({ queryKey: keys.ideas(coupleId), queryFn: () => ideas.list(coupleId) });
 }
