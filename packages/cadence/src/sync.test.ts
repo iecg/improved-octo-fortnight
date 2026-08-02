@@ -88,7 +88,7 @@ describe('calendarActions', () => {
     });
 
     // This device has nothing of its own to remove, and must not remove theirs.
-    expect(calendarActions([plan], ME)).toEqual({ toWrite: [], toRemove: [] });
+    expect(calendarActions([plan], ME)).toEqual({ toWrite: [], toUpdate: [], toRemove: [] });
   });
 });
 

@@ -133,7 +133,12 @@ export function toPlanIdea(row: Tables['plan_ideas']['Row']): PlanIdea {
  * this mapper is what the rest of the app trusts.
  */
 function toCoordinates(latitude: unknown, longitude: unknown): Coordinates | null {
-  if (latitude === null || longitude === null || latitude === undefined || longitude === undefined) {
+  if (
+    latitude === null ||
+    longitude === null ||
+    latitude === undefined ||
+    longitude === undefined
+  ) {
     return null;
   }
   const lat = Number(latitude);

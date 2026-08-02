@@ -35,7 +35,12 @@ import {
   overlapsAny,
   type TimeRange,
 } from '@couple/cadence';
-import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain } from '@couple/core';
+import {
+  TWO_TWO_TWO_KINDS,
+  kindLabelKey,
+  type AppDomain,
+  type PlaceProvider,
+} from '@couple/core';
 import { hasCalendarAccess, readBusyBlocks } from '@couple/device';
 import { formatDay, formatTime } from '@couple/i18n';
 import { Body, Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
@@ -47,7 +52,7 @@ import { TextInput, View } from 'react-native';
 import { normalizeManualPlace } from '../../src/features/places/label';
 import type { PlaceResult } from '../../src/features/places/maps/types';
 import { PlaceSearch } from '../../src/features/places/PlaceSearch';
-import { useCreatePlan, usePlans, useServerBusy } from '../../src/queries';
+import { useCreatePlan, usePlaces, usePlans, useServerBusy } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 /** How far ahead the day chips run. A trip booked further out can be edited later. */
@@ -79,7 +84,7 @@ export default function NewPlan() {
   // Arriving from a card on the rhythm screen preselects that commitment. An
   // unrecognised param is ignored rather than trusted — it reaches a `kind`
   // column with a slug constraint on it.
-  const params = useLocalSearchParams<{ kind?: string; title?: string }>();
+  const params = useLocalSearchParams<{ kind?: string; title?: string; ideaId?: string }>();
   const [kind, setKind] = useState<string>(
     params.kind && params.kind in TWO_TWO_TWO_KINDS
       ? params.kind
@@ -93,6 +98,19 @@ export default function NewPlan() {
   const [place, setPlace] = useState('');
   const [found, setFound] = useState<PlaceResult | null>(null);
   const [shareAddress, setShareAddress] = useState(false);
+
+  /**
+   * A venue the shortlist already knows about.
+   *
+   * Arriving from an idea that was found on a map, this is where its
+   * coordinates and provider id come back — so booking it keeps the map, the
+   * drive time and the stay search instead of degrading to the name alone.
+   * Undefined for every other route into this screen, which is most of them.
+   */
+  const placesQuery = usePlaces(couple.id);
+  const ideaPlace = params.ideaId
+    ? (placesQuery.data ?? []).find((candidate) => candidate.ideaId === params.ideaId)
+    : undefined;
   const [dayIndex, setDayIndex] = useState(0);
   const [hour, setHour] = useState<number | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
@@ -234,24 +252,50 @@ export default function NewPlan() {
       : t('app:plan.nights', { count: value });
   }
 
-  async function save() {
-    const name = normalizeManualPlace(place);
-    // A searched result only counts while the field still holds its name — if
-    // the text was edited afterwards, what is on screen is what gets saved.
-    const searched = found && found.name === name ? found : null;
+  /**
+   * The place this booking will carry.
+   *
+   * Typed text wins, because it is what is on screen. With the field empty, an
+   * idea's own place comes along instead — that is what keeps a venue found on
+   * a map from decaying into its name between the shortlist and the booking.
+   * Null when there is neither.
+   *
+   * Derived rather than copied into state on load: the place list arrives
+   * asynchronously, and an effect that seeds a text field from a query is a
+   * race with whoever is already typing into it.
+   */
+  const typedName = normalizeManualPlace(place);
+  // A searched result only counts while the field still holds its name — if the
+  // text was edited afterwards, what is on screen is what gets saved.
+  const searched = found && found.name === typedName ? found : null;
 
+  const chosenPlace = typedName
+    ? {
+        name: typedName,
+        address: searched?.address ?? null,
+        provider: (searched ? 'google' : 'manual') as PlaceProvider,
+        providerPlaceId: searched?.providerPlaceId ?? null,
+        coordinates: searched?.coordinates ?? null,
+      }
+    : ideaPlace
+      ? {
+          name: ideaPlace.name,
+          address: ideaPlace.address,
+          provider: ideaPlace.provider,
+          providerPlaceId: ideaPlace.providerPlaceId,
+          coordinates: ideaPlace.coordinates,
+        }
+      : null;
+
+  async function save() {
     await create.mutateAsync({
       kind,
       title: title.trim() || null,
       startsAt,
       endsAt,
-      place: name
+      place: chosenPlace
         ? {
-            name,
-            address: searched?.address ?? null,
-            provider: searched ? 'google' : 'manual',
-            providerPlaceId: searched?.providerPlaceId ?? null,
-            coordinates: searched?.coordinates ?? null,
+            ...chosenPlace,
             // The language it was typed or returned in, so a partner reading in
             // the other one is told rather than shown a translation.
             locale,
@@ -323,9 +367,14 @@ export default function NewPlan() {
               setPlace(result.name);
             }}
           />
-          {found?.address ? <Muted>{found.address}</Muted> : null}
-          {/* Only worth asking once there is an address to share. */}
-          {normalizeManualPlace(place) ? (
+          {/* The address of whatever is actually coming along — a searched
+              result, or the place an idea arrived with. */}
+          {chosenPlace?.address ? <Muted>{chosenPlace.address}</Muted> : null}
+          {/* Came from the shortlist and nothing has been typed over it, so say
+              so rather than leaving an empty field looking like no place. */}
+          {!typedName && ideaPlace ? <Muted>{ideaPlace.name}</Muted> : null}
+          {/* Only worth asking once there is a place to share. */}
+          {chosenPlace ? (
             <View className="gap-2">
               <Chip
                 label={t('places:calendar.share')}

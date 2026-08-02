@@ -12,7 +12,8 @@
     "openInMaps": "Abrir en Mapas",
     "remove": "Quitar el sitio",
     "use": "Usar este",
-    "findAStay": "Buscar dónde dormir"
+    "findAStay": "Buscar dónde dormir",
+    "add": "Añadir un sitio"
   },
   "empty": "Sin sitio definido",
   "search": {

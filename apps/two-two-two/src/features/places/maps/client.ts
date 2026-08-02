@@ -16,7 +16,13 @@
 import type { Coordinates } from '@couple/core';
 
 import { supabase } from '../../../runtime';
-import { NO_CAPABILITIES, type PlaceResult, type PlacesCapabilities, type PlacesOutcome } from './types';
+import { blobToDataUri } from './blob';
+import {
+  NO_CAPABILITIES,
+  type PlaceResult,
+  type PlacesCapabilities,
+  type PlacesOutcome,
+} from './types';
 
 export * from './types';
 
@@ -102,11 +108,7 @@ export async function fetchStaticMap(
       body: { op: 'staticMap', center, width, height },
     });
     if (error || !(data instanceof Blob)) return null;
-
-    const bytes = new Uint8Array(await data.arrayBuffer());
-    let binary = '';
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    return `data:${data.type || 'image/png'};base64,${btoa(binary)}`;
+    return await blobToDataUri(data);
   } catch {
     return null;
   }

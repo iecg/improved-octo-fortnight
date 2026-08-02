@@ -73,7 +73,12 @@ describe('parseRequest', () => {
       near: { latitude: 991, longitude: 2 },
     });
     // Not a hard failure — the search just loses its centre.
-    expect(parsed).toEqual({ op: 'search', query: 'ramen', languageCode: 'en', limit: MAX_RESULTS });
+    expect(parsed).toEqual({
+      op: 'search',
+      query: 'ramen',
+      languageCode: 'en',
+      limit: MAX_RESULTS,
+    });
   });
 
   it('caps the result count and the radius', () => {

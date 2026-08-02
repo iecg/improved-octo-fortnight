@@ -898,10 +898,10 @@ describe('places on a 2-2-2 plan', () => {
     const placeId = await attachManualPlace(alice, coupleA, planId, 'the noodle place');
 
     const updated = await asUser(pool, bob, async (client) => {
-      const result = await client.query(
-        'update public.plan_places set name = $1 where id = $2',
-        ['the other noodle place', placeId],
-      );
+      const result = await client.query('update public.plan_places set name = $1 where id = $2', [
+        'the other noodle place',
+        placeId,
+      ]);
       return result.rowCount;
     });
 
@@ -1042,6 +1042,45 @@ describe('places on a 2-2-2 plan', () => {
       );
       expect(error.message).toMatch(/cannot be changed after insert|row-level security/i);
     }
+  });
+
+  it('drops a place attached to an idea when the idea goes', async () => {
+    // A venue found on a map is saved as an idea plus a place, so removing the
+    // idea from the shortlist has to take the place with it — otherwise the
+    // couple's place list grows a row nothing on any screen can reach.
+    const ideaId = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plan_ideas
+           (couple_id, domain, kind, title, source, source_domain, locale, saved_by)
+         values ($1, 'two_two_two', 'date_night', 'the noodle place', 'places', 'google', 'en', $2)
+         returning id`,
+        [coupleA, alice],
+      );
+      return rows[0]!.id;
+    });
+
+    const placeId = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plan_places
+           (couple_id, domain, idea_id, name, provider, provider_place_id, locale, attached_by)
+         values ($1, 'two_two_two', $2, 'the noodle place', 'google', 'abc123', 'en', $3)
+         returning id`,
+        [coupleA, ideaId, alice],
+      );
+      return rows[0]!.id;
+    });
+
+    await asUser(pool, alice, (client) =>
+      client.query('delete from public.plan_ideas where id = $1', [ideaId]),
+    );
+
+    const left = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select id from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows;
+    });
+    expect(left).toEqual([]);
   });
 
   it('keeps the places usage counter readable but not writable', async () => {

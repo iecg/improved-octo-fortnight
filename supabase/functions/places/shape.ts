@@ -42,11 +42,7 @@ export type PlacesRequest =
   | { op: 'staticMap'; center: Coordinates; zoom: number; width: number; height: number };
 
 export type PlacesFailure =
-  | 'not_configured'
-  | 'rate_limited'
-  | 'bad_request'
-  | 'unauthenticated'
-  | 'upstream';
+  'not_configured' | 'rate_limited' | 'bad_request' | 'unauthenticated' | 'upstream';
 
 export type PlacesResponse<T> = { ok: true; data: T } | { ok: false; reason: PlacesFailure };
 

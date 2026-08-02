@@ -41,7 +41,11 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
-import { AiSuggestionCard, type SuggestedIdea } from '../../src/features/date-planner/ai';
+import {
+  AiSuggestionCard,
+  usePlannerInputs,
+  type SuggestedIdea,
+} from '../../src/features/date-planner/ai';
 import { PlaceSearch } from '../../src/features/places/PlaceSearch';
 import { libraryFor, ideaSummaryKey, ideaTitleKey } from '../../src/ideas';
 import { useIdeas, useRemoveIdea, useSaveIdea } from '../../src/queries';
@@ -57,6 +61,16 @@ export default function Ideas() {
   const [kind, setKind] = useState<string>(TWO_TWO_TWO_KINDS.date_night.kind);
   const [draft, setDraft] = useState('');
 
+  /**
+   * The suggestion form's own memory, borrowed.
+   *
+   * Both cards on this screen ask where the couple is planning around, and
+   * being asked twice on one screen is the kind of thing that reads as the app
+   * not paying attention. The screen hands both the same value; neither feature
+   * imports the other, because neither of them owns the question.
+   */
+  const plannerInputs = usePlannerInputs(kind);
+
   const ideasQuery = useIdeas(couple.id);
   const save = useSaveIdea(couple.id, profile.id);
   const remove = useRemoveIdea(couple.id);
@@ -69,8 +83,15 @@ export default function Ideas() {
   /** Ids already on the shortlist, so the library stops offering them. */
   const savedTitles = useMemo(() => new Set(saved.map((idea) => idea.title)), [saved]);
 
-  function planIt(title: string) {
-    router.push({ pathname: '/plan/new', params: { kind, title } });
+  /**
+   * Carry the idea's id, not its place.
+   *
+   * The booking screen looks the place up rather than having it passed: a
+   * coordinate pair in a navigation parameter is a string that has to be
+   * re-parsed and can go stale, and the place list is already loaded there.
+   */
+  function planIt(title: string, ideaId?: string) {
+    router.push({ pathname: '/plan/new', params: { kind, title, ...(ideaId ? { ideaId } : {}) } });
   }
 
   async function addOwn() {
@@ -113,7 +134,7 @@ export default function Ideas() {
             <Button
               label={t('app:ideas.planIt')}
               variant="secondary"
-              onPress={() => planIt(idea.title)}
+              onPress={() => planIt(idea.title, idea.id)}
             />
           </View>
           <View className="grow basis-0">
@@ -196,6 +217,8 @@ export default function Ideas() {
           device. */}
       <PlaceSearch
         kind={kind}
+        town={plannerInputs.location}
+        onTownChange={plannerInputs.setLocation}
         onPick={(result) =>
           save.mutate({
             kind,
@@ -204,6 +227,17 @@ export default function Ideas() {
             source: 'places',
             sourceDomain: 'google',
             locale,
+            // Kept as a place row, not just flattened into the summary above:
+            // the coordinates and the provider's id are what let this idea
+            // carry a map, a drive time and a stay search into the booking.
+            place: {
+              name: result.name,
+              address: result.address,
+              provider: 'google',
+              providerPlaceId: result.providerPlaceId,
+              coordinates: result.coordinates,
+              locale,
+            },
           })
         }
       />
