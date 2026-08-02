@@ -12,7 +12,7 @@
 import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, Plan } from '@couple/core';
 import { createDomainRepository } from '@couple/data';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import { supabase } from './runtime';
@@ -34,6 +34,37 @@ export function useCadences(coupleId: string) {
   return useQuery({
     queryKey: keys.cadences(coupleId),
     queryFn: () => plans.listCadences(coupleId),
+  });
+}
+
+/**
+ * Book something.
+ *
+ * Written straight to `scheduled` rather than through a propose/accept loop:
+ * this app has no negotiation step, and its three clocks only move for
+ * something that is actually on the calendar. The cadence list is invalidated
+ * alongside the plans because a new booking changes what the rhythm screen
+ * says about being on track.
+ */
+export function useCreatePlan(coupleId: string, profileId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { kind: string; title: string | null; startsAt: Date; endsAt: Date }) =>
+      plans.createPlan({
+        coupleId,
+        kind: input.kind,
+        createdBy: profileId,
+        // Partner-authored, stored and shown verbatim in whatever language it
+        // was written.
+        title: input.title,
+        startsAt: input.startsAt.toISOString(),
+        endsAt: input.endsAt.toISOString(),
+        status: 'scheduled',
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+    },
   });
 }
 

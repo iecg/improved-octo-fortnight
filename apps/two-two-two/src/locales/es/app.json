@@ -16,6 +16,22 @@
     "planIt": "Planearlo",
     "bookedFor": "Reservado para el {{date}}"
   },
+  "plan": {
+    "title": "Planear algo",
+    "kind": "Qué es",
+    "titleLabel": "Cómo lo llamas",
+    "titlePlaceholder": "Opcional",
+    "titleHint": "Tu pareja lo ve tal como lo escribes, en el idioma en que lo escribas.",
+    "when": "Qué día",
+    "startTime": "A partir de las",
+    "howLong": "Cuánto dura",
+    "hours_one": "{{count}} hora",
+    "hours_other": "{{count}} horas",
+    "nights_one": "{{count}} noche",
+    "nights_other": "{{count}} noches",
+    "summary": "Reservado para el {{date}}",
+    "save": "Ponerlo en el calendario"
+  },
   "settings": {
     "title": "Ajustes",
     "account": "Cuenta",

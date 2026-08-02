@@ -16,6 +16,22 @@
     "planIt": "Plan it",
     "bookedFor": "Booked for {{date}}"
   },
+  "plan": {
+    "title": "Plan something",
+    "kind": "What is it",
+    "titleLabel": "What are you calling it",
+    "titlePlaceholder": "Optional",
+    "titleHint": "Your partner sees this exactly as you write it, in whatever language you write it.",
+    "when": "Which day",
+    "startTime": "Starting at",
+    "howLong": "How long",
+    "hours_one": "{{count}} hour",
+    "hours_other": "{{count}} hours",
+    "nights_one": "{{count}} night",
+    "nights_other": "{{count}} nights",
+    "summary": "Booked for {{date}}",
+    "save": "Put it on the calendar"
+  },
   "settings": {
     "title": "Settings",
     "account": "Account",

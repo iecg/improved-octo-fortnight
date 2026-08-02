@@ -10,7 +10,8 @@
  */
 import { kindDescriptionKey, kindLabelKey, type AppDomain } from '@couple/core';
 import { dueTranslation, formatDay, intervalTranslation } from '@couple/i18n';
-import { Body, CadenceBar, Card, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
+import { Body, Button, CadenceBar, Card, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
+import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -21,6 +22,7 @@ import { usePairedSession } from '../../src/session';
 export default function Rhythm() {
   const { t, i18n } = useTranslation(['app', 'common', 'cadence']);
   const { couple } = usePairedSession();
+  const router = useRouter();
 
   // One clock for the whole render, so no two countdowns disagree mid-paint.
   const now = useMemo(() => new Date(), []);
@@ -96,6 +98,15 @@ export default function Rhythm() {
               </Muted>
 
               {interval ? <Muted>{t(interval.key, { count: interval.count })}</Muted> : null}
+
+              {/* The only thing that ever resets this clock. */}
+              <Button
+                label={t('app:home.planIt')}
+                variant="secondary"
+                onPress={() =>
+                  router.push({ pathname: '/plan/new', params: { kind: status.kind } })
+                }
+              />
             </View>
           </Card>
         );

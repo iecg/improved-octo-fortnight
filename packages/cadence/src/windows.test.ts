@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mergeRanges, suggestWindows, type TimeRange } from './windows';
+import { atHourInZone, mergeRanges, suggestWindows, type TimeRange } from './windows';
 
 const UTC = 'UTC';
 
@@ -11,6 +11,31 @@ function range(start: string, end: string): TimeRange {
 function iso(ranges: TimeRange[]): string[] {
   return ranges.map((r) => `${r.start.toISOString()}/${r.end.toISOString()}`);
 }
+
+describe('atHourInZone', () => {
+  it('lands on the wall-clock hour in the couple’s zone, not the host’s', () => {
+    // The host zone is pinned to Pacific/Auckland by the vitest config, so a
+    // naive implementation would be off by most of a day here.
+    const at = atHourInZone(new Date('2026-09-12T15:00:00Z'), 19, 'America/New_York');
+    expect(at.toISOString()).toBe('2026-09-12T23:00:00.000Z'); // 19:00 EDT
+  });
+
+  it('gives the same local hour on both sides of a DST change', () => {
+    // 2026-03-08 is the US spring-forward. Both are 09:00 locally; the UTC
+    // offset differs by an hour precisely because the local hour does not.
+    const before = atHourInZone(new Date('2026-03-07T12:00:00Z'), 9, 'America/New_York');
+    const after = atHourInZone(new Date('2026-03-09T12:00:00Z'), 9, 'America/New_York');
+
+    expect(before.toISOString()).toBe('2026-03-07T14:00:00.000Z'); // EST, UTC-5
+    expect(after.toISOString()).toBe('2026-03-09T13:00:00.000Z'); // EDT, UTC-4
+  });
+
+  it('ignores the time of day already on the anchor', () => {
+    const morning = atHourInZone(new Date('2026-09-12T04:00:00Z'), 20, 'UTC');
+    const evening = atHourInZone(new Date('2026-09-12T22:00:00Z'), 20, 'UTC');
+    expect(morning.toISOString()).toBe(evening.toISOString());
+  });
+});
 
 describe('mergeRanges', () => {
   it('coalesces overlapping blocks', () => {
