@@ -85,8 +85,15 @@ the heaviest dependency. On a Homebrew cluster:
 
 ```bash
 brew install postgresql@16 && brew services start postgresql@16
-PGHOST=/tmp PGPORT=5432 PGUSER=$(whoami) npm run db:test
+cp .env.example .env    # then set PGUSER to your OS username
+npm run db:test
 ```
+
+The root `.env` is read by `vitest.rls.config.ts` through Node's own
+`process.loadEnvFile` — no dotenv dependency — and only ever points at a local
+throwaway database, never at Supabase. Shell variables still win over it, so
+`PGHOST=… npm run db:test` overrides the file for a one-off, and CI needs no
+`.env` at all. The apps' `.env` files are separate and live in `apps/*/`.
 
 Two suites live behind it. `tests/rls/` checks the policies statement by
 statement. `tests/e2e/journey.test.ts` walks the path a couple actually takes —
