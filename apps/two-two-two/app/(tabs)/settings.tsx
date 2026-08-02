@@ -2,10 +2,8 @@ import { ConnectedAppsCard, UnpairCard } from '@couple/auth';
 import { LOCALES, kindLabelKey, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
-  isCrossAppBusyEnabled,
   requestCalendarAccess,
   requestNotificationPermission,
-  setCrossAppBusyEnabled,
 } from '@couple/device';
 import { Button, Card, Chip, Divider, Heading, Muted, Screen, Title } from '@couple/ui';
 import { useEffect, useState } from 'react';
@@ -13,7 +11,12 @@ import { useTranslation } from 'react-i18next';
 import { Switch, View } from 'react-native';
 
 import { AiKeyCard, resetPlannerInputs } from '../../src/features/date-planner/ai';
-import { useCadences, useSetCadenceEnabled } from '../../src/queries';
+import {
+  useCadences,
+  useCrossAppBusyEnabled,
+  useSetCadenceEnabled,
+  useSetCrossAppBusyEnabled,
+} from '../../src/queries';
 import { usePairedSession, useSession } from '../../src/session';
 
 export default function Settings() {
@@ -21,7 +24,11 @@ export default function Settings() {
   const { profile, partner, setLocale, signOut, leaveCouple } = useSession();
   const { couple } = usePairedSession();
   const [calendarOk, setCalendarOk] = useState(false);
-  const [crossAppBusy, setCrossAppBusy] = useState(false);
+
+  // Read through the query layer so the switch and the propose screen cannot
+  // disagree about what this device has been asked for.
+  const crossAppBusy = useCrossAppBusyEnabled();
+  const setCrossAppBusy = useSetCrossAppBusyEnabled();
 
   const cadencesQuery = useCadences(couple.id);
   const setCadenceEnabled = useSetCadenceEnabled(couple.id);
@@ -38,15 +45,7 @@ export default function Settings() {
 
   useEffect(() => {
     void hasCalendarAccess().then(setCalendarOk);
-    void isCrossAppBusyEnabled().then(setCrossAppBusy);
   }, []);
-
-  // Device-local, like the app lock in the other app: it decides what this
-  // phone shows, so syncing it would let one partner answer for the other.
-  async function toggleCrossAppBusy(next: boolean) {
-    setCrossAppBusy(next);
-    await setCrossAppBusyEnabled(next);
-  }
 
   const partnerName = partner?.displayName ?? t('common:partner.unnamed');
 
@@ -95,9 +94,12 @@ export default function Settings() {
               <Heading>{t('app:settings.crossAppBusy')}</Heading>
               <Muted>{t('app:settings.crossAppBusyHint')}</Muted>
             </View>
+            {/* Device-local, like the app lock in the other app: it decides
+                what this phone shows, so syncing it would let one partner
+                answer for the other. */}
             <Switch
-              value={crossAppBusy}
-              onValueChange={(next) => void toggleCrossAppBusy(next)}
+              value={crossAppBusy.data}
+              onValueChange={(next) => setCrossAppBusy.mutate(next)}
               accessibilityLabel={t('app:settings.crossAppBusy')}
             />
           </View>

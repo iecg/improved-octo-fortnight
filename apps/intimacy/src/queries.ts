@@ -35,6 +35,9 @@ const keys = {
   checkins: (coupleId: string, date: string) => ['checkins', coupleId, date] as const,
   // Not domain-keyed: this list is the same one either app would read.
   busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
+  // Every bounds pair for a couple. The bounds are part of the key, so
+  // invalidating one window would leave every other range stale.
+  busyAll: (coupleId: string) => ['busy', coupleId] as const,
 };
 
 export function usePlans(coupleId: string) {
@@ -304,6 +307,7 @@ export function useRealtimeSync(coupleId: string | null): void {
         { event: '*', schema: 'public', table: 'plans', filter: `domain=eq.${DOMAIN}` },
         () => {
           void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+          void client.invalidateQueries({ queryKey: keys.busyAll(coupleId) });
         },
       )
       .on(
@@ -316,6 +320,10 @@ export function useRealtimeSync(coupleId: string | null): void {
         },
         () => {
           void client.invalidateQueries({ queryKey: keys.proposals(coupleId) });
+          // A proposed time occupies a window as far as the busy view is
+          // concerned, so the propose screen's suggestions are stale the
+          // moment one lands.
+          void client.invalidateQueries({ queryKey: keys.busyAll(coupleId) });
         },
       )
       .on(

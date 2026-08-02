@@ -12,9 +12,9 @@
 import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, CostBand, IdeaSource, Locale, Plan } from '@couple/core';
 import { createBusyRepository, createDomainRepository, createIdeaRepository } from '@couple/data';
-import { isCrossAppBusyEnabled } from '@couple/device';
+import { isCrossAppBusyEnabled, setCrossAppBusyEnabled } from '@couple/device';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import { DEFAULT_CADENCES, supabase } from './runtime';
 
@@ -39,6 +39,11 @@ const keys = {
   ideas: (coupleId: string) => ['ideas', DOMAIN, coupleId] as const,
   // Not domain-keyed: this list is the same one either app would read.
   busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
+  // Every bounds pair for a couple. The bounds are part of the key, so
+  // invalidating one window would leave every other range stale.
+  busyAll: (coupleId: string) => ['busy', coupleId] as const,
+  // Device-local, so not keyed by couple: it describes this phone.
+  crossAppBusy: () => ['preferences', 'crossAppBusy'] as const,
 };
 
 export function usePlans(coupleId: string) {
@@ -95,6 +100,39 @@ export function useEnsureCadences(coupleId: string): void {
 }
 
 /**
+ * Whether this device may see times the couple is busy in the other app.
+ *
+ * A query rather than a `useState` seeded by an effect, so that flipping the
+ * switch in Settings reaches every mounted reader at once. The effect version
+ * ran with `[]` deps and read the keychain exactly once per mount: the toggle
+ * changed the stored value and nothing already on screen ever heard about it.
+ * That was survivable only because the one consumer is a modal that remounts.
+ *
+ * `initialData: false` is the gate, not an optimisation. The query starts
+ * closed, so nothing reads across the boundary in the window before the
+ * keychain answers.
+ */
+export function useCrossAppBusyEnabled() {
+  return useQuery({
+    queryKey: keys.crossAppBusy(),
+    queryFn: isCrossAppBusyEnabled,
+    initialData: false,
+    staleTime: Infinity,
+  });
+}
+
+/** The switch in Settings. Writes the keychain, then tells every reader. */
+export function useSetCrossAppBusyEnabled() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: setCrossAppBusyEnabled,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.crossAppBusy() });
+    },
+  });
+}
+
+/**
  * Occupied windows from the server, if the reader has asked for them.
  *
  * The setting is read *here*, not passed in by the caller. This is the only
@@ -107,13 +145,16 @@ export function useEnsureCadences(coupleId: string): void {
  *
  * The bounds are part of the key so a screen that widens its range refetches
  * rather than quietly reusing a narrower answer.
+ *
+ * What realtime cannot keep fresh: this app subscribes to `plans` filtered to
+ * its own domain, deliberately, so a booking made in the *other* app does not
+ * arrive here — the filter is the domain boundary. Those windows are picked up
+ * the next time a screen mounts with a fresh range. Widening the subscription
+ * to hear about them would deliver the very rows the boundary exists to keep
+ * out.
  */
 export function useServerBusy(coupleId: string, from: Date, to: Date) {
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    void isCrossAppBusyEnabled().then(setEnabled);
-  }, []);
+  const { data: enabled } = useCrossAppBusyEnabled();
 
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
@@ -288,6 +329,7 @@ export function useRealtimeSync(coupleId: string | null): void {
         { event: '*', schema: 'public', table: 'plans', filter: `domain=eq.${DOMAIN}` },
         () => {
           void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+          void client.invalidateQueries({ queryKey: keys.busyAll(coupleId) });
         },
       )
       // The shortlist is shared, and both partners read it while deciding what
