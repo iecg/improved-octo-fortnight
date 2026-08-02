@@ -21,7 +21,8 @@
     "library": "Some suggestions",
     "libraryHint": "Bundled with the app. No account, no connection, no cleverness required.",
     "save": "Save it",
-    "planIt": "Plan it"
+    "planIt": "Plan it",
+    "fromAi": "Suggested by a model"
   },
   "home": {
     "title": "Your rhythm",

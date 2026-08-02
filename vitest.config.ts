@@ -12,6 +12,12 @@ export default defineConfig({
     environment: 'node',
     include: [
       'packages/*/src/**/*.test.ts',
+      // The 2-2-2 app's BYOK feature has to live under `apps/*/src/features/
+      // */ai/` for the guard in `tests/guards/ai-optional.test.ts`, so its pure
+      // modules cannot sit in `packages/` and their tests cannot either.
+      // Deliberately `.ts` only: a `.tsx` test would need a renderer, and this
+      // suite promises no native modules.
+      'apps/*/src/**/*.test.ts',
       'tests/i18n/**/*.test.ts',
       'tests/guards/**/*.test.ts',
     ],

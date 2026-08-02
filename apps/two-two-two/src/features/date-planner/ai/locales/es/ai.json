@@ -1,0 +1,48 @@
+{
+  "settings": {
+    "title": "Sugerencias",
+    "description": "Opcional. Añade una clave de uno de estos servicios y la pantalla de ideas podrá sugerir algunas más.",
+    "privacy": "Tu clave se guarda solo en este teléfono. Nunca llega a nuestros servidores y tu pareja nunca la ve: si también quiere sugerencias, añade la suya.",
+    "provider": {
+      "openrouter": "OpenRouter",
+      "gemini": "Google Gemini"
+    },
+    "keyLabel": "Clave de API",
+    "keyPlaceholder": "Pega tu clave",
+    "keyInvalid": "Esto no parece una clave de este servicio.",
+    "keyStored": "Hay una clave guardada en este teléfono.",
+    "keyAbsent": "No hay ninguna clave guardada.",
+    "save": "Guardar clave",
+    "remove": "Eliminar clave",
+    "getKey": "¿Dónde consigo una clave?",
+    "modelLabel": "Modelo",
+    "modelHint": "Solo merece la pena cambiarlo si el predeterminado deja de funcionar."
+  },
+  "suggest": {
+    "title": "Pide algunas",
+    "hint": "¿Algo que tener en cuenta?",
+    "hintPlaceholder": "Un sitio para ir andando, menos de 50 €",
+    "hintNote": "Lo que escribas aquí se envía al servicio que elegiste. Nada más de la aplicación se envía.",
+    "notConfigured": "Añade una clave en Ajustes y aquí podrán aparecer algunas sugerencias.",
+    "generate": "Sugerir algunas",
+    "again": "Intentar de nuevo",
+    "generating": "Pensando…",
+    "disclaimer": "Escrito por un modelo, no por nosotros. Compruébalo antes de contar con ello.",
+    "dismiss": "Borrar estas"
+  },
+  "error": {
+    "no_key": "Todavía no hay ninguna clave guardada para este servicio.",
+    "unauthorized": "Se rechazó esa clave. Revísala y vuelve a guardarla.",
+    "quota": "Esa cuenta se ha quedado sin crédito.",
+    "rate_limited": "Demasiadas peticiones ahora mismo. Espera un minuto.",
+    "invalid_request": "El servicio no pudo leer esa petición.",
+    "model_unavailable": "Ese modelo no está disponible. Prueba a vaciar el campo del modelo.",
+    "provider_down": "El servicio está teniendo problemas. Inténtalo dentro de un rato.",
+    "network": "No se pudo conectar con el servicio. Revisa tu conexión.",
+    "timeout": "Ha tardado demasiado. Inténtalo de nuevo.",
+    "refused": "El modelo prefirió no responder a eso.",
+    "malformed": "No se pudo leer la respuesta.",
+    "empty": "No llegó nada aprovechable. Inténtalo de nuevo.",
+    "unknown": "Eso no ha funcionado."
+  }
+}

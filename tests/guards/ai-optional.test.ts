@@ -24,6 +24,10 @@ import es from '../../apps/two-two-two/src/locales/es/ideas.json';
 import { TWO_TWO_TWO_KINDS } from '../../packages/core/src/kinds';
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
+/**
+ * `tests` is deliberately absent: this file names every marker it looks for,
+ * so scanning itself would fail on the first line of `MODEL_MARKERS`.
+ */
 const SCANNED = ['apps', 'packages', 'supabase'];
 const IGNORED_DIRS = new Set(['node_modules', '.git', '.expo', 'dist', 'ios', 'android']);
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
@@ -33,7 +37,26 @@ const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
  * includes the env var itself: reading it outside the AI feature is the exact
  * shape of "assumes a model exists".
  */
-const MODEL_MARKERS = [/ANTHROPIC_API_KEY/, /@anthropic-ai\//, /\bnew\s+Anthropic\b/];
+const MODEL_MARKERS = [
+  /ANTHROPIC_API_KEY/,
+  /@anthropic-ai\//,
+  /\bnew\s+Anthropic\b/,
+
+  // The BYOK providers the ideas feature can call. Keys are the user's own and
+  // live in the device keychain, but "which provider, at which URL" is still
+  // the shape of assuming a model exists.
+  //
+  // Deliberately specific. A generic /api[_ ]?key/i would fail
+  // `packages/data/src/ideas.ts`, whose header says "no API key configured" —
+  // prose about the absence of a model is exactly what this rule wants to
+  // allow everywhere.
+  /openrouter/i,
+  /generativelanguage\.googleapis\.com/,
+  /\bgemini[\w-]*\b/i,
+  /\bx-goog-api-key\b/i,
+  /@google\/(genai|generative-ai)\b/,
+  /\bapi_key_(openrouter|gemini)\b/,
+];
 
 /** The one place any of this is allowed to live. */
 function isAiFeaturePath(relativePath: string): boolean {

@@ -8,10 +8,18 @@
  * partner-authored, so it is shown verbatim and merely *labelled* with the
  * language it was written in when that differs from the reader's.
  *
- * That is the whole AI-optional rule in practice: nothing on this screen
- * asks whether a key is configured, because nothing here has a model in its
- * path. A suggestion feature would be a third source alongside these two, not
- * a replacement for them.
+ * Suggestions are the third source, and they are exactly that — a third source
+ * alongside the other two, never a replacement for them. Everything above is
+ * rendered before anything asks whether a key is configured, and with no key
+ * the suggestion card collapses to one line pointing at settings while the
+ * library and the shortlist carry on unchanged. That is the AI-optional rule
+ * as a rendering decision rather than a promise: turn the key off and this
+ * screen is the screen it was before the feature existed.
+ *
+ * A suggestion is written by a model rather than by us, so it is treated like
+ * a partner's own words rather than like chrome: generated in the reader's
+ * language, saved with that language recorded, shown verbatim, and labelled
+ * rather than machine-translated for whoever reads it in the other one.
  */
 import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain, type PlanIdea } from '@couple/core';
 import {
@@ -31,12 +39,13 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
+import { AiSuggestionCard, type SuggestedIdea } from '../../src/features/date-planner/ai';
 import { libraryFor, ideaSummaryKey, ideaTitleKey } from '../../src/ideas';
 import { useIdeas, useRemoveIdea, useSaveIdea } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 export default function Ideas() {
-  const { t, i18n } = useTranslation(['app', 'common', 'cadence', 'ideas']);
+  const { t, i18n } = useTranslation(['app', 'common', 'cadence', 'ideas', 'ai']);
   const { profile, couple } = usePairedSession();
   const router = useRouter();
 
@@ -69,6 +78,23 @@ export default function Ideas() {
     setDraft('');
   }
 
+  /**
+   * A suggestion joins the shortlist only when someone deliberately saves it,
+   * never because the other partner asked for some. It is stamped with the
+   * language it was generated in — the asker's — so the reader in the other
+   * language gets the label rather than a translation of a model's words.
+   */
+  async function saveSuggestion(idea: SuggestedIdea) {
+    await save.mutateAsync({
+      kind,
+      title: idea.title,
+      summary: idea.summary,
+      estCostBand: idea.estCostBand,
+      source: 'ai',
+      locale,
+    });
+  }
+
   function SavedIdea({ idea }: { idea: PlanIdea }) {
     return (
       <View className="gap-2 py-2">
@@ -77,6 +103,8 @@ export default function Ideas() {
         {idea.summary ? <Muted>{idea.summary}</Muted> : null}
         {/* Labelled, not translated, when it is not in the reader's language. */}
         {idea.locale !== locale ? <Muted>{t(`common:language.${idea.locale}`)}</Muted> : null}
+        {/* Who wrote it is separate from what language it is in, and both matter. */}
+        {idea.source === 'ai' ? <Muted>{t('app:ideas.fromAi')}</Muted> : null}
         <View className="flex-row gap-2">
           <View className="grow basis-0">
             <Button
@@ -150,6 +178,14 @@ export default function Ideas() {
           />
         </View>
       </Card>
+
+      <AiSuggestionCard
+        kind={kind}
+        locale={locale}
+        savedTitles={savedTitles}
+        onSave={(idea) => void saveSuggestion(idea)}
+        onPlan={planIt}
+      />
 
       <Card>
         <View className="gap-2">

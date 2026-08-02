@@ -198,8 +198,7 @@ an app, that invariant is about to break.
 Per app: its screens, its `app` translation namespace, its kind catalog, and
 its `createDomainRepository(client, '<domain>')` binding.
 
-2-2-2-owned tables are `plan_ideas` and `ai_usage`, plus the planned
-`suggest-ideas` Edge Function. They are reached through
+2-2-2-owned tables are `plan_ideas` and `ai_usage`. They are reached through
 `createIdeaRepository` in `packages/data/src/ideas.ts` — its own factory, next
 to the intimacy-owned `createCheckinRepository`, so the other app has nothing
 to import even by accident. It hard-codes its domain rather than taking one,
@@ -214,10 +213,29 @@ configured; `ai_usage` simply stays empty. The guard also requires the bundled
 library to stay non-empty and complete in both languages, since a grep that
 passes over an empty library proves nothing.
 
+Suggestions are the optional third source, in
+`apps/two-two-two/src/features/date-planner/ai/`, and they are **BYOK**: each
+partner stores their own OpenRouter or Gemini key in the device keychain
+(`expo-secure-store`), and requests go from that device straight to that
+provider. There is no Edge Function and no server of ours in the path — which
+is why `ai_usage` stays empty in practice as well as in principle: it is
+`select`-only to clients and only a service role could ever write it. A key is
+per person and per device; it is never written to a table and the partner never
+sees it. The prompt in `prompt.ts` is the only thing that leaves the device, and
+it carries the kind, the language, a count and whatever the user typed — never a
+plan, a check-in, an id, the couple's timezone, or the shortlist.
+
+Because the rule is only worth what its markers catch, `MODEL_MARKERS` in the
+guard covers both providers' hosts and keychain item names, not just Anthropic.
+Adding a third provider means adding its markers in the same commit.
+
 The library is _ours_, so it is translated like any other chrome and each
 partner reads it in their own language. Manually entered ideas are the other
 case — partner-authored, shown verbatim, and labelled with the language they
-were written in when that differs from the reader's.
+were written in when that differs from the reader's. A suggestion is a model's
+words rather than ours, so it is treated the same way as a partner's: generated
+in the asker's language, stored with that `locale`, shown verbatim, and labelled
+rather than machine-translated for the partner reading in the other one.
 
 Ported from `iecg/legendary-bassoon` (now superseded). Two bugs found there
 and guarded against here, both with tests: a `count(*)`-based couple-size
