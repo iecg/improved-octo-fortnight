@@ -156,9 +156,9 @@ locally), then restart the stack.
 | --- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | I1  | Book a plan with a place, leave the toggle off, grant calendar | The entry has a title and a time. **No address.**                                          |
 | I2  | Turn the toggle on from the Plans screen                       | Within a pass, the same entry now carries the address — no duplicate entry appears.        |
-| I3  | Turn it back off                                               | The address is gone from the entry again.                                                  |
+| I3  | Turn it back off, then open the **stock Calendar app**         | The address is gone from the entry itself. Check it in Calendar, not in ours: `update()` is a partial merge, and omitting a field asks the OS to keep it. This read as fixed for a whole release while the address sat on the phone. |
 | I4  | Rename the plan, or change its place                           | The existing entry updates. It does not go stale and does not duplicate.                   |
-| I5  | Remove the place entirely                                      | The entry loses its address; the plan keeps its entry.                                     |
+| I5  | Remove the place entirely, then check Calendar again           | The entry loses its address; the plan keeps its entry.                                     |
 | I6  | Do I2 on the **intimacy** app                                  | Not applicable — it passes no `calendarLocationFor`, and its entries must stay label-only. |
 
 ---

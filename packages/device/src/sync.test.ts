@@ -90,8 +90,10 @@ describe('reconcileDevice', () => {
     expect(writeCalendarEvent).toHaveBeenCalledTimes(1);
     const written = vi.mocked(writeCalendarEvent).mock.calls[0]![0];
     expect(written.title).toBe('Evening');
-    expect(written.notes).toBeUndefined();
     expect(written.location).toBeUndefined();
+    // Nothing else is even offered: an entry is a label, a span, and at most an
+    // address the couple opted into. `notes` is not a field on this type.
+    expect(Object.keys(written).sort()).toEqual(['endsAt', 'startsAt', 'timeZone', 'title']);
 
     expect(opts.onCalendarEvent).toHaveBeenCalledWith(opts.plans[0], 'event-new');
     expect(scheduleReminder).toHaveBeenCalledTimes(1);
@@ -108,7 +110,13 @@ describe('reconcileDevice', () => {
     const written = vi.mocked(writeCalendarEvent).mock.calls[0]![0];
     expect(written.location).toBe('Carrer dels Almogàvers 1, Barcelona');
     // Still nothing else — an address is the only thing being opted into.
-    expect(written.notes).toBeUndefined();
+    expect(Object.keys(written).sort()).toEqual([
+      'endsAt',
+      'location',
+      'startsAt',
+      'timeZone',
+      'title',
+    ]);
   });
 
   it('writes nothing when the opt-in callback declines for this plan', async () => {
