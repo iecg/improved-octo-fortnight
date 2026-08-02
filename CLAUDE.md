@@ -106,8 +106,11 @@ a schema change that typechecks but does not _work_ gets caught.
 What it deliberately does not cover, because Node cannot: email OTP delivery
 (that is Supabase's auth service — rows are inserted into `auth.users`
 directly), PostgREST (statements run over a socket as the `authenticated` role,
-not through supabase-js), and writing to a device calendar. The last of those
-needs a dev build; see below.
+not through supabase-js), and writing to a device calendar. All three have been
+walked by hand on a simulator dev build against the local stack — sign in with
+a real code, check in, search free/busy, propose, and watch a partner-booked
+plan produce a calendar entry titled with the neutral label and nothing else —
+but no automated test covers them, so treat a green suite accordingly.
 
 ## Data model notes
 
@@ -155,6 +158,13 @@ If `pod install` dies with `Unicode Normalization not appropriate for
 ASCII-8BIT`, that is CocoaPods on Ruby 4 in a non-UTF-8 shell — and its error
 reporter crashes while formatting the _real_ error, so the message is doubly
 unhelpful. Prefix the command with `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8`.
+
+When driving the simulator, read the accessibility tree rather than trusting a
+screenshot — `axe describe-ui` gives every element's label and frame. Simulator
+screenshots can lag the running app by whole screens, and a stale one is
+indistinguishable from a frozen app: it cost a full debugging detour here,
+diagnosing a "dead" pairing screen that had in fact already navigated away. The
+tree also gives exact tap coordinates instead of arithmetic on pixel sizes.
 
 For a build on Expo's infrastructure instead, both apps carry an `eas.json`:
 
