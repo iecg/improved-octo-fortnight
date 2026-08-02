@@ -47,7 +47,7 @@
     "nights_other": "{{count}} nights",
     "summary": "Booked for {{date}}",
     "save": "Put it on the calendar",
-    "busyHint": "Marked times already have something on your calendar. You can still pick them.",
+    "busyHint": "Marked times are already spoken for. You can still pick them.",
     "busyOption": "{{option}} — already booked"
   },
   "settings": {
@@ -59,6 +59,8 @@
     "calendarAccess": "Calendar access",
     "allow": "Allow",
     "allowed": "Allowed",
+    "crossAppBusy": "Avoid times you are busy elsewhere",
+    "crossAppBusyHint": "Marks times the two of you are already booked in your other app. Times only — never what they are for.",
     "signOut": "Sign out"
   },
   "notification": {

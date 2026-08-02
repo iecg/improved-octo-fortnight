@@ -7,6 +7,7 @@
  */
 import type {
   AppDomain,
+  BusyWindow,
   Cadence,
   Checkin,
   CostBand,
@@ -21,6 +22,7 @@ import type {
 import type { Database, Json } from './database.types';
 
 type Tables = Database['public']['Tables'];
+type Views = Database['public']['Views'];
 
 export function toProfile(row: Tables['profiles']['Row']): Profile {
   return {
@@ -128,4 +130,15 @@ export function toCheckin(row: Tables['checkins']['Row']): Checkin {
     note: row.note,
     createdAt: row.created_at,
   };
+}
+
+/**
+ * The one mapper over a view rather than a table.
+ *
+ * Returns `Date`s rather than the ISO strings every other mapper passes
+ * through, because the only consumer is the cadence engine's range arithmetic
+ * and handing it strings would push the parsing into a screen.
+ */
+export function toBusyWindow(row: Views['plan_busy_times']['Row']): BusyWindow {
+  return { start: new Date(row.starts_at), end: new Date(row.ends_at) };
 }

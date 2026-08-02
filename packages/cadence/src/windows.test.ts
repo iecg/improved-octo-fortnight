@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { atHourInZone, mergeRanges, overlapsAny, suggestWindows, type TimeRange } from './windows';
+import type { Plan, PlanStatus } from '@couple/core';
+
+import {
+  atHourInZone,
+  busyFromPlans,
+  mergeRanges,
+  overlapsAny,
+  suggestWindows,
+  type TimeRange,
+} from './windows';
 
 const UTC = 'UTC';
 
@@ -34,6 +43,73 @@ describe('atHourInZone', () => {
     const morning = atHourInZone(new Date('2026-09-12T04:00:00Z'), 20, 'UTC');
     const evening = atHourInZone(new Date('2026-09-12T22:00:00Z'), 20, 'UTC');
     expect(morning.toISOString()).toBe(evening.toISOString());
+  });
+});
+
+function makePlan(overrides: Partial<Plan> = {}): Plan {
+  return {
+    id: 'plan-1',
+    coupleId: 'couple-1',
+    domain: 'intimacy',
+    kind: 'intimacy',
+    title: null,
+    notes: null,
+    location: null,
+    startsAt: '2026-09-12T18:00:00.000Z',
+    endsAt: '2026-09-12T20:00:00.000Z',
+    status: 'scheduled',
+    createdBy: 'them',
+    completedAt: null,
+    calendarEventIds: {},
+    createdAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('busyFromPlans', () => {
+  it.each<PlanStatus>(['proposed', 'scheduled'])('counts a %s plan as occupied', (status) => {
+    expect(busyFromPlans([makePlan({ status })])).toEqual([
+      { start: new Date('2026-09-12T18:00:00.000Z'), end: new Date('2026-09-12T20:00:00.000Z') },
+    ]);
+  });
+
+  /**
+   * `proposed` is the reason this exists and the reason it is not `BOOKED`:
+   * a time under negotiation blocks the calendar without earning an entry on
+   * it, so the two sets must not be collapsed into one.
+   */
+  it.each<PlanStatus>(['idea', 'completed', 'skipped', 'declined'])(
+    'ignores a %s plan',
+    (status) => {
+      expect(busyFromPlans([makePlan({ status })])).toEqual([]);
+    },
+  );
+
+  it.each([
+    ['no start', { startsAt: null }],
+    ['no end', { endsAt: null }],
+    ['neither', { startsAt: null, endsAt: null }],
+  ])('ignores a plan with %s — it is not yet a time', (_label, overrides) => {
+    expect(busyFromPlans([makePlan(overrides)])).toEqual([]);
+  });
+
+  it('ignores an unparseable or inverted span rather than emitting a bad block', () => {
+    expect(busyFromPlans([makePlan({ startsAt: 'not a date' })])).toEqual([]);
+    expect(
+      busyFromPlans([
+        makePlan({ startsAt: '2026-09-12T20:00:00.000Z', endsAt: '2026-09-12T18:00:00.000Z' }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('feeds straight into overlapsAny, which is the whole point', () => {
+    const busy = busyFromPlans([makePlan({ status: 'proposed' })]);
+    expect(overlapsAny(range('2026-09-12T19:00:00Z', '2026-09-12T21:00:00Z'), busy)).toBe(true);
+    expect(overlapsAny(range('2026-09-12T20:00:00Z', '2026-09-12T22:00:00Z'), busy)).toBe(false);
+  });
+
+  it('returns nothing for an empty list', () => {
+    expect(busyFromPlans([])).toEqual([]);
   });
 });
 

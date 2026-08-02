@@ -31,6 +31,16 @@ a test, listed with them.
    method that takes `domain` as a per-call argument.**
    (`packages/data/src/repository.test.ts`)
 
+   There is exactly one accessor that reads across it, and the shape of the
+   exception is the point. `createBusyRepository` reads `plan_busy_times`, a
+   view selecting `couple_id`, `starts_at` and `ends_at` and nothing else — so
+   it cannot take a domain because there is no domain column to take one, and
+   a caller learns that a window is occupied without learning what occupies it.
+   Widening it means changing the view, in a migration, in review. The 2-2-2
+   app gates reading it on a device-local setting that starts off; the intimacy
+   app does not, because what it discloses in that direction is that a date
+   night is booked. (`tests/guards/standalone.test.ts`, `tests/rls/`)
+
 3. **Discretion.** Nothing intimate reaches a lock screen, a notification
    payload, or a calendar entry. Calendar events carry a user-chosen neutral
    label only. Reminders are _local_, composed on the recipient's own device —

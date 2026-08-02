@@ -136,6 +136,19 @@ export interface PlanIdea {
   createdAt: string;
 }
 
+/**
+ * A window the couple is occupied in, and nothing more.
+ *
+ * Two instants with no title, no domain and no author — not because those are
+ * stripped on the way out, but because the `plan_busy_times` view never selects
+ * them. Both apps consume this to stop offering a time that is already spoken
+ * for, and neither can learn what is occupying it.
+ */
+export interface BusyWindow {
+  start: Date;
+  end: Date;
+}
+
 export interface Checkin {
   id: string;
   coupleId: string;

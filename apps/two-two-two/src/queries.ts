@@ -11,9 +11,10 @@
  */
 import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, CostBand, IdeaSource, Locale, Plan } from '@couple/core';
-import { createDomainRepository, createIdeaRepository } from '@couple/data';
+import { createBusyRepository, createDomainRepository, createIdeaRepository } from '@couple/data';
+import { isCrossAppBusyEnabled } from '@couple/device';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { DEFAULT_CADENCES, supabase } from './runtime';
 
@@ -24,10 +25,20 @@ export const plans = createDomainRepository(supabase, DOMAIN);
 /** 2-2-2-owned. Its own factory, so the intimacy app has nothing to import. */
 export const ideas = createIdeaRepository(supabase);
 
+/**
+ * Times the couple is occupied, across both apps — and only times.
+ *
+ * The one accessor here that is not domain-scoped, because the view behind it
+ * has no domain to scope to. Gated on a setting; see `useServerBusy`.
+ */
+export const busy = createBusyRepository(supabase);
+
 const keys = {
   plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
   cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
   ideas: (coupleId: string) => ['ideas', DOMAIN, coupleId] as const,
+  // Not domain-keyed: this list is the same one either app would read.
+  busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
 };
 
 export function usePlans(coupleId: string) {
@@ -81,6 +92,36 @@ export function useEnsureCadences(coupleId: string): void {
       client.invalidateQueries({ queryKey: keys.cadences(coupleId) }),
     );
   }, [client, coupleId, empty]);
+}
+
+/**
+ * Occupied windows from the server, if the reader has asked for them.
+ *
+ * The setting is read *here*, not passed in by the caller. This is the only
+ * door to the one accessor that crosses the domain boundary, so the gate
+ * belongs on it — a second screen wanting busy times later cannot forget to
+ * check, because there is nothing for it to forget.
+ *
+ * It starts closed. Until the preference resolves, and forever after if it
+ * resolves false, the query does not run and no intimacy row is read.
+ *
+ * The bounds are part of the key so a screen that widens its range refetches
+ * rather than quietly reusing a narrower answer.
+ */
+export function useServerBusy(coupleId: string, from: Date, to: Date) {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    void isCrossAppBusyEnabled().then(setEnabled);
+  }, []);
+
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
+  return useQuery({
+    queryKey: keys.busy(coupleId, fromIso, toIso),
+    queryFn: () => busy.listBetween(coupleId, from, to),
+    enabled,
+  });
 }
 
 /**
