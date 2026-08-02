@@ -7,15 +7,13 @@
   "today": {
     "greeting": "Hoy",
     "checkinPrompt": "¿Cómo te sientes para esta noche?",
-    "yourAnswer": "Dijiste",
     "partnerAnswer": "{{name}} dijo",
     "partnerNoAnswer": "{{name}} aún no ha respondido",
-    "bothYes": "Los dos dijeron que sí.",
     "nextUp": "Lo próximo",
     "nothingBooked": "No hay nada reservado.",
     "rituals": "Su ritmo",
     "propose": "Proponer una hora",
-    "dateNight": "Próxima cita"
+    "planIt": "Proponer una hora para esto"
   },
   "checkin": {
     "yes": "Sí",
@@ -28,6 +26,7 @@
   },
   "propose": {
     "title": "Proponer una hora",
+    "kind": "Para qué",
     "suggestions": "Los dos están libres",
     "noSuggestions": "No encontramos noches libres. Elige una hora de todos modos.",
     "sharperWithCalendar": "Permite el acceso al calendario y estas mejoran: también evitaremos lo que ya tienes anotado.",
@@ -37,14 +36,14 @@
     "durationMinutes_other": "{{count}} minutos",
     "durationHours_one": "{{count}} hora",
     "durationHours_other": "{{count}} horas",
-    "send": "Proponerlo",
-    "sent": "Enviado."
+    "send": "Proponerlo"
   },
   "settings": {
     "title": "Ajustes",
     "account": "Cuenta",
     "partner": "Vinculado con {{name}}",
     "notPaired": "Aún sin vincular",
+    "cadences": "Con qué frecuencia",
     "privacy": "Privacidad",
     "lock": "Pedir Face ID o código",
     "lockDescription": "Preguntar cada vez que se abra la app.",
@@ -56,9 +55,7 @@
     "notificationAccess": "Recordatorios",
     "allow": "Permitir",
     "allowed": "Permitido",
-    "signOut": "Cerrar sesión",
-    "leave": "Desvincular",
-    "leaveConfirm": "Esto te desconecta de tu pareja. Sus planes seguirán en el dispositivo de la otra persona."
+    "signOut": "Cerrar sesión"
   },
   "lock": {
     "prompt": "Desbloquear",

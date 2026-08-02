@@ -19,7 +19,20 @@ export const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 export const SCANNED = ['apps', 'packages', 'supabase'];
 
 const IGNORED_DIRS = new Set(['node_modules', '.git', '.expo', 'dist', 'ios', 'android']);
-const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+
+/**
+ * `.sql` is on this list, and was not.
+ *
+ * `SCANNED` has always included `supabase/`, which reads as though the
+ * migrations were covered — they were walked and then dropped, because every
+ * one of them ends in `.sql`. So the guards' whole subject was invisible on the
+ * one side of the repo where a leaked key would be most permanent: a migration
+ * is applied once and then lives in the schema history forever.
+ *
+ * Nothing was wrong when this was fixed. That is the point of adding it while
+ * nothing is wrong.
+ */
+const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.sql']);
 
 export function sourceFilesIn(dir: string, found: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

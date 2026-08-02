@@ -9,14 +9,13 @@
  * anywhere except through the caller. Only the window they choose is ever
  * written to the server.
  */
-import type { Plan, PlanStatus } from '@couple/core';
+import type { Plan, PlanStatus, TimeRange } from '@couple/core';
 import { addDays, startOfDay } from 'date-fns';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
-export interface TimeRange {
-  start: Date;
-  end: Date;
-}
+// Re-exported so callers that already reach for the engine's vocabulary keep
+// working; the declaration itself lives in `@couple/core`.
+export type { TimeRange };
 
 /**
  * Statuses that occupy time.

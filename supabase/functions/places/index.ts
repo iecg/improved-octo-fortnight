@@ -214,18 +214,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const parsed = parseRequest(body);
   if (!parsed) return fail('bad_request');
 
-  // Answered before any auth work, so the probe every session makes is free
-  // and still truthful when nothing is configured.
-  if (parsed.op === 'capabilities') {
-    const configured = Boolean(key);
-    return json({
-      ok: true,
-      data: { search: configured, travelTime: configured, staticMap: configured },
-    });
-  }
-
-  if (!key) return fail('not_configured');
-
+  // `capabilities` used to be answered here, above the JWT check, so that the
+  // probe every session makes was free. The saving was a database round trip;
+  // the cost was telling any unauthenticated caller whether this deployment
+  // holds a mapping key, which is a fact about our billing and our
+  // configuration that nobody outside the couple has a reason to learn. It is
+  // answered below instead, once we know who is asking.
   const authorization = req.headers.get('Authorization');
   if (!authorization) return fail('unauthenticated', 401);
 
@@ -240,6 +234,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const { data: coupleId, error } = await caller.rpc('current_couple_id');
   if (error || !coupleId) return fail('unauthenticated', 401);
+
+  // Truthful when nothing is configured, and metered against nothing: a probe
+  // is not a search, and a couple that asks what this deployment can do should
+  // not spend part of their daily allowance finding out.
+  if (parsed.op === 'capabilities') {
+    const configured = Boolean(key);
+    return json({
+      ok: true,
+      data: { search: configured, travelTime: configured, staticMap: configured },
+    });
+  }
+
+  if (!key) return fail('not_configured');
 
   if (!(await meter(coupleId))) return fail('rate_limited');
 

@@ -4,7 +4,7 @@
  * Everything goes through the domain-scoped repositories in `@couple/data`,
  * which is what keeps this app's rows separate from the 2-2-2 app's.
  */
-import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
+import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, CheckinInterest, Plan, PlanProposal } from '@couple/core';
 import { createBusyRepository, createCheckinRepository, createDomainRepository } from '@couple/data';
 import { calendarDateIn } from '@couple/i18n';
@@ -35,6 +35,9 @@ const keys = {
   checkins: (coupleId: string, date: string) => ['checkins', coupleId, date] as const,
   // Not domain-keyed: this list is the same one either app would read.
   busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
+  // Every bounds pair for a couple. The bounds are part of the key, so
+  // invalidating one window would leave every other range stale.
+  busyAll: (coupleId: string) => ['busy', coupleId] as const,
 };
 
 export function usePlans(coupleId: string) {
@@ -48,6 +51,25 @@ export function useCadences(coupleId: string) {
   return useQuery({
     queryKey: keys.cadences(coupleId),
     queryFn: () => plans.listCadences(coupleId),
+  });
+}
+
+/**
+ * Pause a ritual, or bring it back.
+ *
+ * A paused cadence keeps its row with `enabled = false` rather than being
+ * deleted, which is what lets `useEnsureCadences` tell "never seeded" from
+ * "switched off". The plans already made under it stay where they are: this
+ * turns off a countdown, not a history.
+ */
+export function useSetCadenceEnabled(coupleId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { cadenceId: string; enabled: boolean }) =>
+      plans.setCadenceEnabled(input.cadenceId, input.enabled),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+    },
   });
 }
 
@@ -152,14 +174,18 @@ export function useRespondToProposal(coupleId: string) {
     mutationFn: async (input: { proposal: PlanProposal; response: 'accepted' | 'declined' }) => {
       await plans.respond(input.proposal.id, input.response);
       // Accepting is what turns a suggestion into something on the calendar.
+      // The time is written first and the status second, through the one
+      // method that maintains `completed_at` alongside it — `updatePlan` never
+      // touched that column, and the two are pinned to each other by a check
+      // constraint.
       if (input.response === 'accepted') {
         await plans.updatePlan(input.proposal.planId, {
-          status: 'scheduled',
           startsAt: input.proposal.startsAt,
           endsAt: input.proposal.endsAt,
         });
+        await plans.setPlanStatus(input.proposal.planId, 'scheduled');
       } else {
-        await plans.updatePlan(input.proposal.planId, { status: 'declined' });
+        await plans.setPlanStatus(input.proposal.planId, 'declined');
       }
     },
     onSuccess: () => {
@@ -257,6 +283,10 @@ export function useCompletePlan(coupleId: string) {
  * Without this, a partner's reply only appears on the next manual refresh —
  * and the whole point of the loop is that the other person sees it.
  *
+ * Mounted once, in the tabs layout, rather than per screen: both tabs stay
+ * mounted, so a per-screen call opened the same topic twice for no benefit.
+ * The 2-2-2 app found this first; the two apps now do the same thing.
+ *
  * Every subscription carries a `filter`. On `plans` it is the domain, which is
  * the boundary RLS cannot express and the one thing keeping the two apps'
  * rows apart; on the other two it is the couple, which RLS already enforces
@@ -277,6 +307,7 @@ export function useRealtimeSync(coupleId: string | null): void {
         { event: '*', schema: 'public', table: 'plans', filter: `domain=eq.${DOMAIN}` },
         () => {
           void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+          void client.invalidateQueries({ queryKey: keys.busyAll(coupleId) });
         },
       )
       .on(
@@ -289,6 +320,10 @@ export function useRealtimeSync(coupleId: string | null): void {
         },
         () => {
           void client.invalidateQueries({ queryKey: keys.proposals(coupleId) });
+          // A proposed time occupies a window as far as the busy view is
+          // concerned, so the propose screen's suggestions are stale the
+          // moment one lands.
+          void client.invalidateQueries({ queryKey: keys.busyAll(coupleId) });
         },
       )
       .on(
@@ -325,5 +360,5 @@ export function cadenceStatuses(
         timeZone,
       }),
     )
-    .sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+    .sort(compareUrgency);
 }

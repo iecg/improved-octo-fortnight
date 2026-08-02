@@ -21,30 +21,16 @@
     "accept": "Me viene bien",
     "decline": "Esta vez no",
     "counter": "Proponer otra hora",
-    "accepted": "Los dos dijeron que sí",
-    "declinedByThem": "{{name}} propuso otra hora en su lugar",
     "counteredNote": "En respuesta a una propuesta anterior",
     "noPressure": "Decir que no es una respuesta completa."
   },
   "new": {
-    "title": "Proponer una hora",
-    "whenLabel": "Cuándo",
-    "durationLabel": "Cuánto tiempo",
     "notesLabel": "Algo que añadir",
     "notesPlaceholder": "Opcional",
-    "notesHint": "Tu pareja lo verá tal cual lo escribas, en el idioma en que lo escribas.",
-    "locationLabel": "Dónde",
-    "submit": "Enviar",
-    "openWindows": "Los dos están libres",
-    "conflict": "Uno de los dos tiene algo"
+    "notesHint": "Tu pareja lo verá tal cual lo escribas, en el idioma en que lo escribas."
   },
   "detail": {
-    "notes": "Notas",
-    "location": "Dónde",
     "markDone": "Marcar como hecho",
-    "markSkipped": "No ocurrió",
-    "cancel": "Cancelar esto",
-    "addedToCalendar": "Añadido a tu calendario",
-    "calendarTitle": "Aparece como «{{label}}»"
+    "markSkipped": "No ocurrió"
   }
 }

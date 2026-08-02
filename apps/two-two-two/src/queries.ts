@@ -9,7 +9,7 @@
  * Note what is absent: there is no check-in accessor here, because check-ins
  * are intimacy-owned and reachable only through their own factory.
  */
-import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
+import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type {
   Cadence,
   Coordinates,
@@ -25,9 +25,9 @@ import {
   createIdeaRepository,
   createPlaceRepository,
 } from '@couple/data';
-import { isCrossAppBusyEnabled } from '@couple/device';
+import { isCrossAppBusyEnabled, setCrossAppBusyEnabled } from '@couple/device';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import { placeLabel } from './features/places/label';
 import { DEFAULT_CADENCES, supabase } from './runtime';
@@ -57,6 +57,11 @@ const keys = {
   places: (coupleId: string) => ['places', DOMAIN, coupleId] as const,
   // Not domain-keyed: this list is the same one either app would read.
   busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
+  // Every bounds pair for a couple. The bounds are part of the key, so
+  // invalidating one window would leave every other range stale.
+  busyAll: (coupleId: string) => ['busy', coupleId] as const,
+  // Device-local, so not keyed by couple: it describes this phone.
+  crossAppBusy: () => ['preferences', 'crossAppBusy'] as const,
 };
 
 export function usePlans(coupleId: string) {
@@ -113,6 +118,39 @@ export function useEnsureCadences(coupleId: string): void {
 }
 
 /**
+ * Whether this device may see times the couple is busy in the other app.
+ *
+ * A query rather than a `useState` seeded by an effect, so that flipping the
+ * switch in Settings reaches every mounted reader at once. The effect version
+ * ran with `[]` deps and read the keychain exactly once per mount: the toggle
+ * changed the stored value and nothing already on screen ever heard about it.
+ * That was survivable only because the one consumer is a modal that remounts.
+ *
+ * `initialData: false` is the gate, not an optimisation. The query starts
+ * closed, so nothing reads across the boundary in the window before the
+ * keychain answers.
+ */
+export function useCrossAppBusyEnabled() {
+  return useQuery({
+    queryKey: keys.crossAppBusy(),
+    queryFn: isCrossAppBusyEnabled,
+    initialData: false,
+    staleTime: Infinity,
+  });
+}
+
+/** The switch in Settings. Writes the keychain, then tells every reader. */
+export function useSetCrossAppBusyEnabled() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: setCrossAppBusyEnabled,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.crossAppBusy() });
+    },
+  });
+}
+
+/**
  * Occupied windows from the server, if the reader has asked for them.
  *
  * The setting is read *here*, not passed in by the caller. This is the only
@@ -125,13 +163,16 @@ export function useEnsureCadences(coupleId: string): void {
  *
  * The bounds are part of the key so a screen that widens its range refetches
  * rather than quietly reusing a narrower answer.
+ *
+ * What realtime cannot keep fresh: this app subscribes to `plans` filtered to
+ * its own domain, deliberately, so a booking made in the *other* app does not
+ * arrive here — the filter is the domain boundary. Those windows are picked up
+ * the next time a screen mounts with a fresh range. Widening the subscription
+ * to hear about them would deliver the very rows the boundary exists to keep
+ * out.
  */
 export function useServerBusy(coupleId: string, from: Date, to: Date) {
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    void isCrossAppBusyEnabled().then(setEnabled);
-  }, []);
+  const { data: enabled } = useCrossAppBusyEnabled();
 
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
@@ -287,6 +328,50 @@ export function useSetPlaceCalendarSharing(coupleId: string) {
   });
 }
 
+/**
+ * Mark an outing as done, or as skipped.
+ *
+ * Completing is what re-anchors the cadence, so the cadence list is
+ * invalidated alongside the plans — the rhythm screen would otherwise keep
+ * showing the old countdown until something else happened to refetch it.
+ *
+ * Same shape as the intimacy app's `useCompletePlan`. This used to call the
+ * repository straight from the screen and then invalidate the *entire* cache,
+ * which refetched every query in the app to update two.
+ */
+export function useCompletePlan(coupleId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { planId: string; completed: boolean }) =>
+      plans.setPlanStatus(input.planId, input.completed ? 'completed' : 'skipped'),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+    },
+  });
+}
+
+/**
+ * Pause a commitment, or bring it back.
+ *
+ * A paused cadence keeps its row with `enabled = false` rather than being
+ * deleted, which is what lets `useEnsureCadences` tell "never seeded" from
+ * "switched off" — and what stops a pause being silently undone on next launch.
+ *
+ * The plans already made under it stay exactly where they are. This turns off a
+ * countdown, not a history.
+ */
+export function useSetCadenceEnabled(coupleId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { cadenceId: string; enabled: boolean }) =>
+      plans.setCadenceEnabled(input.cadenceId, input.enabled),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+    },
+  });
+}
+
 export function useIdeas(coupleId: string) {
   return useQuery({ queryKey: keys.ideas(coupleId), queryFn: () => ideas.list(coupleId) });
 }
@@ -406,6 +491,7 @@ export function useRealtimeSync(coupleId: string | null): void {
         { event: '*', schema: 'public', table: 'plans', filter: `domain=eq.${DOMAIN}` },
         () => {
           void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+          void client.invalidateQueries({ queryKey: keys.busyAll(coupleId) });
         },
       )
       // The shortlist is shared, and both partners read it while deciding what
@@ -459,5 +545,5 @@ export function cadenceStatuses(
         timeZone,
       }),
     )
-    .sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+    .sort(compareUrgency);
 }

@@ -45,15 +45,26 @@ a test, listed with them.
    payload, or a calendar entry. Calendar events carry a user-chosen neutral
    label only. Reminders are _local_, composed on the recipient's own device —
    which is also why each partner is reminded in their own language for free.
+   `plannedReminders` returns a key, a plan id and an instant, and both apps
+   build the copy from `t(...)` alone. (`tests/guards/discretion.test.ts`,
+   `packages/device/src/sync.test.ts`)
 
 4. **No streaks, no scores.** A "not tonight" is a neutral answer, styled
    identically to "yes". There is deliberately no counter to break. An app that
    turns a no into a failure makes the problem it exists to solve worse.
+   Mostly a design rule rather than a mechanical one, but it has one testable
+   edge: `ai_usage` is a counter, and a counter that streams live to both
+   phones is a scoreboard waiting to be put on a screen, so it is never
+   published to realtime. (`tests/guards/realtime-subscriptions.test.ts`,
+   `tests/rls/policies.test.ts`)
 
 5. **The cadence engine is pure.** No I/O, no React, no i18n, no `new Date()`
    in `packages/cadence`. It returns structured data and translation _keys_.
-   All date arithmetic goes through the couple's timezone.
-   (`packages/cadence/src/*.test.ts`)
+   All date arithmetic goes through the couple's timezone. The behaviour tests
+   cannot catch a dropped `timeZone` or a read of the system clock on their
+   own — an engine that did either would pass them on the machine that wrote
+   them — so the structural rule is a separate grep.
+   (`packages/cadence/src/*.test.ts`, `tests/guards/cadence-purity.test.ts`)
 
 ## Layout
 
@@ -68,7 +79,8 @@ packages/i18n/      i18next bootstrap, shared namespaces, date formatting
 packages/ui/        Shared components (no strings)
 packages/device/    expo-calendar / notifications / local-auth wrappers
 supabase/migrations/  SINGLE source of truth for both apps
-supabase/functions/   Edge Functions — the only place a third-party key lives
+supabase/functions/   Edge Functions — where *our* third-party keys live (a
+                      model key is the user's own and never comes here)
 tests/i18n/, tests/rls/, tests/e2e/, tests/guards/
 ```
 
@@ -158,8 +170,16 @@ runs in Expo Go, so a dev build is not optional.
   writing to that device's lock screen. `profiles.expo_push_token` was carried
   and never written; it is gone. Push would need its own table and its own
   argument for overriding discretion.
-- All RLS lives in one migration so the access surface is reviewable at a
-  glance.
+- **RLS lives beside the table it governs**, and the shared tables were all
+  introduced at once, so most of it is in `20260801000400_rls_policies.sql`.
+  Not all: `plan_ideas` and `ai_usage` carry their five policies in
+  `20260802000200_two_two_two_ideas.sql`, and grants are split further across
+  `20260802000300_table_grants.sql` and the migrations that add columns. This
+  used to be written down as "all RLS lives in one migration", which stopped
+  being true the moment the 2-2-2 tables arrived and was never corrected —
+  worth knowing, because the reviewable-at-a-glance claim is what someone
+  relies on when they check whether a new table is covered. `tests/rls/`
+  enumerates the real surface; the file layout does not.
 - A table read live on both phones needs **two** things that live far apart: a
   `postgres_changes` handler in the app's `useRealtimeSync`, and a migration
   adding it to the `supabase_realtime` publication. Subscribing to a table that
@@ -172,17 +192,23 @@ runs in Expo Go, so a dev build is not optional.
 
 ## Environment
 
-`apps/intimacy/.env` (see `.env.example`):
+Each app has its own, in `apps/*/` (see `.env.example`):
 
 ```
 EXPO_PUBLIC_SUPABASE_URL=...
 EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
-Third-party keys go in `supabase/functions/.env` (see its `.env.example`), never
-here — `supabase secrets set` on a hosted project. All of them are optional:
-with none set, `npm test` passes, both apps bundle, and the 2-2-2 app's places
-feature works with venues typed by hand.
+`EXPO_PUBLIC_` values are embedded in the app bundle. Only the anon key belongs
+there — RLS is what protects the data, never key secrecy. The root `.env` is a
+different thing entirely: it points `npm run db:test` at a local throwaway
+database and never at Supabase.
+
+The mapping key goes in `supabase/functions/.env` (see its `.env.example`),
+never here — `supabase secrets set` on a hosted project. It is optional: with
+none set, `npm test` passes, both apps bundle, and the 2-2-2 app's places
+feature works with venues typed by hand. A model key is not configured here at
+all; it is BYOK and lives in each partner's own keychain (see below).
 
 ## Dev builds
 
@@ -234,12 +260,7 @@ package scripts as a side effect, so check `git diff` afterwards.
 
 EAS does not see your `.env`; set `EXPO_PUBLIC_SUPABASE_URL` and
 `EXPO_PUBLIC_SUPABASE_ANON_KEY` as EAS environment variables. **Anon key
-only** — see below.
-
-## Environment
-
-`EXPO_PUBLIC_` values are embedded in the app bundle. Only the anon key belongs
-there — RLS is what protects the data, never key secrecy.
+only** — see "Environment" above.
 
 ## What the two apps share, and what they don't
 
@@ -253,12 +274,20 @@ Per app: its screens, its `app` translation namespace, its kind catalog, and
 its `createDomainRepository(client, '<domain>')` binding.
 
 2-2-2-owned tables are `plan_ideas`, `plan_places`, `ai_usage` and
-`places_usage`, plus the `places` Edge Function. They are reached through
-`createIdeaRepository` and `createPlaceRepository` in `packages/data` — their
-own factories, next to the intimacy-owned `createCheckinRepository`, so the
-other app has nothing to import even by accident. Both hard-code their domain
-rather than taking one,
-because a domain parameter is the exact shape invariant 2 forbids.
+`places_usage`, plus the `places` Edge Function. `plan_ideas` and `plan_places`
+are reached through `createIdeaRepository` and `createPlaceRepository` in
+`packages/data` — their own factories, next to the intimacy-owned
+`createCheckinRepository`, so the other app has nothing to import even by
+accident. Both hard-code their domain rather than taking one, because a domain
+parameter is the exact shape invariant 2 forbids.
+
+The two counters have no accessor at all, in either app, and that is the correct
+number: both are `select`-only to clients and only a service role can write
+them, so a repository method would be a read of a table the client cannot fill.
+`places_usage` is written by the `places` Edge Function, which is what a service
+role is for. `ai_usage` is written by nothing and stays empty, because
+suggestions go from the device straight to the provider — it exists as the place
+a future metered path would write from.
 
 `plan_places` is a side table rather than columns on `plans` because `plans` is
 shared and replicated; it carries a composite foreign key `(plan_id,
@@ -273,11 +302,25 @@ enforced by a guard rather than remembered:
 - **AI-optional** — no path outside `features/<name>/ai/` may assume a model
   exists (`tests/guards/ai-optional.test.ts`).
 - **Maps-optional** — no path outside `features/<name>/maps/` may name a
-  mapping provider, and _no path anywhere_ may put a provider key in an
-  `EXPO_PUBLIC_` variable (`tests/guards/maps-optional.test.ts`).
+  mapping provider's _endpoint or key_, and _no path anywhere_ may put a
+  provider key in an `EXPO_PUBLIC_` variable
+  (`tests/guards/maps-optional.test.ts`). The bare string `'google'` is fine
+  and appears in several places: it is a stored enum value in `PLACE_PROVIDERS`,
+  not a call to anyone.
 
-Both exempt `supabase/functions/`, which is where a key legitimately lives.
-They share one walker in `tests/guards/sources.ts`.
+Both exempt exactly one directory, `supabase/functions/places/`, and they share
+one walker in `tests/guards/sources.ts`.
+
+**The two keys are not the same kind of thing, and the exemption is narrow for
+that reason.** A mapping key is ours: it cannot ship in a bundle, so it lives on
+a server we run and the places function is that server. A model key is the
+user's own — kept in their keychain, spent from their device, never seen by us
+or by their partner. The AI guard briefly exempted the whole of
+`supabase/functions/`, on the reasoning that an Edge Function is where a key
+should live. That is true of the first kind and the exact reverse of the second,
+and while it stood, a `suggest-ideas` function holding an OpenRouter key passed
+`npm test`. A second Edge Function means deciding in review which of the two
+rules it falls under.
 
 Each guard also checks that the no-dependency path still _works_, by importing
 the modules it actually runs through — a grep that passes over a feature nobody
@@ -325,9 +368,10 @@ Suggestions are the optional third source, in
 `apps/two-two-two/src/features/date-planner/ai/`, and they are **BYOK**: each
 partner stores their own OpenRouter or Gemini key in the device keychain
 (`expo-secure-store`), and requests go from that device straight to that
-provider. There is no Edge Function and no server of ours in the path — which
-is why `ai_usage` stays empty in practice as well as in principle: it is
-`select`-only to clients and only a service role could ever write it. A key is
+provider. There is no Edge Function and no server of ours in this path — unlike
+places, deliberately, because the key is theirs rather than ours — which is why
+`ai_usage` stays empty in practice as well as in principle: it is `select`-only
+to clients and only a service role could ever write it. A key is
 per person and per device; it is never written to a table and the partner never
 sees it. The prompt in `prompt.ts` is the only thing that leaves the device, and
 it carries the kind, the language, a count and three free-text fields the user

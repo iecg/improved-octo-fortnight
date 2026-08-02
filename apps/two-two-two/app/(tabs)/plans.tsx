@@ -7,15 +7,14 @@
 import type { Plan, PlanPlace } from '@couple/core';
 import { formatDay, formatWindowParts } from '@couple/i18n';
 import { Body, Button, Card, Divider, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
-import { useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { PlanPlaceCard } from '../../src/features/places/PlanPlace';
 import {
-  plans as repository,
   useAttachPlace,
+  useCompletePlan,
   useDetachPlace,
   usePlaces,
   usePlans,
@@ -26,13 +25,13 @@ import { usePairedSession } from '../../src/session';
 export default function Plans() {
   const { t, i18n } = useTranslation(['app', 'common', 'plans', 'places']);
   const { profile, couple } = usePairedSession();
-  const client = useQueryClient();
 
   const now = useMemo(() => new Date(), []);
   const locale = i18n.language === 'es' ? 'es' : 'en';
   const timeZone = couple.timezone;
 
   const plansQuery = usePlans(couple.id);
+  const complete = useCompletePlan(couple.id);
   const placesQuery = usePlaces(couple.id);
   const attach = useAttachPlace(couple.id, profile.id);
   const detach = useDetachPlace(couple.id);
@@ -55,11 +54,6 @@ export default function Plans() {
       history: all.filter((p) => p.status === 'completed' || p.status === 'skipped').slice(0, 20),
     };
   }, [plansQuery.data, now]);
-
-  async function settle(plan: Plan, completed: boolean) {
-    await repository.setPlanStatus(plan.id, completed ? 'completed' : 'skipped');
-    await client.invalidateQueries();
-  }
 
   function label(plan: Plan): string {
     if (!plan.startsAt) return t('common:state.empty');
@@ -112,14 +106,14 @@ export default function Plans() {
                   <Button
                     label={t('plans:detail.markDone')}
                     variant="secondary"
-                    onPress={() => void settle(plan, true)}
+                    onPress={() => complete.mutate({ planId: plan.id, completed: true })}
                   />
                 </View>
                 <View className="grow basis-0">
                   <Button
                     label={t('plans:detail.markSkipped')}
                     variant="ghost"
-                    onPress={() => void settle(plan, false)}
+                    onPress={() => complete.mutate({ planId: plan.id, completed: false })}
                   />
                 </View>
               </View>

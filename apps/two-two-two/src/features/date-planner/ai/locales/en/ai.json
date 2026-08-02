@@ -30,7 +30,6 @@
     "notConfigured": "Add a key in Settings and a few suggestions can appear here.",
     "generate": "Suggest some",
     "again": "Try again",
-    "generating": "Thinking…",
     "disclaimer": "Written by a model, not by us. Check anything before you count on it.",
     "dismiss": "Clear these"
   },

@@ -1,10 +1,9 @@
-import { ConnectedAppsCard } from '@couple/auth';
-import { LOCALES, type Locale } from '@couple/core';
+import { ConnectedAppsCard, UnpairCard } from '@couple/auth';
+import { LOCALES, kindLabelKey, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
-  isCrossAppBusyEnabled,
   requestCalendarAccess,
-  setCrossAppBusyEnabled,
+  requestNotificationPermission,
 } from '@couple/device';
 import { Button, Card, Chip, Divider, Heading, Muted, Screen, Title } from '@couple/ui';
 import { useEffect, useState } from 'react';
@@ -12,13 +11,27 @@ import { useTranslation } from 'react-i18next';
 import { Switch, View } from 'react-native';
 
 import { AiKeyCard, resetPlannerInputs } from '../../src/features/date-planner/ai';
-import { useSession } from '../../src/session';
+import {
+  useCadences,
+  useCrossAppBusyEnabled,
+  useSetCadenceEnabled,
+  useSetCrossAppBusyEnabled,
+} from '../../src/queries';
+import { usePairedSession, useSession } from '../../src/session';
 
 export default function Settings() {
-  const { t } = useTranslation(['app', 'common']);
-  const { profile, partner, setLocale, signOut } = useSession();
+  const { t } = useTranslation(['app', 'cadence', 'common']);
+  const { profile, partner, setLocale, signOut, leaveCouple } = useSession();
+  const { couple } = usePairedSession();
   const [calendarOk, setCalendarOk] = useState(false);
-  const [crossAppBusy, setCrossAppBusy] = useState(false);
+
+  // Read through the query layer so the switch and the propose screen cannot
+  // disagree about what this device has been asked for.
+  const crossAppBusy = useCrossAppBusyEnabled();
+  const setCrossAppBusy = useSetCrossAppBusyEnabled();
+
+  const cadencesQuery = useCadences(couple.id);
+  const setCadenceEnabled = useSetCadenceEnabled(couple.id);
 
   /**
    * The planner's form fields outlive every screen that fills them, so they
@@ -32,15 +45,7 @@ export default function Settings() {
 
   useEffect(() => {
     void hasCalendarAccess().then(setCalendarOk);
-    void isCrossAppBusyEnabled().then(setCrossAppBusy);
   }, []);
-
-  // Device-local, like the app lock in the other app: it decides what this
-  // phone shows, so syncing it would let one partner answer for the other.
-  async function toggleCrossAppBusy(next: boolean) {
-    setCrossAppBusy(next);
-    await setCrossAppBusyEnabled(next);
-  }
 
   const partnerName = partner?.displayName ?? t('common:partner.unnamed');
 
@@ -89,12 +94,48 @@ export default function Settings() {
               <Heading>{t('app:settings.crossAppBusy')}</Heading>
               <Muted>{t('app:settings.crossAppBusyHint')}</Muted>
             </View>
+            {/* Device-local, like the app lock in the other app: it decides
+                what this phone shows, so syncing it would let one partner
+                answer for the other. */}
             <Switch
-              value={crossAppBusy}
-              onValueChange={(next) => void toggleCrossAppBusy(next)}
+              value={crossAppBusy.data}
+              onValueChange={(next) => setCrossAppBusy.mutate(next)}
               accessibilityLabel={t('app:settings.crossAppBusy')}
             />
           </View>
+          <Divider />
+          {/* Reminders are composed on this device, in this reader's language,
+              and say only that something is booked — same as the other app. */}
+          <Heading>{t('app:settings.notificationAccess')}</Heading>
+          <Button
+            label={t('app:settings.allow')}
+            variant="secondary"
+            onPress={() => void requestNotificationPermission()}
+          />
+        </View>
+      </Card>
+
+      {/* Turning one off hides its countdown and stops its reminders. The plans
+          already made under it stay. There is nothing to break by pausing —
+          this is the opposite of a streak. */}
+      <Card>
+        <View className="gap-3">
+          <Heading>{t('app:settings.cadences')}</Heading>
+          {(cadencesQuery.data ?? []).map((cadence) => (
+            <View key={cadence.id} className="flex-row items-center justify-between gap-3">
+              <View className="shrink gap-1">
+                <Heading>{t(kindLabelKey(cadence.domain, cadence.kind))}</Heading>
+                <Muted>{t('cadence:action.pause')}</Muted>
+              </View>
+              <Switch
+                value={cadence.enabled}
+                onValueChange={(next) =>
+                  setCadenceEnabled.mutate({ cadenceId: cadence.id, enabled: next })
+                }
+                accessibilityLabel={t(kindLabelKey(cadence.domain, cadence.kind))}
+              />
+            </View>
+          ))}
         </View>
       </Card>
 
@@ -120,6 +161,9 @@ export default function Settings() {
       {/* Same component as the other app, so the two can never disagree about
           what is shared. */}
       <ConnectedAppsCard />
+
+      {/* One pairing across both apps, so this is the same act from either. */}
+      <UnpairCard onUnpair={leaveCouple} />
     </Screen>
   );
 }

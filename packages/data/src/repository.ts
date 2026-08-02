@@ -61,7 +61,20 @@ export interface DomainRepository {
   listPlans(coupleId: string): Promise<Plan[]>;
   getPlan(planId: string): Promise<Plan | null>;
   createPlan(input: CreatePlanInput): Promise<Plan>;
-  updatePlan(planId: string, patch: Partial<CreatePlanInput>): Promise<Plan>;
+  /**
+   * Edit a plan's own fields. Deliberately not its status.
+   *
+   * `plans` carries `check ((status = 'completed') = (completed_at is not
+   * null))`, and this method never touched `completed_at` — so a patch of
+   * `{ status: 'completed' }` raised a constraint violation, and moving a
+   * completed plan to any other status raised the same one from the other
+   * side. It typechecked, because `Partial<CreatePlanInput>` includes
+   * `status`, and it was one caller away from being a live bug.
+   *
+   * `setPlanStatus` is the only door to a transition, and it maintains both
+   * columns together.
+   */
+  updatePlan(planId: string, patch: Omit<Partial<CreatePlanInput>, 'status'>): Promise<Plan>;
   setPlanStatus(planId: string, status: PlanStatus, completedAt?: string | null): Promise<Plan>;
   recordCalendarEvent(plan: Plan, profileId: string, eventId: string | null): Promise<Plan>;
   deletePlan(planId: string): Promise<void>;
@@ -171,7 +184,6 @@ export function createDomainRepository(
           ...(patch.location !== undefined ? { location: patch.location } : {}),
           ...(patch.startsAt !== undefined ? { starts_at: patch.startsAt } : {}),
           ...(patch.endsAt !== undefined ? { ends_at: patch.endsAt } : {}),
-          ...(patch.status !== undefined ? { status: patch.status } : {}),
         })
         .eq('id', planId)
         .eq('domain', domain)

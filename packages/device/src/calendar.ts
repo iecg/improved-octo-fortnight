@@ -16,7 +16,7 @@
 import * as Calendar from 'expo-calendar';
 import type { EntityTypes } from 'expo-calendar/legacy';
 
-import type { TimeRange } from './types';
+import type { TimeRange } from '@couple/core';
 
 /** `EntityTypes.EVENT`, without importing the legacy module for one constant. */
 const EVENT_ENTITY = 'event' as EntityTypes;
@@ -27,8 +27,16 @@ export interface CalendarEventInput {
   startsAt: Date;
   endsAt: Date;
   timeZone: string;
-  /** Opt-in only; omitted by default so the calendar reveals nothing. */
-  notes?: string;
+  /**
+   * Opt-in only, and the single field that ever carries anything beyond a
+   * label and a span.
+   *
+   * There is deliberately no `notes`. Invariant 3 says nothing intimate
+   * reaches a calendar entry, and a plan's notes are the most intimate thing
+   * it has; the field used to exist here, unset by every caller, as an escape
+   * hatch for a rule that has no exceptions. Leaving it out is the version the
+   * type checker enforces.
+   */
   location?: string;
 }
 
@@ -63,13 +71,37 @@ export async function writeCalendarEvent(input: CalendarEventInput): Promise<str
     startDate: input.startsAt,
     endDate: input.endsAt,
     timeZone: input.timeZone,
-    ...(input.notes ? { notes: input.notes } : {}),
     ...(input.location ? { location: input.location } : {}),
   });
 
   return event.id;
 }
 
+/**
+ * Bring an existing entry back into line with a plan.
+ *
+ * `location` is named on every call and passed as `null` when absent. Where
+ * `writeCalendarEvent` may simply omit it, this may not: `update()` is a
+ * *partial merge*, so a key that is absent leaves the field as it was.
+ * Spreading it away asked the OS to keep whatever was there rather than to
+ * clear it.
+ *
+ * That made the calendar opt-in one-way. Turning "show this address in my
+ * calendar" back off flipped the flag, re-ran a pass, rewrote the title and the
+ * time — and left the address on the phone, and in whatever desktop or family
+ * calendar it syncs to, for as long as the plan stayed booked. Detaching the
+ * place did the same. The app agreed with the user and the device did not.
+ *
+ * Passing `null` is the whole fix: the SDK's own wrapper collects every key
+ * whose value is null and forwards them as the `nullableFields` argument the
+ * native side needs (`expo-calendar/build/utils.js`). That argument is not on
+ * the public signature, so it cannot be passed directly.
+ *
+ * No test in Node can reach this: the module is mocked in every suite that
+ * exercises reconciliation, and the bug is in the argument shape the real
+ * module hands to Expo. Section I of `docs/manual-verification.md` is where it
+ * is checked.
+ */
 export async function updateCalendarEvent(
   eventId: string,
   input: CalendarEventInput,
@@ -79,8 +111,7 @@ export async function updateCalendarEvent(
     title: input.title,
     startDate: input.startsAt,
     endDate: input.endsAt,
-    ...(input.notes ? { notes: input.notes } : {}),
-    ...(input.location ? { location: input.location } : {}),
+    location: input.location ?? null,
   });
 }
 

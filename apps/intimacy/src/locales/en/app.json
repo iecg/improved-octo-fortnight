@@ -7,15 +7,13 @@
   "today": {
     "greeting": "Today",
     "checkinPrompt": "How are you feeling about tonight?",
-    "yourAnswer": "You said",
     "partnerAnswer": "{{name}} said",
     "partnerNoAnswer": "{{name}} hasn't answered yet",
-    "bothYes": "You've both said yes.",
     "nextUp": "Next up",
     "nothingBooked": "Nothing booked.",
     "rituals": "Your rhythm",
     "propose": "Suggest a time",
-    "dateNight": "Next date night"
+    "planIt": "Suggest a time for this"
   },
   "checkin": {
     "yes": "Yes",
@@ -28,6 +26,7 @@
   },
   "propose": {
     "title": "Suggest a time",
+    "kind": "What for",
     "suggestions": "You're both free",
     "noSuggestions": "No open evenings found. Pick a time anyway.",
     "sharperWithCalendar": "Allow calendar access and these get sharper — we'll also avoid what's on your own calendar.",
@@ -37,14 +36,14 @@
     "durationMinutes_other": "{{count}} minutes",
     "durationHours_one": "{{count}} hour",
     "durationHours_other": "{{count}} hours",
-    "send": "Suggest it",
-    "sent": "Sent."
+    "send": "Suggest it"
   },
   "settings": {
     "title": "Settings",
     "account": "Account",
     "partner": "Paired with {{name}}",
     "notPaired": "Not paired yet",
+    "cadences": "How often",
     "privacy": "Privacy",
     "lock": "Require Face ID or passcode",
     "lockDescription": "Ask every time the app opens.",
@@ -56,9 +55,7 @@
     "notificationAccess": "Reminders",
     "allow": "Allow",
     "allowed": "Allowed",
-    "signOut": "Sign out",
-    "leave": "Unpair",
-    "leaveConfirm": "This disconnects you from your partner. Your plans stay on their device."
+    "signOut": "Sign out"
   },
   "lock": {
     "prompt": "Unlock",

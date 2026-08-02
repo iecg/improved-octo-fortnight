@@ -40,15 +40,9 @@
     "in_one": "Due in {{count}} day",
     "in_other": "Due in {{count}} days",
     "overdue_one": "{{count}} day past",
-    "overdue_other": "{{count}} days past",
-    "scheduled": "Booked for {{date}}"
-  },
-  "last": {
-    "never": "No history yet",
-    "on": "Last time {{date}}"
+    "overdue_other": "{{count}} days past"
   },
   "interval": {
-    "label": "How often",
     "every_day_one": "Every day",
     "every_day_other": "Every {{count}} days",
     "every_week_one": "Every week",
@@ -59,9 +53,6 @@
     "every_year_other": "Every {{count}} years"
   },
   "action": {
-    "markDone": "Mark as done",
-    "schedule": "Put it on the calendar",
-    "skipThisOne": "Skip this one",
     "pause": "Pause this"
   }
 }

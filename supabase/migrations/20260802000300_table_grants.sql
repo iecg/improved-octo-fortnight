@@ -55,7 +55,8 @@ grant select, insert, update, delete on public.checkins to authenticated;
 grant select, insert, update, delete on public.plan_ideas to authenticated;
 
 -- `ai_usage` already has exactly `select`, granted where it was created: only
--- the Edge Function's service role increments it. `join_attempts` stays
+-- a service role could increment it, and nothing does — suggestions are BYOK
+-- and never touch a server of ours. `join_attempts` stays
 -- unreachable — the security-definer RPC is its only caller.
 
 -- Nothing changes for anon. It holds no privileges on this schema and the

@@ -24,8 +24,13 @@ This document is the walk that covers them. It needs a dev build, because
 binary before our JavaScript matters):
 
 ```bash
-cd apps/two-two-two && npm run ios     # ~5 min the first time
+cd apps/intimacy    && npm run ios     # sections A and G
+cd apps/two-two-two && npm run ios     # sections B-F and G
 ```
+
+~5 min the first time, per app. Section A is the intimacy app's flow and
+section B-F the 2-2-2 app's; section G needs both installed, which is the
+point of it.
 
 Read the accessibility tree with `axe describe-ui` rather than trusting a
 screenshot; a stale simulator screenshot is indistinguishable from a frozen
@@ -45,6 +50,10 @@ a device.
 | A3  | Set the two devices to different languages  | Each partner's chrome is in their own language, at the same time.                                          |
 | A4  | Book a plan on one device                   | It appears on the other without a manual refresh.                                                          |
 | A5  | Grant calendar access, then book            | A calendar entry appears titled with the **neutral label only** — no notes, no location, nothing intimate. |
+| A6  | **Refuse** calendar access, then propose    | Suggestions still appear, drawn from the app's own plans and the server's busy view. An offer to grant access, never a dead screen. |
+| A7  | Reschedule a booked plan                    | The existing calendar entry **moves**. No second entry, and none left at the old time.                     |
+| A8  | Grant reminders, book something 3h+ out     | A reminder fires ahead of it, in this device's language, saying nothing about the plan.                    |
+| A9  | Pick each of the three rituals in turn      | Each has its own countdown on Today, and booking one resets only that one.                                 |
 
 ## B. BYOK: the no-key path
 
@@ -147,12 +156,26 @@ locally), then restart the stack.
 | --- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | I1  | Book a plan with a place, leave the toggle off, grant calendar | The entry has a title and a time. **No address.**                                          |
 | I2  | Turn the toggle on from the Plans screen                       | Within a pass, the same entry now carries the address — no duplicate entry appears.        |
-| I3  | Turn it back off                                               | The address is gone from the entry again.                                                  |
+| I3  | Turn it back off, then open the **stock Calendar app**         | The address is gone from the entry itself. Check it in Calendar, not in ours: `update()` is a partial merge, and omitting a field asks the OS to keep it. This read as fixed for a whole release while the address sat on the phone. |
 | I4  | Rename the plan, or change its place                           | The existing entry updates. It does not go stale and does not duplicate.                   |
-| I5  | Remove the place entirely                                      | The entry loses its address; the plan keeps its entry.                                     |
+| I5  | Remove the place entirely, then check Calendar again           | The entry loses its address; the plan keeps its entry.                                     |
 | I6  | Do I2 on the **intimacy** app                                  | Not applicable — it passes no `calendarLocationFor`, and its entries must stay label-only. |
 
 ---
+
+## G. The two apps meeting
+
+The cross-app surface. Needs both apps installed, signed in to the same
+account — the thing no suite can stand up, and a privacy surface besides.
+
+| #   | Do                                                          | Expect                                                                                                          |
+| --- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| G1  | Install the second app on a paired account                   | It finds the couple already connected, seeds its own cadences, and shows the "one account, both apps" notice once. |
+| G2  | Open Two22 Settings without touching anything                | "Avoid times you are busy elsewhere" is **off**. This is the default every user starts at.                       |
+| G3  | Book an evening in the intimacy app, then open Two22's booking screen | Nothing is marked. The feed is gated and the switch is still off.                                     |
+| G4  | Turn the switch on, then look again                          | That evening now reads as busy — **and nothing says what it is**. No title, no kind, no notes.                   |
+| G5  | Turn it back off with the booking screen still open          | The marks disappear without reopening the screen.                                                               |
+| G6  | Unpair from either app                                       | Both apps return to pairing. The old invite code no longer works.                                               |
 
 ## If something here fails
 

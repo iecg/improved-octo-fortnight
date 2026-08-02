@@ -90,8 +90,10 @@ describe('reconcileDevice', () => {
     expect(writeCalendarEvent).toHaveBeenCalledTimes(1);
     const written = vi.mocked(writeCalendarEvent).mock.calls[0]![0];
     expect(written.title).toBe('Evening');
-    expect(written.notes).toBeUndefined();
     expect(written.location).toBeUndefined();
+    // Nothing else is even offered: an entry is a label, a span, and at most an
+    // address the couple opted into. `notes` is not a field on this type.
+    expect(Object.keys(written).sort()).toEqual(['endsAt', 'startsAt', 'timeZone', 'title']);
 
     expect(opts.onCalendarEvent).toHaveBeenCalledWith(opts.plans[0], 'event-new');
     expect(scheduleReminder).toHaveBeenCalledTimes(1);
@@ -108,7 +110,13 @@ describe('reconcileDevice', () => {
     const written = vi.mocked(writeCalendarEvent).mock.calls[0]![0];
     expect(written.location).toBe('Carrer dels Almogàvers 1, Barcelona');
     // Still nothing else — an address is the only thing being opted into.
-    expect(written.notes).toBeUndefined();
+    expect(Object.keys(written).sort()).toEqual([
+      'endsAt',
+      'location',
+      'startsAt',
+      'timeZone',
+      'title',
+    ]);
   });
 
   it('writes nothing when the opt-in callback declines for this plan', async () => {
@@ -195,23 +203,25 @@ describe('reconcileDevice', () => {
    */
   it('brings an existing entry back into line with the plan', async () => {
     const plan = bookedPlan('plan-1', { [ME]: 'mine' });
+    const opts = options([plan], {
+      calendarTitleFor: () => 'Renamed',
+      calendarLocationFor: () => 'Bar Nou',
+    });
 
-    await reconcileDevice(
-      options([plan], {
-        calendarTitleFor: () => 'Renamed',
-        calendarLocationFor: () => 'Bar Nou',
-      }),
-      NEVER_CANCELLED,
-    );
+    await reconcileDevice(opts, NEVER_CANCELLED);
 
     // Nothing new is created — the entry already exists on this device.
     expect(writeCalendarEvent).not.toHaveBeenCalled();
+    // And the stored id is left alone: the OS entry changes, the row does not.
+    expect(opts.onCalendarEvent).not.toHaveBeenCalled();
     expect(updateCalendarEvent).toHaveBeenCalledTimes(1);
 
     const [eventId, written] = vi.mocked(updateCalendarEvent).mock.calls[0]!;
     expect(eventId).toBe('mine');
     expect(written.title).toBe('Renamed');
     expect(written.location).toBe('Bar Nou');
+    // A moved plan is the other half of this: the entry follows the time.
+    expect(written.startsAt.toISOString()).toBe(plan.startsAt);
   });
 
   it('still writes no address into an updated entry by default', async () => {

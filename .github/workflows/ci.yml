@@ -25,8 +25,16 @@ jobs:
       - run: npm test
 
   bundle:
-    name: Bundle the app
+    name: Bundle ${{ matrix.app }}
     runs-on: ubuntu-latest
+    strategy:
+      # Both apps, because they are separate Expo projects with separate Metro
+      # and babel configs. This job used to build the intimacy app only, while
+      # the 2-2-2 app grew a feature tree, a zustand store and a fourth tab
+      # that nothing here ever resolved.
+      fail-fast: false
+      matrix:
+        app: [intimacy, two-two-two]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,7 +46,7 @@ jobs:
       # babel preset, or a native module missing from the workspace only shows
       # up here.
       - run: npx expo export --platform ios --output-dir /tmp/export
-        working-directory: apps/intimacy
+        working-directory: apps/${{ matrix.app }}
         env:
           EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder

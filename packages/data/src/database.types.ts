@@ -169,7 +169,6 @@ export interface Database {
           profile_id: string;
           on_date: string;
           interest: CheckinInterestEnum;
-          energy: number | null;
           note: string | null;
           created_at: string;
           updated_at: string;
@@ -180,12 +179,10 @@ export interface Database {
           profile_id: string;
           on_date: string;
           interest: CheckinInterestEnum;
-          energy?: number | null;
           note?: string | null;
         };
         Update: {
           interest?: CheckinInterestEnum;
-          energy?: number | null;
           note?: string | null;
         };
         Relationships: [];
@@ -280,7 +277,8 @@ export interface Database {
         };
         Relationships: [];
       };
-      // Read-only to clients; only the Edge Function's service role writes it.
+      // Read-only to clients, and written by nothing: suggestions are BYOK, so
+      // no server of ours is in that path to count them. Empty by design.
       ai_usage: {
         Row: { couple_id: string; day: string; request_count: number };
         Insert: { couple_id: string; day: string; request_count?: number };
