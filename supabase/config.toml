@@ -39,7 +39,12 @@ shadow_port = 54320
 health_timeout = "2m"
 # The database major version to use. This has to be the same as your remote database's. Run `SHOW
 # server_version;` on the remote database to check.
-major_version = 17
+#
+# 16, matching the `postgres:16` service the RLS job runs against and the
+# `postgresql@16` the README tells you to install. The three had drifted apart,
+# which is the one way to get a migration that passes locally and fails in CI —
+# or worse, the reverse.
+major_version = 16
 
 [db.pooler]
 enabled = false

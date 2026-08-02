@@ -8,6 +8,7 @@
  * Every countdown comes from the shared cadence engine, the same pure code the
  * intimacy app runs. Only the intervals differ.
  */
+import { healthLabelKey } from '@couple/cadence';
 import { kindDescriptionKey, kindLabelKey, type AppDomain } from '@couple/core';
 import { dueTranslation, formatDay, intervalTranslation } from '@couple/i18n';
 import { Body, Button, CadenceBar, Card, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
@@ -77,6 +78,7 @@ export default function Rhythm() {
                 progress={status.progress}
                 health={status.health}
                 label={t(due.key, { count: due.count })}
+                healthLabel={t(healthLabelKey(status.health))}
               />
 
               {status.nextScheduledAt ? (

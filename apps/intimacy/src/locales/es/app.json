@@ -7,16 +7,13 @@
   "today": {
     "greeting": "Hoy",
     "checkinPrompt": "¿Cómo te sientes para esta noche?",
-    "yourAnswer": "Dijiste",
     "partnerAnswer": "{{name}} dijo",
     "partnerNoAnswer": "{{name}} aún no ha respondido",
-    "bothYes": "Los dos dijeron que sí.",
     "nextUp": "Lo próximo",
     "nothingBooked": "No hay nada reservado.",
     "rituals": "Su ritmo",
     "propose": "Proponer una hora",
-    "planIt": "Proponer una hora para esto",
-    "dateNight": "Próxima cita"
+    "planIt": "Proponer una hora para esto"
   },
   "checkin": {
     "yes": "Sí",
@@ -39,8 +36,7 @@
     "durationMinutes_other": "{{count}} minutos",
     "durationHours_one": "{{count}} hora",
     "durationHours_other": "{{count}} horas",
-    "send": "Proponerlo",
-    "sent": "Enviado."
+    "send": "Proponerlo"
   },
   "settings": {
     "title": "Ajustes",

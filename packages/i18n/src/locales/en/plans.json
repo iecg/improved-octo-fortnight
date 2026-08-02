@@ -21,30 +21,16 @@
     "accept": "Works for me",
     "decline": "Not this time",
     "counter": "Suggest another time",
-    "accepted": "You both said yes",
-    "declinedByThem": "{{name}} suggested a different time instead",
     "counteredNote": "In reply to an earlier suggestion",
     "noPressure": "Saying no is a complete answer."
   },
   "new": {
-    "title": "Suggest a time",
-    "whenLabel": "When",
-    "durationLabel": "How long",
     "notesLabel": "Anything to add",
     "notesPlaceholder": "Optional",
-    "notesHint": "Your partner sees this exactly as you write it, in whatever language you write it.",
-    "locationLabel": "Where",
-    "submit": "Send it",
-    "openWindows": "You're both free then",
-    "conflict": "One of you has something on"
+    "notesHint": "Your partner sees this exactly as you write it, in whatever language you write it."
   },
   "detail": {
-    "notes": "Notes",
-    "location": "Where",
     "markDone": "Mark as done",
-    "markSkipped": "Didn't happen",
-    "cancel": "Cancel this",
-    "addedToCalendar": "Added to your calendar",
-    "calendarTitle": "Shows up as \"{{label}}\""
+    "markSkipped": "Didn't happen"
   }
 }

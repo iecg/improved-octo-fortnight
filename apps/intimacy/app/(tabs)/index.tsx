@@ -8,6 +8,7 @@
  * styled exactly like "yes" — an app that turns a no into a broken chain makes
  * the problem it is meant to solve worse.
  */
+import { healthLabelKey } from '@couple/cadence';
 import { CHECKIN_INTERESTS, type CheckinInterest } from '@couple/core';
 import { dueTranslation, formatWeekday, formatTime, kindLabelKeyFor } from '../../src/format';
 import {
@@ -178,6 +179,7 @@ export default function Today() {
                   progress={status.progress}
                   health={status.health}
                   label={t(due.key, { count: due.count })}
+                  healthLabel={t(healthLabelKey(status.health))}
                 />
                 {/* The only thing that ever resets this particular clock: a
                     plan of this kind. Without it the bar is a countdown with

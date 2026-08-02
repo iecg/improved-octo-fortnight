@@ -19,8 +19,10 @@ if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
  * Row-level-security suite. Separate from the default config because it needs
  * a live Postgres — `npm test` must stay runnable with nothing installed.
  *
- * Point it at a database with `RLS_TEST_ADMIN_URL`; it creates and drops its
- * own throwaway database from there.
+ * Point it at a server with the standard `PG*` variables — `PGHOST`, `PGPORT`,
+ * `PGUSER`, `PGPASSWORD`, `PGDATABASE` — read from the root `.env` above or
+ * from the shell, which wins. It creates and drops its own throwaway database
+ * from there; `RLS_TEST_DB` names it.
  */
 export default defineConfig({
   test: {

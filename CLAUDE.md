@@ -159,8 +159,16 @@ but no automated test covers them, so treat a green suite accordingly.
   writing to that device's lock screen. `profiles.expo_push_token` was carried
   and never written; it is gone. Push would need its own table and its own
   argument for overriding discretion.
-- All RLS lives in one migration so the access surface is reviewable at a
-  glance.
+- **RLS lives beside the table it governs**, and the shared tables were all
+  introduced at once, so most of it is in `20260801000400_rls_policies.sql`.
+  Not all: `plan_ideas` and `ai_usage` carry their five policies in
+  `20260802000200_two_two_two_ideas.sql`, and grants are split further across
+  `20260802000300_table_grants.sql` and the migrations that add columns. This
+  used to be written down as "all RLS lives in one migration", which stopped
+  being true the moment the 2-2-2 tables arrived and was never corrected —
+  worth knowing, because the reviewable-at-a-glance claim is what someone
+  relies on when they check whether a new table is covered. `tests/rls/`
+  enumerates the real surface; the file layout does not.
 - A table read live on both phones needs **two** things that live far apart: a
   `postgres_changes` handler in the app's `useRealtimeSync`, and a migration
   adding it to the `supabase_realtime` publication. Subscribing to a table that
@@ -173,12 +181,17 @@ but no automated test covers them, so treat a green suite accordingly.
 
 ## Environment
 
-`apps/intimacy/.env` (see `.env.example`):
+Each app has its own, in `apps/*/` (see `.env.example`):
 
 ```
 EXPO_PUBLIC_SUPABASE_URL=...
 EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 ```
+
+`EXPO_PUBLIC_` values are embedded in the app bundle. Only the anon key belongs
+there — RLS is what protects the data, never key secrecy. The root `.env` is a
+different thing entirely: it points `npm run db:test` at a local throwaway
+database and never at Supabase.
 
 ## Dev builds
 
@@ -230,12 +243,7 @@ package scripts as a side effect, so check `git diff` afterwards.
 
 EAS does not see your `.env`; set `EXPO_PUBLIC_SUPABASE_URL` and
 `EXPO_PUBLIC_SUPABASE_ANON_KEY` as EAS environment variables. **Anon key
-only** — see below.
-
-## Environment
-
-`EXPO_PUBLIC_` values are embedded in the app bundle. Only the anon key belongs
-there — RLS is what protects the data, never key secrecy.
+only** — see "Environment" above.
 
 ## What the two apps share, and what they don't
 
@@ -248,11 +256,17 @@ an app, that invariant is about to break.
 Per app: its screens, its `app` translation namespace, its kind catalog, and
 its `createDomainRepository(client, '<domain>')` binding.
 
-2-2-2-owned tables are `plan_ideas` and `ai_usage`. They are reached through
-`createIdeaRepository` in `packages/data/src/ideas.ts` — its own factory, next
-to the intimacy-owned `createCheckinRepository`, so the other app has nothing
-to import even by accident. It hard-codes its domain rather than taking one,
-because a domain parameter is the exact shape invariant 2 forbids.
+2-2-2-owned tables are `plan_ideas` and `ai_usage`. `plan_ideas` is reached
+through `createIdeaRepository` in `packages/data/src/ideas.ts` — its own
+factory, next to the intimacy-owned `createCheckinRepository`, so the other app
+has nothing to import even by accident. It hard-codes its domain rather than
+taking one, because a domain parameter is the exact shape invariant 2 forbids.
+
+`ai_usage` has no accessor at all, in either app, and that is the correct
+number: it is `select`-only to clients and only a service role could write it,
+so a repository method would be a read of a table nothing fills. It exists as a
+place a future metered path would write from, and stays empty while suggestions
+go from the device straight to the provider.
 
 Its AI-optional rule — no path outside `features/<name>/ai/` may assume a model
 exists — applies to that app only, and is enforced by

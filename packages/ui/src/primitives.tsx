@@ -180,10 +180,20 @@ export function CadenceBar({
   progress,
   health,
   label,
+  healthLabel,
 }: {
   progress: number;
   health: Health;
   label: string;
+  /**
+   * The health state in words, already translated by the caller.
+   *
+   * Health is otherwise carried by the bar's colour alone, which says nothing
+   * to a screen reader and nothing to anyone who cannot separate the three
+   * colours. `healthLabelKey` in `@couple/cadence` names the key; this renders
+   * what the caller made of it.
+   */
+  healthLabel: string;
 }) {
   const percent = Math.round(Math.min(1, Math.max(0, progress)) * 100);
 
@@ -192,7 +202,7 @@ export function CadenceBar({
       <View
         accessibilityRole="progressbar"
         accessibilityValue={{ min: 0, max: 100, now: percent }}
-        accessibilityLabel={label}
+        accessibilityLabel={`${label} — ${healthLabel}`}
         className="h-2 overflow-hidden rounded-full bg-line dark:bg-line-dark"
       >
         <View
