@@ -5,7 +5,12 @@ import { Tabs, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { plans as repository, useEnsureCadences, usePlans } from '../../src/queries';
+import {
+  plans as repository,
+  useEnsureCadences,
+  usePlans,
+  useRealtimeSync,
+} from '../../src/queries';
 import { getCalendarLabel } from '../../src/runtime';
 import { usePairedSession } from '../../src/session';
 
@@ -16,6 +21,10 @@ export default function TabsLayout() {
   const { t } = useTranslation('app');
   const { profile, couple } = usePairedSession();
   const client = useQueryClient();
+
+  // Once for every tab, alongside the other couple-wide side effects below.
+  useRealtimeSync(couple.id);
+
   const plansQuery = usePlans(couple.id);
 
   // Whoever installed this app second never saw the pairing screen, which used

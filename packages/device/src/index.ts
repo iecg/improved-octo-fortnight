@@ -4,4 +4,3 @@ export * from './notifications';
 export * from './lock';
 export * from './preferences';
 export * from './sync';
-export type { TimeRange } from './types';

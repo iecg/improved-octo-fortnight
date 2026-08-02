@@ -137,17 +137,30 @@ export interface PlanIdea {
 }
 
 /**
- * A window the couple is occupied in, and nothing more.
+ * A span between two instants.
  *
- * Two instants with no title, no domain and no author — not because those are
- * stripped on the way out, but because the `plan_busy_times` view never selects
- * them. Both apps consume this to stop offering a time that is already spoken
- * for, and neither can learn what is occupying it.
+ * Declared once, here, because three layers pass it to each other: the device
+ * reads free/busy off the phone's calendar, the cadence engine merges and
+ * subtracts those spans to find an opening, and both apps hand the result
+ * between the two. It used to be declared separately in each of the three,
+ * identically — so the values flowed across the boundaries and typechecked by
+ * coincidence rather than by agreement.
  */
-export interface BusyWindow {
+export interface TimeRange {
   start: Date;
   end: Date;
 }
+
+/**
+ * A window the couple is occupied in, and nothing more.
+ *
+ * The same two instants, named for what they mean when they come from the
+ * server: no title, no domain and no author — not because those are stripped
+ * on the way out, but because the `plan_busy_times` view never selects them.
+ * Both apps consume this to stop offering a time that is already spoken for,
+ * and neither can learn what is occupying it.
+ */
+export type BusyWindow = TimeRange;
 
 export interface Checkin {
   id: string;

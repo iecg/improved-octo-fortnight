@@ -9,7 +9,7 @@
  * Note what is absent: there is no check-in accessor here, because check-ins
  * are intimacy-owned and reachable only through their own factory.
  */
-import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
+import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, CostBand, IdeaSource, Locale, Plan } from '@couple/core';
 import { createBusyRepository, createDomainRepository, createIdeaRepository } from '@couple/data';
 import { isCrossAppBusyEnabled } from '@couple/device';
@@ -148,6 +148,29 @@ export function useCreatePlan(coupleId: string, profileId: string) {
         endsAt: input.endsAt.toISOString(),
         status: 'scheduled',
       }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+    },
+  });
+}
+
+/**
+ * Mark an outing as done, or as skipped.
+ *
+ * Completing is what re-anchors the cadence, so the cadence list is
+ * invalidated alongside the plans — the rhythm screen would otherwise keep
+ * showing the old countdown until something else happened to refetch it.
+ *
+ * Same shape as the intimacy app's `useCompletePlan`. This used to call the
+ * repository straight from the screen and then invalidate the *entire* cache,
+ * which refetched every query in the app to update two.
+ */
+export function useCompletePlan(coupleId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { planId: string; completed: boolean }) =>
+      plans.setPlanStatus(input.planId, input.completed ? 'completed' : 'skipped'),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
       void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
@@ -300,5 +323,5 @@ export function cadenceStatuses(
         timeZone,
       }),
     )
-    .sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+    .sort(compareUrgency);
 }

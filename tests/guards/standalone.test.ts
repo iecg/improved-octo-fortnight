@@ -159,6 +159,33 @@ describe('the domain boundary holds at the realtime layer', () => {
       { table: 'plans', filter: 'domain' },
     ]);
   });
+
+  /**
+   * One channel per app, opened from one place.
+   *
+   * The two above check what a subscription *says*; this checks how many times
+   * it is opened. Both matter, and neither implies the other: the intimacy app
+   * called `useRealtimeSync` from two screens that are both mounted at once,
+   * opening the same topic twice, and every assertion above passed — they read
+   * the file that declares the subscription, and there is still only one of
+   * those. Counting call sites is what catches it.
+   */
+  it('mounts realtime once per app, not once per screen', () => {
+    for (const [app, files] of Object.entries(filesByApp)) {
+      const callSites = files.flatMap((file) => {
+        const contents = read(file);
+        // Every mention that is followed by `(` is either the declaration or a
+        // call, and there is at most one declaration per app.
+        const mentions = [...contents.matchAll(/\buseRealtimeSync\s*\(/g)].length;
+        const count = mentions - (contents.includes('function useRealtimeSync(') ? 1 : 0);
+        return count > 0 ? [{ file: relative(REPO_ROOT, file), count }] : [];
+      });
+
+      expect(callSites, `${app} should mount realtime exactly once`).toHaveLength(1);
+      expect(callSites[0]!.count, `${app}: ${callSites[0]!.file}`).toBe(1);
+      expect(callSites[0]!.file).toMatch(/\(tabs\)[\\/]_layout\.tsx$/);
+    }
+  });
 });
 
 describe('cross-app conveniences degrade to nothing', () => {

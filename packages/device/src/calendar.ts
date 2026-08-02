@@ -16,7 +16,7 @@
 import * as Calendar from 'expo-calendar';
 import type { EntityTypes } from 'expo-calendar/legacy';
 
-import type { TimeRange } from './types';
+import type { TimeRange } from '@couple/core';
 
 /** `EntityTypes.EVENT`, without importing the legacy module for one constant. */
 const EVENT_ENTITY = 'event' as EntityTypes;

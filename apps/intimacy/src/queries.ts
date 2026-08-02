@@ -4,7 +4,7 @@
  * Everything goes through the domain-scoped repositories in `@couple/data`,
  * which is what keeps this app's rows separate from the 2-2-2 app's.
  */
-import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
+import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, CheckinInterest, Plan, PlanProposal } from '@couple/core';
 import { createBusyRepository, createCheckinRepository, createDomainRepository } from '@couple/data';
 import { calendarDateIn } from '@couple/i18n';
@@ -171,14 +171,18 @@ export function useRespondToProposal(coupleId: string) {
     mutationFn: async (input: { proposal: PlanProposal; response: 'accepted' | 'declined' }) => {
       await plans.respond(input.proposal.id, input.response);
       // Accepting is what turns a suggestion into something on the calendar.
+      // The time is written first and the status second, through the one
+      // method that maintains `completed_at` alongside it — `updatePlan` never
+      // touched that column, and the two are pinned to each other by a check
+      // constraint.
       if (input.response === 'accepted') {
         await plans.updatePlan(input.proposal.planId, {
-          status: 'scheduled',
           startsAt: input.proposal.startsAt,
           endsAt: input.proposal.endsAt,
         });
+        await plans.setPlanStatus(input.proposal.planId, 'scheduled');
       } else {
-        await plans.updatePlan(input.proposal.planId, { status: 'declined' });
+        await plans.setPlanStatus(input.proposal.planId, 'declined');
       }
     },
     onSuccess: () => {
@@ -276,6 +280,10 @@ export function useCompletePlan(coupleId: string) {
  * Without this, a partner's reply only appears on the next manual refresh —
  * and the whole point of the loop is that the other person sees it.
  *
+ * Mounted once, in the tabs layout, rather than per screen: both tabs stay
+ * mounted, so a per-screen call opened the same topic twice for no benefit.
+ * The 2-2-2 app found this first; the two apps now do the same thing.
+ *
  * Every subscription carries a `filter`. On `plans` it is the domain, which is
  * the boundary RLS cannot express and the one thing keeping the two apps'
  * rows apart; on the other two it is the couple, which RLS already enforces
@@ -344,5 +352,5 @@ export function cadenceStatuses(
         timeZone,
       }),
     )
-    .sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+    .sort(compareUrgency);
 }

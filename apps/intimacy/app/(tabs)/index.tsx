@@ -32,7 +32,6 @@ import {
   useCadences,
   useCheckins,
   usePlans,
-  useRealtimeSync,
   useRecordCheckin,
 } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
@@ -47,8 +46,6 @@ export default function Today() {
   const now = useMemo(() => new Date(), []);
   const locale = i18n.language === 'es' ? 'es' : 'en';
   const timeZone = couple.timezone;
-
-  useRealtimeSync(couple.id);
 
   const plansQuery = usePlans(couple.id);
   const cadencesQuery = useCadences(couple.id);
