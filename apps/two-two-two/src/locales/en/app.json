@@ -1,0 +1,30 @@
+{
+  "brand": {
+    "name": "Two22",
+    "tagline": "Every two weeks, two months, two years."
+  },
+  "tabs": {
+    "today": "Rhythm",
+    "plans": "Plans",
+    "settings": "Settings"
+  },
+  "home": {
+    "title": "Your rhythm",
+    "subtitle": "Three commitments, three clocks.",
+    "lastTime": "Last time {{date}}",
+    "neverYet": "Nothing logged yet",
+    "planIt": "Plan it",
+    "bookedFor": "Booked for {{date}}"
+  },
+  "settings": {
+    "title": "Settings",
+    "account": "Account",
+    "partner": "Paired with {{name}}",
+    "notPaired": "Not paired yet",
+    "cadences": "How often",
+    "calendarAccess": "Calendar access",
+    "allow": "Allow",
+    "allowed": "Allowed",
+    "signOut": "Sign out"
+  }
+}

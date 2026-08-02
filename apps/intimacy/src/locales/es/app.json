@@ -4,37 +4,6 @@
     "plans": "Planes",
     "settings": "Ajustes"
   },
-  "auth": {
-    "title": "Nosotros",
-    "subtitle": "Un lugar tranquilo para hacerse tiempo.",
-    "emailLabel": "Correo electrónico",
-    "emailPlaceholder": "tu@ejemplo.com",
-    "send": "Enviarme un código",
-    "codeLabel": "Código de seis dígitos",
-    "verify": "Entrar",
-    "sent": "Enviamos un código a {{email}}.",
-    "useAnotherEmail": "Usar otro correo",
-    "appleSignIn": "Continuar con Apple"
-  },
-  "pair": {
-    "title": "Solo ustedes dos",
-    "subtitle": "Uno empieza y el otro se une con el código.",
-    "create": "Empezar aquí",
-    "join": "Tengo un código",
-    "codeLabel": "Código de invitación",
-    "yourCodeLabel": "Tu código de invitación",
-    "shareHint": "Compártelo con tu pareja. Deja de funcionar en cuanto se una.",
-    "joinAction": "Unirme",
-    "waiting": "Esperando a que tu pareja se una.",
-    "joined": "Ya están conectados.",
-    "error": {
-      "invalid_code": "Ese código no coincide. Revísalo e inténtalo de nuevo.",
-      "couple_full": "Ese código pertenece a una pareja que ya está completa.",
-      "already_paired": "Ya estás conectado con alguien.",
-      "rate_limited": "Demasiados intentos. Espera unos minutos e inténtalo de nuevo.",
-      "unknown": "Eso no funcionó. Inténtalo de nuevo en un momento."
-    }
-  },
   "today": {
     "greeting": "Hoy",
     "checkinPrompt": "¿Cómo te sientes para esta noche?",
@@ -99,5 +68,9 @@
   "notification": {
     "title": "Nosotros",
     "body": "Un recordatorio discreto."
+  },
+  "brand": {
+    "name": "Nosotros",
+    "tagline": "Un lugar tranquilo para hacerse tiempo."
   }
 }

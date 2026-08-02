@@ -4,9 +4,8 @@ Two apps for the same two people, sharing one backend and one pairing:
 
 - **`apps/intimacy`** ("Us") — short-cadence private scheduling: propose and
   confirm time together, standing rituals, daily check-ins.
-- **`apps/two-two-two`** — the 2-2-2 rule: date night every 2 weeks, a getaway
-  every 2 months, a big trip every 2 years. _Not yet created — see "Adding the
-  2-2-2 app" below._
+- **`apps/two-two-two`** ("Two22") — the 2-2-2 rule: date night every 2 weeks,
+  a getaway every 2 months, a big trip every 2 years.
 
 Pairing happens once and serves both. Installing the second app finds the
 couple already connected.
@@ -50,7 +49,9 @@ a test, listed with them.
 
 ```
 apps/intimacy/      Expo app — expo-router, NativeWind
+apps/two-two-two/   Expo app — same scaffold, different domain
 packages/core/      Domain types + kind catalogs (no deps)
+packages/auth/      Sign-in + pairing screens, session provider (shared)
 packages/cadence/   PURE recurrence engine + free-window search
 packages/data/      Supabase client, domain-scoped repositories
 packages/i18n/      i18next bootstrap, shared namespaces, date formatting
@@ -71,6 +72,7 @@ npm run typecheck        # tsc across every workspace
 npm test                 # unit tests (no database needed)
 npm run db:test          # RLS suite — needs Postgres (see below)
 npm run intimacy         # expo start
+npm run two-two-two      # expo start
 ```
 
 `npm run db:test` builds a throwaway database from `supabase/migrations` and
@@ -108,25 +110,30 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 `EXPO_PUBLIC_` values are embedded in the app bundle. Only the anon key belongs
 there — RLS is what protects the data, never key secrecy.
 
-## Adding the 2-2-2 app
+## What the two apps share, and what they don't
 
-Its plan was written against a standalone repo. Three amendments, all cheap
-because it has no commits yet:
+Shared, and must stay shared: sign-in, pairing, and the session provider
+(`packages/auth`); the cadence engine; the `common` / `cadence` / `plans` /
+`auth` translation namespaces; the schema. **There is one account and one
+pairing across both apps** — if you find yourself copying an auth screen into
+an app, that invariant is about to break.
 
-1. `cadences.kind` / `plans.kind` become `(domain, kind)` — already migrated
-   here. Its kinds are in `TWO_TWO_TWO_KINDS` (`packages/core/src/kinds.ts`)
-   with translations under `cadence:kind.two_two_two.*`, and its default
-   cadences are already seeded by the same code path.
-2. Scaffolding comes from this repo, not a fresh `create-expo-app`. Copy
-   `apps/intimacy`'s `metro.config.js`, `babel.config.js`, `tailwind.config.js`
-   and `tsconfig.json`; build against `createDomainRepository(client,
-'two_two_two')`.
-3. Its `plan_ideas` / `ai_usage` tables and the `suggest-ideas` Edge Function
-   stay 2-2-2-owned. The AI-optional rule (no path outside `features/*/ai/` may
-   assume a model exists) applies there, not here.
+Per app: its screens, its `app` translation namespace, its kind catalog, and
+its `createDomainRepository(client, '<domain>')` binding.
 
-Its test plan called for Vitest throughout; use Vitest for pure packages and
-`jest-expo` for React Native component tests.
+2-2-2-owned tables are `plan_ideas` and `ai_usage`, plus the planned
+`suggest-ideas` Edge Function. Its AI-optional rule — no path outside
+`features/*/ai/` may assume a model exists — applies to that app only. The
+curated idea library and manual entry are what make the feature work with no
+key configured; `ai_usage` simply stays empty.
+
+Ported from `iecg/legendary-bassoon` (now superseded). Two bugs found there
+and guarded against here, both with tests: a `count(*)`-based couple-size
+trigger cannot stop two concurrent redemptions of one invite code, and a
+column-wide `grant update on couples` lets a client overwrite its own invite
+code. Its CSPRNG invite-code generator, its `completed_at` biconditional, and
+its `on delete set null` on `created_by` were better than what was here and
+were adopted.
 
 ## Version notes
 

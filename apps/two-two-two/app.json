@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "Two22",
+    "slug": "two22",
+    "scheme": "two22",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.couple.two22",
+      "infoPlist": {
+        "NSCalendarsUsageDescription": "Add your date nights and getaways to your calendar.",
+        "NSCalendarsFullAccessUsageDescription": "Add your date nights and getaways to your calendar."
+      }
+    },
+    "android": {
+      "package": "app.couple.two22",
+      "adaptiveIcon": {
+        "backgroundColor": "#E8E2DD",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Add your date nights and getaways to your calendar."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#E8E2DD",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

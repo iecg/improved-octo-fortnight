@@ -444,10 +444,9 @@ describe('plan integrity', () => {
   it('clears the completion time when a plan stops being complete', async () => {
     const planId = await seedPlan(alice, coupleA, 'intimacy');
     await asUser(pool, alice, (c) =>
-      c.query(
-        "update public.plans set status = 'completed', completed_at = now() where id = $1",
-        [planId],
-      ),
+      c.query("update public.plans set status = 'completed', completed_at = now() where id = $1", [
+        planId,
+      ]),
     );
 
     const error = await expectRejected(
@@ -475,12 +474,66 @@ describe('plan integrity', () => {
 
     await pool.query('delete from auth.users where id = $1', [founder]);
 
-    const survivor = await pool.query(
-      'select title, created_by from public.plans where id = $1',
-      [planId],
-    );
+    const survivor = await pool.query('select title, created_by from public.plans where id = $1', [
+      planId,
+    ]);
     expect(survivor.rows[0]?.title).toBe('a shared evening');
     expect(survivor.rows[0]?.created_by).toBeNull();
+  });
+});
+
+describe('2-2-2 owned tables', () => {
+  it("hides one couple's ideas from another", async () => {
+    await asUser(pool, alice, (client) =>
+      client.query(
+        `insert into public.plan_ideas
+           (couple_id, domain, kind, title, source, locale, saved_by)
+         values ($1, 'two_two_two', 'date_night', 'the noodle place', 'manual', 'en', $2)`,
+        [coupleA, alice],
+      ),
+    );
+
+    const visible = await asUser(pool, carol, async (client) => {
+      const { rows } = await client.query('select id from public.plan_ideas');
+      return rows;
+    });
+
+    expect(visible).toEqual([]);
+  });
+
+  it('will not let one partner save an idea as the other', async () => {
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_ideas
+             (couple_id, domain, kind, title, source, locale, saved_by)
+           values ($1, 'two_two_two', 'getaway', 'not mine', 'manual', 'en', $2)`,
+          [coupleA, bob],
+        ),
+      ),
+    );
+
+    expect(error.message).toMatch(/row-level security/i);
+  });
+
+  it('keeps the AI usage counter readable but not writable', async () => {
+    // Only the Edge Function's service role increments it; a client that could
+    // write here could reset its own daily cap.
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          'insert into public.ai_usage (couple_id, day, request_count) values ($1, current_date, 0)',
+          [coupleA],
+        ),
+      ),
+    );
+    expect(error.message).toMatch(/permission denied/i);
+
+    const readable = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select * from public.ai_usage');
+      return rows;
+    });
+    expect(readable).toEqual([]);
   });
 });
 

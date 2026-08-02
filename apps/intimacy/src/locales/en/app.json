@@ -4,37 +4,6 @@
     "plans": "Plans",
     "settings": "Settings"
   },
-  "auth": {
-    "title": "Us",
-    "subtitle": "A quiet place to make time for each other.",
-    "emailLabel": "Email",
-    "emailPlaceholder": "you@example.com",
-    "send": "Send me a code",
-    "codeLabel": "Six-digit code",
-    "verify": "Sign in",
-    "sent": "We sent a code to {{email}}.",
-    "useAnotherEmail": "Use a different email",
-    "appleSignIn": "Continue with Apple"
-  },
-  "pair": {
-    "title": "Just the two of you",
-    "subtitle": "One of you starts, the other joins with the code.",
-    "create": "Start here",
-    "join": "I have a code",
-    "codeLabel": "Invite code",
-    "yourCodeLabel": "Your invite code",
-    "shareHint": "Share this with your partner. It stops working once they join.",
-    "joinAction": "Join",
-    "waiting": "Waiting for your partner to join.",
-    "joined": "You're connected.",
-    "error": {
-      "invalid_code": "That code doesn't match. Check it and try again.",
-      "couple_full": "That code belongs to a pair that is already complete.",
-      "already_paired": "You're already connected to someone.",
-      "rate_limited": "Too many tries. Wait a few minutes and try again.",
-      "unknown": "That didn't work. Try again in a moment."
-    }
-  },
   "today": {
     "greeting": "Today",
     "checkinPrompt": "How are you feeling about tonight?",
@@ -99,5 +68,9 @@
   "notification": {
     "title": "Us",
     "body": "A quiet reminder."
+  },
+  "brand": {
+    "name": "Us",
+    "tagline": "A quiet place to make time for each other."
   }
 }

@@ -5,6 +5,5 @@ import { supabase } from '../src/runtime';
 
 export default function SignIn() {
   const { t } = useTranslation('app');
-  // Only the branding differs between the two apps; the flow is shared.
   return <SignInScreen client={supabase} title={t('brand.name')} subtitle={t('brand.tagline')} />;
 }
