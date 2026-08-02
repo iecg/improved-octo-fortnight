@@ -115,6 +115,7 @@ export function toPlanIdea(row: Tables['plan_ideas']['Row']): PlanIdea {
     url: row.url,
     estCostBand: row.est_cost_band as CostBand | null,
     source: row.source as IdeaSource,
+    sourceDomain: row.source_domain,
     locale: row.locale,
     savedBy: row.saved_by,
     createdAt: row.created_at,

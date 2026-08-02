@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
 
 import { mapsLinkFor } from '../../features/places/link';
+import { StaticMap } from '../../features/places/maps/StaticMap';
 import { plans as repository, usePlaces, usePlans, useRealtimeSync } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
@@ -76,6 +77,8 @@ export default function Plans() {
       <View className="gap-1">
         <Muted>{place.name}</Muted>
         {place.address ? <Muted>{place.address}</Muted> : null}
+        {/* Nothing at all for a place typed by hand, or with no key set. */}
+        <StaticMap coordinates={place.coordinates} />
         {place.address && place.locale !== locale ? (
           <Muted>{t(`common:language.${place.locale}`)}</Muted>
         ) : null}

@@ -107,6 +107,41 @@ describe('parseRequest', () => {
   });
 });
 
+describe('parseRequest, static map', () => {
+  it('clamps a nonsensical size rather than refusing to render', () => {
+    expect(
+      parseRequest({
+        op: 'staticMap',
+        center: { latitude: 41.385064, longitude: 2.173404 },
+        zoom: 99,
+        width: 5000,
+        height: 0,
+      }),
+    ).toEqual({
+      op: 'staticMap',
+      // Four places here, not two: this is a venue the provider itself named,
+      // so it is not new information about the couple — and a map coarsened to
+      // a kilometre would not be centred on the venue.
+      center: { latitude: 41.3851, longitude: 2.1734 },
+      zoom: 20,
+      width: 640,
+      height: 64,
+    });
+  });
+
+  it('still refuses a request with no centre', () => {
+    expect(parseRequest({ op: 'staticMap', zoom: 15 })).toBeNull();
+  });
+
+  it('fills in defaults', () => {
+    expect(parseRequest({ op: 'staticMap', center: { latitude: 0, longitude: 0 } })).toMatchObject({
+      zoom: 15,
+      width: 400,
+      height: 200,
+    });
+  });
+});
+
 describe('buildSearchBody', () => {
   it('biases towards a centre rather than restricting to it', () => {
     const body = buildSearchBody({

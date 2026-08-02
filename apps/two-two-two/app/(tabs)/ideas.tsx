@@ -10,8 +10,13 @@
  *
  * That is the whole AI-optional rule in practice: nothing on this screen
  * asks whether a key is configured, because nothing here has a model in its
- * path. A suggestion feature would be a third source alongside these two, not
- * a replacement for them.
+ * path.
+ *
+ * `PlaceSearch` is a third source, added alongside those two rather than in
+ * place of them. It renders `null` unless the proxy says it can search, so
+ * with nothing configured — which is every install until somebody sets a key —
+ * this screen is exactly the two-source screen described above. The same shape
+ * a suggestion feature would take.
  */
 import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain, type PlanIdea } from '@couple/core';
 import {
@@ -31,6 +36,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
+import { PlaceSearch } from '../../features/places/PlaceSearch';
 import { libraryFor, ideaSummaryKey, ideaTitleKey } from '../../src/ideas';
 import { useIdeas, useRemoveIdea, useSaveIdea } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
@@ -150,6 +156,23 @@ export default function Ideas() {
           />
         </View>
       </Card>
+
+      {/* A third source, alongside the shortlist and the bundled library.
+          Renders nothing when no mapping key is configured, which leaves the
+          screen exactly as it was before any of this existed. */}
+      <PlaceSearch
+        kind={kind}
+        onPick={(result) =>
+          save.mutate({
+            kind,
+            title: result.name,
+            summary: result.address ?? null,
+            source: 'places',
+            sourceDomain: 'google',
+            locale,
+          })
+        }
+      />
 
       <Card>
         <View className="gap-2">

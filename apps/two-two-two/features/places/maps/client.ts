@@ -58,6 +58,22 @@ export interface SearchPlacesInput {
   languageCode: 'en' | 'es';
 }
 
+/**
+ * Turn a town into a rough position.
+ *
+ * Used as the origin for drive times, so a couple can ask "how far is that from
+ * where we'd set off" without this app ever storing where they live or asking
+ * the OS where they are.
+ */
+export async function geocodeTown(
+  query: string,
+  languageCode: 'en' | 'es',
+): Promise<Coordinates | null> {
+  const outcome = await invoke<PlaceResult[]>({ op: 'geocode', query, languageCode });
+  if (!outcome.ok) return null;
+  return outcome.data[0]?.coordinates ?? null;
+}
+
 export function searchPlaces(input: SearchPlacesInput): Promise<PlacesOutcome<PlaceResult[]>> {
   return invoke<PlaceResult[]>({
     op: 'search',
@@ -66,6 +82,34 @@ export function searchPlaces(input: SearchPlacesInput): Promise<PlacesOutcome<Pl
     ...(input.radiusMeters ? { radiusMeters: input.radiusMeters } : {}),
     languageCode: input.languageCode,
   });
+}
+
+/**
+ * A map thumbnail as a data URI, or null.
+ *
+ * Bytes rather than a URL on purpose: a signed static-map URL still carries the
+ * key, and handing one to an `<Image>` would put it on the device — the exact
+ * thing the proxy exists to prevent. Null on any failure, which the component
+ * renders as no map rather than as an error.
+ */
+export async function fetchStaticMap(
+  center: Coordinates,
+  width = 400,
+  height = 200,
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('places', {
+      body: { op: 'staticMap', center, width, height },
+    });
+    if (error || !(data instanceof Blob)) return null;
+
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return `data:${data.type || 'image/png'};base64,${btoa(binary)}`;
+  } catch {
+    return null;
+  }
 }
 
 /** Whole minutes per destination, index-aligned. `null` means "we do not know". */

@@ -211,6 +211,8 @@ export function useSaveIdea(coupleId: string, profileId: string) {
       title: string;
       summary?: string | null;
       source: IdeaSource;
+      /** Which provider named it, for the sources that came from one. */
+      sourceDomain?: string | null;
       locale: Locale;
     }) =>
       ideas.save({
@@ -220,6 +222,7 @@ export function useSaveIdea(coupleId: string, profileId: string) {
         title: input.title,
         summary: input.summary ?? null,
         source: input.source,
+        sourceDomain: input.sourceDomain ?? null,
         locale: input.locale,
       }),
     onSuccess: () => {

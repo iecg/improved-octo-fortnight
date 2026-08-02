@@ -38,6 +38,7 @@ const PLACES_ENDPOINT = 'https://places.googleapis.com/v1/places:searchText';
 const GEOCODE_ENDPOINT = 'https://places.googleapis.com/v1/places:searchText';
 const ROUTES_ENDPOINT =
   'https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix';
+const STATIC_MAP_ENDPOINT = 'https://maps.googleapis.com/maps/api/staticmap';
 
 const DEFAULT_DAILY_LIMIT = 100;
 
@@ -161,6 +162,42 @@ async function handle(request: PlacesRequest, key: string): Promise<Response> {
       );
       if (raw === null) return fail('upstream');
       return json({ ok: true, data: toTravelMinutes(raw, request.destinations.length) });
+    }
+
+    case 'staticMap': {
+      /**
+       * The bytes, not a URL.
+       *
+       * A signed static-map URL still carries the key, and handing one to an
+       * `<Image>` puts it on the device and into any proxy the phone is behind
+       * — which is the thing this whole function exists to avoid. Fetching it
+       * here costs one hop and keeps the key server-side.
+       */
+      const url = new URL(STATIC_MAP_ENDPOINT);
+      url.searchParams.set('center', `${request.center.latitude},${request.center.longitude}`);
+      url.searchParams.set('zoom', String(request.zoom));
+      url.searchParams.set('size', `${request.width}x${request.height}`);
+      url.searchParams.set('scale', '2');
+      url.searchParams.set(
+        'markers',
+        `${request.center.latitude},${request.center.longitude}`,
+      );
+      url.searchParams.set('key', key);
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error('static map responded', response.status);
+        return fail('upstream');
+      }
+
+      return new Response(response.body, {
+        headers: {
+          'Content-Type': response.headers.get('Content-Type') ?? 'image/png',
+          // A place does not move. Caching it on the device is the difference
+          // between one billed request per venue and one per render.
+          'Cache-Control': 'private, max-age=86400',
+        },
+      });
     }
 
     default:

@@ -22,6 +22,8 @@ import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
 import { normalizeManualPlace } from '../../features/places/label';
+import type { PlaceResult } from '../../features/places/maps/types';
+import { PlaceSearch } from '../../features/places/PlaceSearch';
 import { useCreatePlan } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
@@ -63,8 +65,10 @@ export default function NewPlan() {
   // Arriving from the ideas screen prefills the title, still editable.
   const [title, setTitle] = useState(params.title ?? '');
   // Typed by hand. Nothing on this screen asks whether a mapping provider
-  // exists, which is what keeps the whole screen working without one.
+  // exists, which is what keeps the whole screen working without one — a
+  // searched place only ever fills these in for you.
   const [place, setPlace] = useState('');
+  const [found, setFound] = useState<PlaceResult | null>(null);
   const [shareAddress, setShareAddress] = useState(false);
   const [dayIndex, setDayIndex] = useState(0);
   const [hour, setHour] = useState<number | null>(null);
@@ -114,6 +118,10 @@ export default function NewPlan() {
 
   async function save() {
     const name = normalizeManualPlace(place);
+    // A searched result only counts while the field still holds its name — if
+    // the text was edited afterwards, what is on screen is what gets saved.
+    const searched = found && found.name === name ? found : null;
+
     await create.mutateAsync({
       kind,
       title: title.trim() || null,
@@ -122,9 +130,12 @@ export default function NewPlan() {
       place: name
         ? {
             name,
-            provider: 'manual',
-            // The language it was typed in, so a partner reading in the other
-            // one is told rather than shown a translation.
+            address: searched?.address ?? null,
+            provider: searched ? 'google' : 'manual',
+            providerPlaceId: searched?.providerPlaceId ?? null,
+            coordinates: searched?.coordinates ?? null,
+            // The language it was typed or returned in, so a partner reading in
+            // the other one is told rather than shown a translation.
             locale,
             shareWithCalendar: shareAddress,
           }
@@ -185,6 +196,16 @@ export default function NewPlan() {
             accessibilityLabel={t('places:label')}
           />
           <Muted>{t('places:manual.hint')}</Muted>
+          {/* Renders nothing at all when no mapping key is configured, which
+              leaves the text field above as the whole feature. */}
+          <PlaceSearch
+            kind={kind}
+            onPick={(result) => {
+              setFound(result);
+              setPlace(result.name);
+            }}
+          />
+          {found?.address ? <Muted>{found.address}</Muted> : null}
           {/* Only worth asking once there is an address to share. */}
           {normalizeManualPlace(place) ? (
             <View className="gap-2">

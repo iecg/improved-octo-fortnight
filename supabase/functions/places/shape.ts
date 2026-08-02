@@ -38,7 +38,8 @@ export type PlacesRequest =
       limit: number;
     }
   | { op: 'geocode'; query: string; languageCode: 'en' | 'es' }
-  | { op: 'travelTime'; origin: Coordinates; destinations: Coordinates[] };
+  | { op: 'travelTime'; origin: Coordinates; destinations: Coordinates[] }
+  | { op: 'staticMap'; center: Coordinates; zoom: number; width: number; height: number };
 
 export type PlacesFailure =
   | 'not_configured'
@@ -155,6 +156,23 @@ export function parseRequest(body: unknown): PlacesRequest | null {
         op: 'travelTime',
         origin: coarsen(origin),
         destinations: destinations.map((value) => coarsen(value)),
+      };
+    }
+
+    case 'staticMap': {
+      const center = parseCoordinates(input.center);
+      if (!center) return null;
+      // Clamped rather than rejected: a nonsensical size is a caller bug, and
+      // an image the provider refuses to render is a worse answer than a
+      // sensible one. The ceiling is the provider's own free-tier limit.
+      const clamp = (value: unknown, min: number, max: number, fallback: number) =>
+        isFiniteNumber(value) ? Math.min(Math.max(Math.floor(value), min), max) : fallback;
+      return {
+        op: 'staticMap',
+        center: coarsen(center, 4),
+        zoom: clamp(input.zoom, 1, 20, 15),
+        width: clamp(input.width, 64, 640, 400),
+        height: clamp(input.height, 64, 640, 200),
       };
     }
 

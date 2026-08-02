@@ -58,8 +58,13 @@ packages/i18n/      i18next bootstrap, shared namespaces, date formatting
 packages/ui/        Shared components (no strings)
 packages/device/    expo-calendar / notifications / local-auth wrappers
 supabase/migrations/  SINGLE source of truth for both apps
+supabase/functions/   Edge Functions — the only place a third-party key lives
 tests/i18n/, tests/rls/, tests/e2e/, tests/guards/
 ```
+
+Per-app optional features live in `apps/<app>/features/<name>/`, with anything
+that assumes an external dependency confined to a named subdirectory
+(`ai/`, `maps/`). See the two optional-dependency rules below.
 
 Shared packages ship **TypeScript source**, not builds — Metro transpiles them.
 There is no build step and no `dist/` to go stale.
@@ -136,6 +141,11 @@ EXPO_PUBLIC_SUPABASE_URL=...
 EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
+Third-party keys go in `supabase/functions/.env` (see its `.env.example`), never
+here — `supabase secrets set` on a hosted project. All of them are optional:
+with none set, `npm test` passes, both apps bundle, and the 2-2-2 app's places
+feature works with venues typed by hand.
+
 ## Dev builds
 
 **Neither app runs in Expo Go at all.** It is not a limitation to work around;
@@ -198,26 +208,61 @@ an app, that invariant is about to break.
 Per app: its screens, its `app` translation namespace, its kind catalog, and
 its `createDomainRepository(client, '<domain>')` binding.
 
-2-2-2-owned tables are `plan_ideas` and `ai_usage`, plus the planned
-`suggest-ideas` Edge Function. They are reached through
-`createIdeaRepository` in `packages/data/src/ideas.ts` — its own factory, next
-to the intimacy-owned `createCheckinRepository`, so the other app has nothing
-to import even by accident. It hard-codes its domain rather than taking one,
+2-2-2-owned tables are `plan_ideas`, `plan_places`, `ai_usage` and
+`places_usage`, plus the planned `suggest-ideas` Edge Function and the
+`places` one that exists. They are reached through `createIdeaRepository` and
+`createPlaceRepository` in `packages/data` — their own factories, next to the
+intimacy-owned `createCheckinRepository`, so the other app has nothing to
+import even by accident. Both hard-code their domain rather than taking one,
 because a domain parameter is the exact shape invariant 2 forbids.
 
-Its AI-optional rule — no path outside `features/<name>/ai/` may assume a model
-exists — applies to that app only, and is enforced by
-`tests/guards/ai-optional.test.ts` rather than remembered. The curated idea
-library (`apps/two-two-two/src/ideas.ts` for the ids, `locales/{en,es}/ideas.json`
-for the text) and manual entry are what make the feature work with no key
-configured; `ai_usage` simply stays empty. The guard also requires the bundled
-library to stay non-empty and complete in both languages, since a grep that
-passes over an empty library proves nothing.
+`plan_places` is a side table rather than columns on `plans` because `plans` is
+shared and replicated; it carries a composite foreign key `(plan_id,
+couple_id)` into `plans` so its denormalized `couple_id` cannot be forged, the
+same trick `plan_proposals` uses.
+
+### The two optional-dependency rules
+
+Both apply to the 2-2-2 app only, both have the same shape, and both are
+enforced by a guard rather than remembered:
+
+- **AI-optional** — no path outside `features/<name>/ai/` may assume a model
+  exists (`tests/guards/ai-optional.test.ts`).
+- **Maps-optional** — no path outside `features/<name>/maps/` may name a
+  mapping provider, and _no path anywhere_ may put a provider key in an
+  `EXPO_PUBLIC_` variable (`tests/guards/maps-optional.test.ts`).
+
+Both exempt `supabase/functions/`, which is where a key legitimately lives.
+They share one walker in `tests/guards/sources.ts`.
+
+Each guard also checks that the no-dependency path still _works_, by importing
+the modules it actually runs through — a grep that passes over a feature nobody
+can use proves nothing. For AI that is the curated idea library
+(`apps/two-two-two/src/ideas.ts` for the ids, `locales/{en,es}/ideas.json` for
+the text) plus manual entry. For maps it is `features/places/label.ts` and
+`link.ts`: a venue typed by hand, and an "Open in Maps" OS URL scheme that
+needs no key at all. `ai_usage` and `places_usage` simply stay empty.
+
+**The app never learns whether a mapping key exists.** It asks the `places`
+Edge Function (`op: 'capabilities'`), which is the only thing holding one, and
+every search control renders `null` when the answer is no. That is why there is
+no `EXPO_PUBLIC_` feature flag — the key's *name* never enters the bundle
+either. `EXPO_PUBLIC_` values ship inside the app and can be read back out of
+it; that is fine for the anon key, which has RLS behind it, and not for a
+billed third-party key, where possession is the authorization.
 
 The library is _ours_, so it is translated like any other chrome and each
 partner reads it in their own language. Manually entered ideas are the other
 case — partner-authored, shown verbatim, and labelled with the language they
-were written in when that differs from the reader's.
+were written in when that differs from the reader's. A place's name and address
+follow the same rule: a venue name is a proper noun and is never labelled, and
+its address is labelled rather than translated.
+
+A place's address reaches a device calendar only when that place carries
+`share_with_calendar`, which is off by default —
+`DeviceSyncOptions.calendarLocationFor` is optional, so the intimacy app is
+unaffected. A title is one thing; an address syncs to shared computers as "we
+are not home, and here is where we are".
 
 Ported from `iecg/legendary-bassoon` (now superseded). Two bugs found there
 and guarded against here, both with tests: a `count(*)`-based couple-size

@@ -105,11 +105,12 @@ export interface PlanProposal {
  * Where an idea came from.
  *
  * `library` is the bundled curated set and `manual` is written by a partner —
- * between them the feature works with no model configured anywhere, which is
- * the whole point of the 2-2-2 app's AI-optional rule. `ai` is the optional
- * third case.
+ * between them the feature works with nothing configured anywhere, which is the
+ * whole point of the 2-2-2 app's AI-optional and maps-optional rules. `ai` and
+ * `places` are the optional cases: each needs a key, and each simply never
+ * appears without one.
  */
-export const IDEA_SOURCES = ['library', 'manual', 'ai'] as const;
+export const IDEA_SOURCES = ['library', 'manual', 'ai', 'places'] as const;
 export type IdeaSource = (typeof IDEA_SOURCES)[number];
 
 export const COST_BANDS = ['free', 'low', 'medium', 'high'] as const;
@@ -127,6 +128,8 @@ export interface PlanIdea {
   url: string | null;
   estCostBand: CostBand | null;
   source: IdeaSource;
+  /** Which provider named this, for the sources that came from one. */
+  sourceDomain: string | null;
   /**
    * The language this idea's text is written in. Ideas are labelled rather
    * than machine-translated, exactly as with any other authored text.
