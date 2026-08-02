@@ -45,15 +45,26 @@ a test, listed with them.
    payload, or a calendar entry. Calendar events carry a user-chosen neutral
    label only. Reminders are _local_, composed on the recipient's own device —
    which is also why each partner is reminded in their own language for free.
+   `plannedReminders` returns a key, a plan id and an instant, and both apps
+   build the copy from `t(...)` alone. (`tests/guards/discretion.test.ts`,
+   `packages/device/src/sync.test.ts`)
 
 4. **No streaks, no scores.** A "not tonight" is a neutral answer, styled
    identically to "yes". There is deliberately no counter to break. An app that
    turns a no into a failure makes the problem it exists to solve worse.
+   Mostly a design rule rather than a mechanical one, but it has one testable
+   edge: `ai_usage` is a counter, and a counter that streams live to both
+   phones is a scoreboard waiting to be put on a screen, so it is never
+   published to realtime. (`tests/guards/realtime-subscriptions.test.ts`,
+   `tests/rls/policies.test.ts`)
 
 5. **The cadence engine is pure.** No I/O, no React, no i18n, no `new Date()`
    in `packages/cadence`. It returns structured data and translation _keys_.
-   All date arithmetic goes through the couple's timezone.
-   (`packages/cadence/src/*.test.ts`)
+   All date arithmetic goes through the couple's timezone. The behaviour tests
+   cannot catch a dropped `timeZone` or a read of the system clock on their
+   own — an engine that did either would pass them on the machine that wrote
+   them — so the structural rule is a separate grep.
+   (`packages/cadence/src/*.test.ts`, `tests/guards/cadence-purity.test.ts`)
 
 ## Layout
 

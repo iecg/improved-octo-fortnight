@@ -117,4 +117,20 @@ describe('realtime subscriptions', () => {
       'plans',
     ]);
   });
+
+  /**
+   * Invariant 4 — no streaks, no scores — has exactly one mechanical rule, and
+   * this is it: `ai_usage` is a counter, and a counter that streams is a
+   * scoreboard waiting to happen. The moment it is live on both phones,
+   * somebody puts it on a screen.
+   *
+   * The same assertion exists in `tests/rls/policies.test.ts`, against a real
+   * `pg_publication_tables`. It is repeated here because that suite needs a
+   * Postgres and this one does not, and the rule is one you would otherwise
+   * break in the same commit that adds the publication line — with the fast
+   * suite green.
+   */
+  it('never publishes the usage counter', () => {
+    expect([...publishedTables()]).not.toContain('ai_usage');
+  });
 });
