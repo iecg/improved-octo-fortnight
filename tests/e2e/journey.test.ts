@@ -376,3 +376,137 @@ describe('6. marking it done resets the countdown', () => {
     ).rejects.toThrow(/plans_completed_has_timestamp/);
   });
 });
+
+describe('7. countering a suggestion', () => {
+  let planId = '';
+  let original = '';
+  let reply = '';
+
+  it('closes the original and chains the reply to it', async () => {
+    // Alice suggests a time.
+    const created = await asUser(pool, alice, async (client) => {
+      const { rows: planRows } = await client.query(
+        `insert into public.plans (couple_id, domain, kind, starts_at, ends_at, status, created_by)
+         values ($1, 'intimacy', 'intimacy', $2, $3, 'proposed', $4) returning id`,
+        [world.coupleId, '2026-10-01T23:00:00.000Z', '2026-10-02T01:00:00.000Z', alice],
+      );
+      const { rows: proposalRows } = await client.query(
+        `insert into public.plan_proposals (plan_id, couple_id, proposed_by, starts_at, ends_at)
+         values ($1, $2, $3, $4, $5) returning id`,
+        [
+          planRows[0].id,
+          world.coupleId,
+          alice,
+          '2026-10-01T23:00:00.000Z',
+          '2026-10-02T01:00:00.000Z',
+        ],
+      );
+      return { planId: planRows[0].id, proposalId: proposalRows[0].id };
+    });
+    planId = created.planId;
+    original = created.proposalId;
+
+    // Bob answers with a different time, the way useCounterProposal does.
+    reply = await asUser(pool, bob, async (client) => {
+      await client.query("update public.plan_proposals set response = 'countered' where id = $1", [
+        original,
+      ]);
+      const { rows } = await client.query(
+        `insert into public.plan_proposals
+           (plan_id, couple_id, proposed_by, starts_at, ends_at, countered_from)
+         values ($1, $2, $3, $4, $5, $6) returning id`,
+        [
+          planId,
+          world.coupleId,
+          bob,
+          '2026-10-02T23:00:00.000Z',
+          '2026-10-03T01:00:00.000Z',
+          original,
+        ],
+      );
+      return rows[0].id;
+    });
+
+    const [first, second, plan] = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query(
+        'select * from public.plan_proposals where id = any($1) order by created_at',
+        [[original, reply]],
+      );
+      const { rows: planRows } = await client.query('select * from public.plans where id = $1', [
+        planId,
+      ]);
+      return [rows[0], rows[1], planRows[0]];
+    });
+
+    // "Countered" is a real answer, stamped like any other.
+    expect(first.response).toBe('countered');
+    expect(first.responded_by).toBe(bob);
+    // And the reply points back at what it replies to, on the same plan.
+    expect(second.countered_from).toBe(original);
+    expect(second.plan_id).toBe(planId);
+    expect(second.proposed_by).toBe(bob);
+    // Nothing is booked, and nothing was declined.
+    expect(plan.status).toBe('proposed');
+  });
+
+  it('will not let Bob accept the counter he just wrote', async () => {
+    // The guard travels with authorship, not with who proposed first: Bob now
+    // owns this suggestion, so answering it is Alice's to do.
+    await expect(
+      asUser(pool, bob, (client) =>
+        client.query("update public.plan_proposals set response = 'accepted' where id = $1", [
+          reply,
+        ]),
+      ),
+    ).rejects.toThrow(/answered by the other partner/);
+  });
+
+  it('lets the original proposer accept the counter', async () => {
+    // Alice proposed the first one but not this one, so the trigger must let
+    // her answer it — otherwise a counter is a dead end.
+    await asUser(pool, alice, (client) =>
+      client.query("update public.plan_proposals set response = 'accepted' where id = $1", [reply]),
+    );
+
+    const accepted = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query('select * from public.plan_proposals where id = $1', [
+        reply,
+      ]);
+      return rows[0];
+    });
+
+    expect(accepted.response).toBe('accepted');
+    expect(accepted.responded_by).toBe(alice);
+  });
+
+  /**
+   * The guard covers the transition out of `pending` — the moment an answer is
+   * actually given — and not later edits to an answered row. That is
+   * deliberate rather than an oversight: both partners are members with update
+   * rights, the plan's own status is what drives the calendar and the cadence,
+   * and no rewrite of an answered proposal changes either. Pinned so the
+   * boundary is a decision on the record instead of a surprise.
+   */
+  it('does not re-guard a proposal that has already been answered', async () => {
+    await asUser(pool, bob, (client) =>
+      client.query("update public.plan_proposals set response = 'declined' where id = $1", [reply]),
+    );
+
+    const [row, plan] = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select * from public.plan_proposals where id = $1', [
+        reply,
+      ]);
+      const { rows: planRows } = await client.query('select * from public.plans where id = $1', [
+        planId,
+      ]);
+      return [rows[0], planRows[0]];
+    });
+
+    expect(row.response).toBe('declined');
+    // responded_by still records who actually answered it.
+    expect(row.responded_by).toBe(alice);
+    // And the plan — the thing that reaches a calendar — is untouched.
+    expect(plan.status).toBe('proposed');
+  });
+});
+
