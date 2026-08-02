@@ -30,7 +30,7 @@
     "title": "Proponer una hora",
     "suggestions": "Los dos están libres",
     "noSuggestions": "No encontramos noches libres. Elige una hora de todos modos.",
-    "needCalendar": "Permite el acceso al calendario para ver cuándo están libres.",
+    "sharperWithCalendar": "Permite el acceso al calendario y estas mejoran: también evitaremos lo que ya tienes anotado.",
     "grantCalendar": "Permitir acceso al calendario",
     "duration": "Cuánto tiempo",
     "durationMinutes_one": "{{count}} minuto",

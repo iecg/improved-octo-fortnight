@@ -30,7 +30,7 @@
     "title": "Suggest a time",
     "suggestions": "You're both free",
     "noSuggestions": "No open evenings found. Pick a time anyway.",
-    "needCalendar": "Allow calendar access to see when you're free.",
+    "sharperWithCalendar": "Allow calendar access and these get sharper — we'll also avoid what's on your own calendar.",
     "grantCalendar": "Allow calendar access",
     "duration": "How long",
     "durationMinutes_one": "{{count}} minute",

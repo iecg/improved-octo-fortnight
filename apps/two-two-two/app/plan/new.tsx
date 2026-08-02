@@ -11,16 +11,36 @@
  * goes through `@couple/cadence` against the couple's timezone; none of it
  * happens here.
  *
- * Choices that clash with something already on the phone's calendar are
- * marked. That is the one place the two apps meet: both write their booked
- * plans to the device calendar, and the intimacy app writes only a neutral
- * label, so this screen learns that an evening is taken and cannot learn what
- * is taking it. `readBusyBlocks` returns times and nothing else. Without
- * calendar permission the marks simply never appear and the screen works
- * exactly as it did before — no feature here is gated on the other app.
+ * Choices that clash with something already spoken for are marked, from three
+ * sources that answer progressively more of the question:
+ *
+ *   * This app's own plans, straight out of the query the screen already runs.
+ *     Free, and needs no permission from anyone.
+ *   * The phone's calendar, if access was granted. Catches the couple's whole
+ *     life, not just what these two apps know about.
+ *   * The server's busy view, *if the reader has turned it on* — occupied
+ *     windows across both apps, times and nothing else. Off by default, and
+ *     the only source that can see the other app.
+ *
+ * Every one of them is a hint. Any can be absent and the screen still books a
+ * plan; nothing here is gated on the other app existing, on a permission, or
+ * on a setting. Marks are never a block either — deciding to overlap is the
+ * couple's business.
  */
-import { addInterval, atHourInZone, overlapsAny, type TimeRange } from '@couple/cadence';
-import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain, type PlaceProvider } from '@couple/core';
+import {
+  addInterval,
+  atHourInZone,
+  busyFromPlans,
+  mergeRanges,
+  overlapsAny,
+  type TimeRange,
+} from '@couple/cadence';
+import {
+  TWO_TWO_TWO_KINDS,
+  kindLabelKey,
+  type AppDomain,
+  type PlaceProvider,
+} from '@couple/core';
 import { hasCalendarAccess, readBusyBlocks } from '@couple/device';
 import { formatDay, formatTime } from '@couple/i18n';
 import { Body, Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
@@ -32,7 +52,7 @@ import { TextInput, View } from 'react-native';
 import { normalizeManualPlace } from '../../src/features/places/label';
 import type { PlaceResult } from '../../src/features/places/maps/types';
 import { PlaceSearch } from '../../src/features/places/PlaceSearch';
-import { useCreatePlan, usePlaces } from '../../src/queries';
+import { useCreatePlan, usePlaces, usePlans, useServerBusy } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 /** How far ahead the day chips run. A trip booked further out can be edited later. */
@@ -139,36 +159,89 @@ export default function NewPlan() {
   );
 
   /**
+   * What a conflict is judged against — the *first day* of a multi-night span,
+   * not the whole thing.
+   *
+   * A 14-night trip overlaps everything in the next fortnight, so checking the
+   * full span marks every chip and the mark stops meaning anything. It is also
+   * not the question being asked: moving the departure day moves the whole
+   * window, so a clash on night six travels with it. The clash you can act on
+   * by picking a different chip is the one on the day you leave.
+   *
+   * Date nights are hours, not nights, so their full span is the first day and
+   * this changes nothing for them.
+   */
+  const conflictRangeFor = useCallback(
+    (day: Date, hourValue: number): TimeRange => {
+      const span = rangeFor(day, hourValue);
+      if (shape.unit === 'hour') return span;
+      const firstDayEnd = atHourInZone(
+        addInterval(span.start, 1, 'day', timeZone),
+        hourValue,
+        timeZone,
+      );
+      return { start: span.start, end: span.end < firstDayEnd ? span.end : firstDayEnd };
+    },
+    [rangeFor, shape.unit, timeZone],
+  );
+
+  /**
    * Busy blocks from the phone's own calendar.
    *
    * `null` means "we do not know" — permission refused, or not yet answered —
-   * and is deliberately distinct from `[]`, an empty fortnight. Nothing is
-   * marked while it is null.
+   * and is deliberately distinct from `[]`, an empty fortnight.
    */
-  const [busy, setBusy] = useState<TimeRange[] | null>(null);
+  const [deviceBusy, setDeviceBusy] = useState<TimeRange[] | null>(null);
+
+  // One day past the last chip, so the last day's first night is covered.
+  const searchTo = useMemo(
+    () => addInterval(now, DAY_CHOICES + 1, 'day', timeZone),
+    [now, timeZone],
+  );
 
   useEffect(() => {
     void (async () => {
       if (!(await hasCalendarAccess())) return;
-      const to = addInterval(now, DAY_CHOICES, 'day', timeZone);
-      setBusy(await readBusyBlocks(now, to));
+      setDeviceBusy(await readBusyBlocks(now, searchTo));
     })();
-  }, [now, timeZone]);
+  }, [now, searchTo]);
+
+  const plansQuery = usePlans(couple.id);
+  // Reads nothing unless the reader turned cross-app busy on; the hook owns
+  // that check so no screen can skip it.
+  const serverBusy = useServerBusy(couple.id, now, searchTo);
+
+  /**
+   * Everything the screen knows about, coalesced once.
+   *
+   * `mergeRanges` sorts and joins, so overlapping answers from two sources —
+   * this app's own plan, and the calendar entry it wrote for it — collapse into
+   * one block rather than being counted twice.
+   */
+  const busy = useMemo(
+    () =>
+      mergeRanges([
+        ...busyFromPlans(plansQuery.data ?? []),
+        ...(deviceBusy ?? []),
+        ...(serverBusy.data ?? []),
+      ]),
+    [plansQuery.data, deviceBusy, serverBusy.data],
+  );
 
   // Each day judged at the currently chosen hour, and each hour on the
   // currently chosen day — so the marks answer "if I changed just this one
   // thing", which is the question a chip actually poses.
   const busyDays = useMemo(
-    () => days.map((day) => busy !== null && overlapsAny(rangeFor(day, chosenHour), busy)),
-    [busy, days, rangeFor, chosenHour],
+    () => days.map((day) => overlapsAny(conflictRangeFor(day, chosenHour), busy)),
+    [busy, days, conflictRangeFor, chosenHour],
   );
 
   const busyHours = useMemo(
     () =>
-      HOUR_CHOICES.map(
-        (value) => busy !== null && overlapsAny(rangeFor(days[dayIndex] ?? now, value), busy),
+      HOUR_CHOICES.map((value) =>
+        overlapsAny(conflictRangeFor(days[dayIndex] ?? now, value), busy),
       ),
-    [busy, days, dayIndex, now, rangeFor],
+    [busy, days, dayIndex, now, conflictRangeFor],
   );
 
   const anyBusy = busyDays.some(Boolean) || busyHours.some(Boolean);

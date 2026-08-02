@@ -6,7 +6,7 @@
  */
 import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, CheckinInterest, Plan, PlanProposal } from '@couple/core';
-import { createCheckinRepository, createDomainRepository } from '@couple/data';
+import { createBusyRepository, createCheckinRepository, createDomainRepository } from '@couple/data';
 import { calendarDateIn } from '@couple/i18n';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
@@ -18,11 +18,23 @@ export const DOMAIN = 'intimacy' as const;
 export const plans = createDomainRepository(supabase, DOMAIN);
 export const checkins = createCheckinRepository(supabase);
 
+/**
+ * Times the couple is occupied, across both apps — and only times.
+ *
+ * Read unconditionally here, unlike in the 2-2-2 app. What it exposes in this
+ * direction is that a date night is booked, which is not a secret, and this
+ * app is the one behind the lock. The reverse direction is the one that needs
+ * asking about.
+ */
+export const busy = createBusyRepository(supabase);
+
 const keys = {
   plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
   cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
   proposals: (coupleId: string) => ['proposals', DOMAIN, coupleId] as const,
   checkins: (coupleId: string, date: string) => ['checkins', coupleId, date] as const,
+  // Not domain-keyed: this list is the same one either app would read.
+  busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
 };
 
 export function usePlans(coupleId: string) {
@@ -79,6 +91,25 @@ export function useEnsureCadences(coupleId: string): void {
       client.invalidateQueries({ queryKey: keys.cadences(coupleId) }),
     );
   }, [client, coupleId, empty]);
+}
+
+/**
+ * Occupied windows from the server, both apps' plans, times only.
+ *
+ * This is what lets the propose screen work on a phone where calendar access
+ * was refused — and it is the only thing that knows about a `proposed` time,
+ * which by design reaches no calendar at all.
+ *
+ * The bounds are part of the key so a screen that widens its range refetches
+ * rather than quietly reusing a narrower answer.
+ */
+export function useServerBusy(coupleId: string, from: Date, to: Date) {
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
+  return useQuery({
+    queryKey: keys.busy(coupleId, fromIso, toIso),
+    queryFn: () => busy.listBetween(coupleId, from, to),
+  });
 }
 
 export function usePendingProposals(coupleId: string) {

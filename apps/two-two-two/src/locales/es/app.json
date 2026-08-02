@@ -47,7 +47,7 @@
     "nights_other": "{{count}} noches",
     "summary": "Reservado para el {{date}}",
     "save": "Ponerlo en el calendario",
-    "busyHint": "Las horas marcadas ya tienen algo en tu calendario. Aun así puedes elegirlas.",
+    "busyHint": "Las horas marcadas ya están ocupadas. Aun así puedes elegirlas.",
     "busyOption": "{{option}} — ya ocupado"
   },
   "settings": {
@@ -59,6 +59,8 @@
     "calendarAccess": "Acceso al calendario",
     "allow": "Permitir",
     "allowed": "Permitido",
+    "crossAppBusy": "Evitar horas ocupadas en la otra app",
+    "crossAppBusyHint": "Marca las horas que ya tienen reservadas en su otra app. Solo las horas, nunca para qué son.",
     "signOut": "Cerrar sesión"
   },
   "notification": {

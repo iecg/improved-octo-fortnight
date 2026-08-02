@@ -1176,6 +1176,9 @@ describe('anonymous access', () => {
     'plans',
     'plan_proposals',
     'checkins',
+    // A view is not covered by the blanket revoke the tables got; it relies on
+    // `alter default privileges` plus its own explicit revoke.
+    'plan_busy_times',
   ])('refuses a signed-out reader on %s', async (table) => {
     const error = await expectRejected(
       asAnon(pool, (client) => client.query(`select * from public.${table}`)),
@@ -1248,5 +1251,159 @@ describe('constraints', () => {
     );
 
     expect(error.message).toMatch(/duplicate key|unique/i);
+  });
+});
+
+/**
+ * The busy-times view.
+ *
+ * The one object in the schema that either app may read regardless of domain,
+ * so what it *cannot* return matters more than what it can. Three separate
+ * things have to hold, and each fails silently in a different direction:
+ * without the grant it is unreadable, without `security_invoker` it hands
+ * every couple's schedule to everyone, and with one column too many it stops
+ * being a redaction at all.
+ */
+describe('the busy-times view', () => {
+  async function seedWindow(
+    userId: string,
+    coupleId: string,
+    domain: string,
+    status: string,
+    startsAt: string,
+    endsAt: string,
+  ): Promise<void> {
+    await asUser(pool, userId, (client) =>
+      client.query(
+        `insert into public.plans
+           (couple_id, domain, kind, status, created_by, starts_at, ends_at, completed_at)
+         values ($1, $2, 'intimacy', $3, $4, $5, $6, $7)`,
+        // `completed` and `completed_at` are a biconditional in the schema:
+        // one without the other is rejected, in either direction.
+        [coupleId, domain, status, userId, startsAt, endsAt, status === 'completed' ? endsAt : null],
+      ),
+    );
+  }
+
+  it('exposes times and nothing else', async () => {
+    const { rows } = await pool.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+       where table_schema = 'public' and table_name = 'plan_busy_times'
+       order by column_name`,
+    );
+
+    // No domain, so a caller cannot tell which app a window belongs to; no
+    // title, notes or location, so it cannot tell what fills one. The
+    // redaction is the view body, not a caller remembering to select less.
+    expect(rows.map((row) => row.column_name)).toEqual(['couple_id', 'ends_at', 'starts_at']);
+  });
+
+  it('runs as the caller, so the policy on plans still applies', async () => {
+    const { rows } = await pool.query<{ options: string[] | null }>(
+      `select reloptions as options from pg_class
+       where relname = 'plan_busy_times' and relkind = 'v'`,
+    );
+
+    // Without this a view executes as its owner and sails straight past
+    // plans_select_member, which would be every couple's schedule.
+    expect(rows[0]?.options ?? []).toContain('security_invoker=on');
+  });
+
+  it('shows a couple their own occupied windows, whichever app booked them', async () => {
+    await seedWindow(
+      alice,
+      coupleA,
+      'two_two_two',
+      'scheduled',
+      '2026-10-01T18:00:00Z',
+      '2026-10-01T22:00:00Z',
+    );
+
+    const rows = await asUser(pool, bob, async (client) => {
+      const result = await client.query(
+        `select * from public.plan_busy_times where starts_at = '2026-10-01T18:00:00Z'`,
+      );
+      return result.rows;
+    });
+
+    // Bob is in the intimacy app; the window came from the other one. That is
+    // the point — he learns the evening is taken, and nothing more.
+    expect(rows).toHaveLength(1);
+  });
+
+  it('counts a proposed window, which no calendar ever sees', async () => {
+    await seedWindow(
+      alice,
+      coupleA,
+      'intimacy',
+      'proposed',
+      '2026-10-02T20:00:00Z',
+      '2026-10-02T22:00:00Z',
+    );
+
+    const rows = await asUser(pool, alice, async (client) => {
+      const result = await client.query(
+        `select * from public.plan_busy_times where starts_at = '2026-10-02T20:00:00Z'`,
+      );
+      return result.rows;
+    });
+
+    // `BOOKED` in packages/cadence is ['scheduled'] on purpose, so a proposal
+    // reaches no device calendar. This view is the only thing that knows.
+    expect(rows).toHaveLength(1);
+  });
+
+  it.each(['idea', 'declined', 'completed', 'skipped'])(
+    'ignores a %s plan, which is not time still spoken for',
+    async (status) => {
+      const startsAt = `2026-11-0${['idea', 'declined', 'completed', 'skipped'].indexOf(status) + 1}T20:00:00Z`;
+      await seedWindow(alice, coupleA, 'intimacy', status, startsAt, '2026-11-30T22:00:00Z');
+
+      const rows = await asUser(pool, alice, async (client) => {
+        const result = await client.query(
+          `select * from public.plan_busy_times where starts_at = $1`,
+          [startsAt],
+        );
+        return result.rows;
+      });
+
+      expect(rows).toHaveLength(0);
+    },
+  );
+
+  it("returns nothing for the other couple's windows", async () => {
+    await seedWindow(
+      carol,
+      coupleB,
+      'two_two_two',
+      'scheduled',
+      '2026-10-03T18:00:00Z',
+      '2026-10-03T22:00:00Z',
+    );
+
+    const rows = await asUser(pool, alice, async (client) => {
+      const result = await client.query(
+        `select * from public.plan_busy_times where starts_at = '2026-10-03T18:00:00Z'`,
+      );
+      return result.rows;
+    });
+
+    // Reads are refused by returning no rows rather than by raising. If
+    // security_invoker were off, this would be a row.
+    expect(rows).toHaveLength(0);
+  });
+
+  it('is read-only — there is no writing through it', async () => {
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_busy_times (couple_id, starts_at, ends_at)
+           values ($1, '2026-10-04T18:00:00Z', '2026-10-04T20:00:00Z')`,
+          [coupleA],
+        ),
+      ),
+    );
+
+    expect(error.message).toMatch(/permission denied/i);
   });
 });

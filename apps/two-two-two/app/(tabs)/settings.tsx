@@ -1,10 +1,15 @@
 import { ConnectedAppsCard } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
-import { hasCalendarAccess, requestCalendarAccess } from '@couple/device';
-import { Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
+import {
+  hasCalendarAccess,
+  isCrossAppBusyEnabled,
+  requestCalendarAccess,
+  setCrossAppBusyEnabled,
+} from '@couple/device';
+import { Button, Card, Chip, Divider, Heading, Muted, Screen, Title } from '@couple/ui';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Switch, View } from 'react-native';
 
 import { AiKeyCard, resetPlannerInputs } from '../../src/features/date-planner/ai';
 import { useSession } from '../../src/session';
@@ -13,6 +18,7 @@ export default function Settings() {
   const { t } = useTranslation(['app', 'common']);
   const { profile, partner, setLocale, signOut } = useSession();
   const [calendarOk, setCalendarOk] = useState(false);
+  const [crossAppBusy, setCrossAppBusy] = useState(false);
 
   /**
    * The planner's form fields outlive every screen that fills them, so they
@@ -26,7 +32,15 @@ export default function Settings() {
 
   useEffect(() => {
     void hasCalendarAccess().then(setCalendarOk);
+    void isCrossAppBusyEnabled().then(setCrossAppBusy);
   }, []);
+
+  // Device-local, like the app lock in the other app: it decides what this
+  // phone shows, so syncing it would let one partner answer for the other.
+  async function toggleCrossAppBusy(next: boolean) {
+    setCrossAppBusy(next);
+    await setCrossAppBusyEnabled(next);
+  }
 
   const partnerName = partner?.displayName ?? t('common:partner.unnamed');
 
@@ -65,6 +79,22 @@ export default function Settings() {
               onPress={() => void requestCalendarAccess().then(setCalendarOk)}
             />
           )}
+          <Divider />
+          {/* Off until asked for. Reading the phone's own calendar needs no
+              switch — those events are already in the stock Calendar app — but
+              this shows occupied windows even where calendar access was
+              refused, and this is the app you would hand to a friend. */}
+          <View className="flex-row items-center justify-between gap-3">
+            <View className="shrink gap-1">
+              <Heading>{t('app:settings.crossAppBusy')}</Heading>
+              <Muted>{t('app:settings.crossAppBusyHint')}</Muted>
+            </View>
+            <Switch
+              value={crossAppBusy}
+              onValueChange={(next) => void toggleCrossAppBusy(next)}
+              accessibilityLabel={t('app:settings.crossAppBusy')}
+            />
+          </View>
         </View>
       </Card>
 

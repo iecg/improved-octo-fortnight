@@ -28,3 +28,32 @@ export async function hasSeenConnectedAppsNotice(): Promise<boolean> {
 export async function markConnectedAppsNoticeSeen(): Promise<void> {
   await SecureStore.setItemAsync(CONNECTED_APPS_SEEN_KEY, 'true');
 }
+
+/**
+ * Whether this install may see times the couple is busy in the *other* app.
+ *
+ * Off until someone turns it on, and read only by the 2-2-2 app. The asymmetry
+ * is deliberate. Free/busy taken from the phone's own calendar needs no
+ * setting — those events are already in the stock Calendar app, and the
+ * intimacy app writes only a neutral label to them. The server feed is a
+ * different thing: it shows occupied windows to a phone whose owner refused
+ * calendar access, and 2-2-2 is the app you would hand to a friend to show
+ * them a trip. That is worth asking about once.
+ *
+ * It is per device, not per couple, for the same reason the app lock is: it
+ * protects this phone in this room, and syncing it would let one partner make
+ * that call for the other.
+ *
+ * Even switched on it reveals times and never what fills them — the view it
+ * gates carries no title, no notes and no domain. The setting is about who
+ * gets to see the shape of an evening, not what happened in it.
+ */
+const CROSS_APP_BUSY_KEY = 'cross_app_busy_enabled';
+
+export async function isCrossAppBusyEnabled(): Promise<boolean> {
+  return (await SecureStore.getItemAsync(CROSS_APP_BUSY_KEY)) === 'true';
+}
+
+export async function setCrossAppBusyEnabled(enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(CROSS_APP_BUSY_KEY, enabled ? 'true' : 'false');
+}
