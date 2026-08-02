@@ -509,4 +509,3 @@ describe('7. countering a suggestion', () => {
     expect(plan.status).toBe('proposed');
   });
 });
-

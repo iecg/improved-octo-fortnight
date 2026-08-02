@@ -14,7 +14,18 @@
  * a replacement for them.
  */
 import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain, type PlanIdea } from '@couple/core';
-import { Body, Button, Card, Chip, Divider, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
+import {
+  Body,
+  Button,
+  Card,
+  Chip,
+  Divider,
+  Heading,
+  Loading,
+  Muted,
+  Screen,
+  Title,
+} from '@couple/ui';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';

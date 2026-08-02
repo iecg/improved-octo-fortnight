@@ -146,10 +146,7 @@ describe('reconcileDevice', () => {
 
     // Pass two sees the world as it now is: 'a' has this device's id, 'b' does
     // not. Nothing is written twice, and the reminders finally land.
-    await reconcileDevice(
-      options([bookedPlan('a', { [ME]: 'event-1' }), second]),
-      NEVER_CANCELLED,
-    );
+    await reconcileDevice(options([bookedPlan('a', { [ME]: 'event-1' }), second]), NEVER_CANCELLED);
 
     expect(writeCalendarEvent).toHaveBeenCalledTimes(2);
     expect(cancelAllReminders).toHaveBeenCalled();

@@ -208,11 +208,7 @@ export default function NewPlan() {
 
       <View className="gap-2">
         <Body>{t('app:plan.summary', { date: formatDay(startsAt, locale, timeZone) })}</Body>
-        <Button
-          label={t('app:plan.save')}
-          loading={create.isPending}
-          onPress={() => void save()}
-        />
+        <Button label={t('app:plan.save')} loading={create.isPending} onPress={() => void save()} />
         <Button label={t('common:action.cancel')} variant="ghost" onPress={() => router.back()} />
       </View>
     </Screen>
