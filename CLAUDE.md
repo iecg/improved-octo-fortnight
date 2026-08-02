@@ -126,6 +126,15 @@ but no automated test covers them, so treat a green suite accordingly.
   cannot be enumerated through the table API. The code rotates once redeemed.
 - All RLS lives in one migration so the access surface is reviewable at a
   glance.
+- A table read live on both phones needs **two** things that live far apart: a
+  `postgres_changes` handler in the app's `useRealtimeSync`, and a migration
+  adding it to the `supabase_realtime` publication. Subscribing to a table that
+  was never published connects, reports success, and then silently never fires
+  — `plan_ideas` shipped that way, so the shortlist was the one shared list in
+  either app that did not update live.
+  `tests/guards/realtime-subscriptions.test.ts` holds the two lists together,
+  and doubles as the register of what streams at all: `ai_usage` is
+  deliberately absent, since a live counter is a scoreboard waiting to happen.
 
 ## Environment
 

@@ -119,6 +119,17 @@ export function useRemoveIdea(coupleId: string) {
   });
 }
 
+/**
+ * Keep this device in step with the other one.
+ *
+ * Mounted once, in the tabs layout, rather than per screen: both tabs stay
+ * mounted, so a per-screen call opened the same topic more than once for no
+ * benefit.
+ *
+ * Every handler invalidates and refetches rather than patching the cache from
+ * the payload. That is not only for consistency — a delete event carries just
+ * the primary key, so there is nothing to patch a row from.
+ */
 export function useRealtimeSync(coupleId: string | null): void {
   const client = useQueryClient();
 
@@ -128,6 +139,12 @@ export function useRealtimeSync(coupleId: string | null): void {
       .channel(`two22:${coupleId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
         void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+      })
+      // The shortlist is shared, and both partners read it while deciding what
+      // to book. Requires `plan_ideas` in the `supabase_realtime` publication —
+      // `tests/guards/realtime-subscriptions.test.ts` holds the two together.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plan_ideas' }, () => {
+        void client.invalidateQueries({ queryKey: keys.ideas(coupleId) });
       })
       .subscribe();
     return () => {

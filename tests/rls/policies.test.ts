@@ -540,6 +540,25 @@ describe('2-2-2 owned tables', () => {
     });
     expect(readable).toEqual([]);
   });
+
+  /**
+   * `tests/guards/realtime-subscriptions.test.ts` checks that a migration says
+   * this; this checks that the database agrees. The two catch different
+   * mistakes — a statement that is present but misspelled, or in a migration
+   * that never applied, reads fine to a grep and still leaves the shortlist
+   * frozen on the partner's phone.
+   */
+  it('streams the shortlist to both devices', async () => {
+    const { rows } = await pool.query(
+      `select tablename from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public'`,
+    );
+    const published = rows.map((row) => row.tablename as string);
+
+    expect(published).toContain('plan_ideas');
+    // A counter that streamed live is a scoreboard waiting to happen.
+    expect(published).not.toContain('ai_usage');
+  });
 });
 
 describe('column privileges', () => {

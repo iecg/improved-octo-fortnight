@@ -16,7 +16,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { cadenceStatuses, useCadences, usePlans, useRealtimeSync } from '../../src/queries';
+import { cadenceStatuses, useCadences, usePlans } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 export default function Rhythm() {
@@ -28,8 +28,6 @@ export default function Rhythm() {
   const now = useMemo(() => new Date(), []);
   const locale = i18n.language === 'es' ? 'es' : 'en';
   const timeZone = couple.timezone;
-
-  useRealtimeSync(couple.id);
 
   const plansQuery = usePlans(couple.id);
   const cadencesQuery = useCadences(couple.id);
