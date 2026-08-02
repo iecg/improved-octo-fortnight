@@ -6,6 +6,7 @@
  * in reverse: they protect this phone, and syncing them would let one partner
  * turn off the other's lock.
  */
+import { InvitePanel } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
@@ -21,12 +22,12 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Switch, TextInput, View } from 'react-native';
 
-import { getCalendarLabel, setCalendarLabel } from '../../src/runtime';
+import { getCalendarLabel, keyService, setCalendarLabel } from '../../src/runtime';
 import { useSession } from '../../src/session';
 
 export default function Settings() {
   const { t } = useTranslation(['app', 'common', 'auth']);
-  const { profile, partner, setLocale, signOut } = useSession();
+  const { couple, partner, profile, session, setLocale, signOut } = useSession();
   const router = useRouter();
 
   const [lockAvailable, setLockAvailable] = useState(false);
@@ -156,6 +157,24 @@ export default function Settings() {
           />
         </View>
       </Card>
+
+      {/*
+        The invite code, and the approval that follows it, in the one place you
+        can always get back to. Before this the code was visible on exactly one
+        screen, the one the router replaces the moment you leave it. `null` once
+        there is a partner: the code cannot be redeemed while both seats are
+        taken, but leaving reopens one, so a code left circulating is a
+        liability rather than a convenience. The panel brings its own card, so
+        it sits beside the account one rather than inside it.
+      */}
+      {session && couple ? (
+        <InvitePanel
+          keys={keyService}
+          coupleId={couple.id}
+          profileId={session.user.id}
+          code={partner ? null : couple.inviteCode}
+        />
+      ) : null}
     </Screen>
   );
 }

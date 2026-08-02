@@ -65,6 +65,23 @@ export type WrapOutcome = { ok: true } | { ok: false; reason: 'key_changed' | 'g
 export interface KeyService {
   /** This device's identity, minted on first call and published every time. */
   ensureDeviceKey(profileId: string): Promise<{ keypair: DeviceKeypair; deviceKeyId: string }>;
+  /**
+   * Throw this device's identity away and mint another.
+   *
+   * What "the codes don't match" does, on the side that can do anything about
+   * it. Merely republishing would change nothing — the safety number is a
+   * function of the keypair, so the same keypair reads out the same twelve
+   * characters however many times it is announced. A new keypair produces a
+   * genuinely new number, which is what separates *we misread it* from
+   * *something is sitting between these two phones*: after a rotation the
+   * numbers should agree, and if they still do not, that is a signal rather
+   * than a typo.
+   *
+   * Offer it only from a device with no key. One that holds the key would be
+   * discarding its own self-wrap — the only evidence other devices have that it
+   * holds anything — and would reappear as pending on its own second install.
+   */
+  resetDeviceKey(profileId: string): Promise<{ keypair: DeviceKeypair; deviceKeyId: string }>;
   /** Load the key this device already holds, if it is still the right one. */
   adoptStoredKey(coupleId: string): Promise<KeyState>;
   /** Mint the couple key. Exactly one device ever does this, at pairing. */
@@ -167,6 +184,29 @@ export function createKeyService(deps: {
 
   return {
     ensureDeviceKey,
+
+    async resetDeviceKey(profileId) {
+      const old = await vault.readDeviceKey();
+
+      // Withdraw before minting, and the order is the interesting part. If this
+      // is interrupted after the delete, the next `ensureDeviceKey` republishes
+      // the key still sitting in the vault: the same number as before, which is
+      // confusing but true. The other order can leave a published row that no
+      // device holds the secret for — a phantom number nobody can answer for,
+      // and one the partner may well be reading aloud.
+      if (old) {
+        const mine = toBase64(old.publicKey);
+        const published = await keys.listDeviceKeys();
+        for (const device of published) {
+          if (device.profileId === profileId && device.publicKey === mine) {
+            await keys.deleteDeviceKey(device.id);
+          }
+        }
+      }
+
+      await vault.writeDeviceKey(generateDeviceKeypair(random));
+      return ensureDeviceKey(profileId);
+    },
 
     async adoptStoredKey(coupleId) {
       const stored = await vault.readCoupleKey();

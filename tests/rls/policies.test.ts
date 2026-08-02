@@ -1006,6 +1006,33 @@ describe('the key-exchange tables', () => {
     expect(error.message).toMatch(/row-level security/i);
   });
 
+  it('will not let one partner withdraw the other device', async () => {
+    const bobsSecond = `Qm9i${'B'.repeat(40)}=`;
+    const id = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        'insert into public.device_keys (profile_id, public_key) values ($1, $2) returning id',
+        [bob, bobsSecond],
+      );
+      return rows[0]!.id;
+    });
+
+    const removed = await asUser(pool, alice, async (client) => {
+      const result = await client.query('delete from public.device_keys where id = $1', [id]);
+      return result.rowCount;
+    });
+
+    // Not an error: RLS narrows the rows the statement can see, so the delete
+    // matches nothing and reports as much.
+    expect(removed).toBe(0);
+    const { rows } = await pool.query('select 1 from public.device_keys where id = $1', [id]);
+    expect(rows).toHaveLength(1);
+
+    // This scoping is why "the codes don't match" does different things on the
+    // two sides. The approver can only dismiss — a partner's device row is
+    // their claim about their own phone. The remedy is `resetDeviceKey`, on the
+    // device that owns the identity and is allowed to withdraw it.
+  });
+
   it('has no update privilege on a key or a wrap: they are replaced, not edited', async () => {
     const { rows } = await pool.query<{ table_name: string }>(
       `select distinct table_name from information_schema.table_privileges

@@ -65,6 +65,19 @@ function fakeDatabase() {
       devices.push(row);
       return { ...row };
     },
+    async deleteDeviceKey(id) {
+      const at = devices.findIndex((device) => device.id === id);
+      if (at >= 0) devices.splice(at, 1);
+
+      // `couple_key_wraps.device_key_id` is `on delete cascade`, so a fake that
+      // kept the wraps would be a fake of a different schema — and the one
+      // thing worth asserting about a revoked device is that its wraps went
+      // with it.
+      for (let i = wraps.length - 1; i >= 0; i -= 1) {
+        if (wraps[i]!.deviceKeyId === id) wraps.splice(i, 1);
+      }
+    },
+
     async listWraps() {
       return wraps.map((wrap) => ({ ...wrap }));
     },
@@ -365,5 +378,65 @@ describe('createKeyService', () => {
 
     expect(second.deviceKeyId).toBe(first.deviceKeyId);
     expect(db.devices).toHaveLength(1);
+  });
+
+  it('gives the approver a different number to compare after a reset', async () => {
+    await founder.service.createCoupleKey(COUPLE, ALICE);
+
+    const joiner = device(db.repository, 2);
+    await joiner.service.ensureDeviceKey(BOB);
+    const before = (await founder.service.pendingDevices(COUPLE, ALICE))[0]!;
+
+    await joiner.service.resetDeviceKey(BOB);
+    const after = (await founder.service.pendingDevices(COUPLE, ALICE))[0]!;
+
+    // The point of the whole mismatch path. Republishing would have produced
+    // the same twelve characters — the number is a function of the keypair —
+    // so a couple who cannot get the numbers to agree would have had no second
+    // thing to try.
+    expect(after.safetyNumber).not.toBe(before.safetyNumber);
+    expect(after.deviceKeyId).not.toBe(before.deviceKeyId);
+
+    // And exactly one row, not two. A leftover row is a number the partner may
+    // be reading aloud that no device holds the secret for.
+    expect(db.devices.filter((row) => row.profileId === BOB)).toHaveLength(1);
+  });
+
+  it('takes any wrap made to the identity it discarded', async () => {
+    await founder.service.createCoupleKey(COUPLE, ALICE);
+
+    const joiner = device(db.repository, 2);
+    await joiner.service.ensureDeviceKey(BOB);
+    const waiting = (await founder.service.pendingDevices(COUPLE, ALICE))[0]!;
+    await founder.service.verifyAndWrap(COUPLE, ALICE, waiting);
+
+    await joiner.service.resetDeviceKey(BOB);
+
+    // The cascade is the database's (`tests/rls/policies.test.ts` asserts it
+    // against the real schema); what matters here is the consequence. The old
+    // wrap named a keypair this device no longer has, so keeping it would have
+    // left a row nobody could ever open, and left the joiner looking approved
+    // when it is not.
+    expect(db.wraps.filter((wrap) => wrap.deviceKeyId === waiting.deviceKeyId)).toEqual([]);
+    expect(await joiner.service.tryAdoptWrap(COUPLE, BOB)).toBe('absent');
+    expect(joiner.keyStore.status()).toBe('absent');
+  });
+
+  it('still lets the partner in on the second try', async () => {
+    await founder.service.createCoupleKey(COUPLE, ALICE);
+
+    const joiner = device(db.repository, 2);
+    await joiner.service.ensureDeviceKey(BOB);
+    await joiner.service.resetDeviceKey(BOB);
+
+    // A reset is a retry, not an exit: the numbers are compared again against
+    // the new identity and the flow continues where it was.
+    const theirs = await joiner.service.visibleDevices(COUPLE, BOB);
+    const ours = await founder.service.pendingDevices(COUPLE, ALICE);
+    expect(ours).toHaveLength(1);
+    expect(theirs[0]!.safetyNumber).toBe(ours[0]!.safetyNumber);
+
+    expect(await founder.service.verifyAndWrap(COUPLE, ALICE, ours[0]!)).toEqual({ ok: true });
+    expect(await joiner.service.tryAdoptWrap(COUPLE, BOB)).toBe('ready');
   });
 });

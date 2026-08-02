@@ -1,3 +1,4 @@
+import { InvitePanel } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import { hasCalendarAccess, requestCalendarAccess } from '@couple/device';
 import { Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
@@ -6,11 +7,12 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { keyService } from '../../src/runtime';
 import { useSession } from '../../src/session';
 
 export default function Settings() {
   const { t } = useTranslation(['app', 'common', 'auth']);
-  const { profile, partner, setLocale, signOut } = useSession();
+  const { couple, partner, profile, session, setLocale, signOut } = useSession();
   const router = useRouter();
   const [calendarOk, setCalendarOk] = useState(false);
 
@@ -78,6 +80,17 @@ export default function Settings() {
           />
         </View>
       </Card>
+
+      {/* The same panel the pairing screen shows — one pairing across both apps
+          means one place that explains where it stands. */}
+      {session && couple ? (
+        <InvitePanel
+          keys={keyService}
+          coupleId={couple.id}
+          profileId={session.user.id}
+          code={partner ? null : couple.inviteCode}
+        />
+      ) : null}
     </Screen>
   );
 }

@@ -4,13 +4,15 @@
  * this flow would be a second protocol.
  *
  * Neither screen decides anything. `keys.ts` holds every decision so it can be
- * tested without React; these render its output and collect one tap.
+ * tested without React; `invite.tsx` holds the parts these share with the
+ * pairing screen; these render the result and collect one tap.
  */
 import { Body, Button, Card, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Text, View } from 'react-native';
 
+import { DeviceApprovalList, useDeviceApproval, useKeyWatch } from './invite';
 import type { KeyService, PendingDevice } from './keys';
 import { CODE_CLASS } from './style';
 
@@ -18,8 +20,10 @@ import { CODE_CLASS } from './style';
  * Where a paired device with no key waits.
  *
  * It is not a dead end and must not feel like one: the device publishes its
- * public key on arrival, then watches for the wrap. Everything the user can do
- * here happens on the other phone — or in the other app on this one.
+ * public key on arrival, then watches for the wrap. Almost everything the user
+ * can do here happens on the other phone — or in the other app on this one. The
+ * exception is the mismatch path, which is deliberately on *this* side, because
+ * this is the device whose identity can actually be changed.
  */
 export function UnlockScreen({
   keys,
@@ -35,43 +39,53 @@ export function UnlockScreen({
   const { t } = useTranslation(['auth', 'common']);
   const [numbers, setNumbers] = useState<PendingDevice[] | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [askedAboutMismatch, setAskedAboutMismatch] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
+  const alive = useRef(true);
   useEffect(() => {
-    let active = true;
-
-    const attempt = async () => {
-      try {
-        // Publishing is idempotent, and doing it on every pass rather than once
-        // means a device whose row was revoked reappears on its own.
-        await keys.ensureDeviceKey(profileId);
-
-        if ((await keys.tryAdoptWrap(coupleId, profileId)) === 'ready') {
-          if (active) await onUnlocked();
-          return;
-        }
-
-        // One number per device that could approve this one. Usually exactly
-        // one; more only when a partner has several phones, in which case the
-        // person approving is looking at one of these and the reader needs to
-        // find it. Computed without the couple key — see `visibleDevices`.
-        const candidates = await keys.visibleDevices(coupleId, profileId);
-        if (active) setNumbers(candidates);
-      } catch {
-        if (active) setErrorKey('common:state.error');
-      }
-    };
-
-    // Subscribe *before* the first attempt. A wrap that lands in the window
-    // between the two would otherwise be missed by both — the fetch is too
-    // early to see it and the subscription started too late to be told.
-    const stop = keys.watchKeys(coupleId, () => void attempt());
-    void attempt();
-
+    alive.current = true;
     return () => {
-      active = false;
-      stop();
+      alive.current = false;
     };
+  }, []);
+
+  const attempt = useCallback(async () => {
+    try {
+      // Publishing is idempotent, and doing it on every pass rather than once
+      // means a device whose row was revoked reappears on its own.
+      await keys.ensureDeviceKey(profileId);
+
+      if ((await keys.tryAdoptWrap(coupleId, profileId)) === 'ready') {
+        if (alive.current) await onUnlocked();
+        return;
+      }
+
+      // One number per device that could approve this one. Usually exactly
+      // one; more only when a partner has several phones, in which case the
+      // person approving is looking at one of these and the reader needs to
+      // find it. Computed without the couple key — see `visibleDevices`.
+      const candidates = await keys.visibleDevices(coupleId, profileId);
+      if (alive.current) setNumbers(candidates);
+    } catch {
+      if (alive.current) setErrorKey('common:state.error');
+    }
   }, [keys, coupleId, profileId, onUnlocked]);
+
+  useKeyWatch(keys, coupleId, attempt);
+
+  const reset = useCallback(async () => {
+    setResetting(true);
+    setErrorKey(null);
+    try {
+      await keys.resetDeviceKey(profileId);
+      await attempt();
+    } catch {
+      if (alive.current) setErrorKey('common:state.error');
+    } finally {
+      if (alive.current) setResetting(false);
+    }
+  }, [keys, profileId, attempt]);
 
   return (
     <Screen>
@@ -92,6 +106,34 @@ export function UnlockScreen({
               </Text>
             ))}
             {numbers?.length === 0 ? <Muted>{t('auth:keys.unlock.noPartnerYet')}</Muted> : null}
+
+            {numbers && numbers.length > 0 && !askedAboutMismatch ? (
+              <Button
+                label={t('auth:keys.unlock.mismatchAction')}
+                variant="ghost"
+                onPress={() => setAskedAboutMismatch(true)}
+              />
+            ) : null}
+
+            {askedAboutMismatch ? (
+              <View className="gap-3">
+                <Muted>{t('auth:keys.unlock.mismatchHelp')}</Muted>
+                {/*
+                  The only action in this flow that changes anything, and it is
+                  here rather than on the approving side because this is the
+                  device that owns the identity in question. Republishing would
+                  be theatre — the number is a function of the keypair, so the
+                  same keypair reads out the same characters however often it is
+                  announced.
+                */}
+                <Button
+                  label={t('auth:keys.unlock.reset')}
+                  variant="secondary"
+                  loading={resetting}
+                  onPress={() => void reset()}
+                />
+              </View>
+            ) : null}
           </View>
         </Card>
 
@@ -110,7 +152,8 @@ export function UnlockScreen({
  *
  * Reachable from the tabs, and *only* from a device that already has the key —
  * gating the approver behind an approval is the deadlock this screen exists to
- * break.
+ * break. The list itself is `invite.tsx`'s, because the pairing screen shows
+ * exactly the same thing at the moment a partner arrives.
  */
 export function ApproveScreen({
   keys,
@@ -124,45 +167,7 @@ export function ApproveScreen({
   onDone: () => void;
 }) {
   const { t } = useTranslation(['auth', 'common']);
-  const [pending, setPending] = useState<PendingDevice[] | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [errorKey, setErrorKey] = useState<string | null>(null);
-
-  const reload = useCallback(async () => {
-    try {
-      setPending(await keys.pendingDevices(coupleId, profileId));
-    } catch {
-      setErrorKey('common:state.error');
-    }
-  }, [keys, coupleId, profileId]);
-
-  useEffect(() => {
-    const stop = keys.watchKeys(coupleId, () => void reload());
-    void reload();
-    return stop;
-  }, [keys, coupleId, reload]);
-
-  const approve = useCallback(
-    async (device: PendingDevice) => {
-      setBusy(device.deviceKeyId);
-      setErrorKey(null);
-      try {
-        const outcome = await keys.verifyAndWrap(coupleId, profileId, device);
-        if (!outcome.ok) {
-          // `key_changed` is the one that matters: the public key moved between
-          // the number being read aloud and this tap, so what the two people
-          // compared is not what would have been wrapped.
-          setErrorKey(`auth:keys.approve.error.${outcome.reason}`);
-        }
-        await reload();
-      } catch {
-        setErrorKey('common:state.error');
-      } finally {
-        setBusy(null);
-      }
-    },
-    [keys, coupleId, profileId, reload],
-  );
+  const approval = useDeviceApproval(keys, coupleId, profileId);
 
   return (
     <Screen>
@@ -172,41 +177,17 @@ export function ApproveScreen({
           <Muted>{t('auth:keys.approve.subtitle')}</Muted>
         </View>
 
-        {pending === null ? <Loading /> : null}
+        {approval.devices === null ? <Loading /> : null}
 
-        {pending?.length === 0 ? (
+        {/* Suppressed once something has been dismissed: that device is still
+            out there, and "no device is waiting" would read as an all-clear. */}
+        {approval.devices?.length === 0 && !approval.dismissedAny ? (
           <Card>
             <Body>{t('auth:keys.approve.none')}</Body>
           </Card>
         ) : null}
 
-        {pending?.map((device) => (
-          <Card key={device.deviceKeyId}>
-            <View className="gap-3">
-              <Heading>
-                {device.isMine
-                  ? t('auth:keys.approve.mineHeading')
-                  : t('auth:keys.approve.partnerHeading')}
-              </Heading>
-              <Muted>{t('auth:keys.approve.compare')}</Muted>
-              <Text selectable className={CODE_CLASS}>
-                {device.safetyNumber}
-              </Text>
-              <Button
-                label={t('auth:keys.approve.action')}
-                loading={busy === device.deviceKeyId}
-                onPress={() => void approve(device)}
-              />
-              <Muted>{t('auth:keys.approve.mismatch')}</Muted>
-            </View>
-          </Card>
-        ))}
-
-        {errorKey ? (
-          <Card>
-            <Body>{t(errorKey)}</Body>
-          </Card>
-        ) : null}
+        <DeviceApprovalList approval={approval} />
 
         <Button label={t('common:action.done')} variant="ghost" onPress={onDone} />
       </View>

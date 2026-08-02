@@ -53,6 +53,15 @@ export interface KeyRepository {
    * wanted already exists, which is success.
    */
   publishDeviceKey(profileId: string, publicKey: string): Promise<DeviceKey>;
+  /**
+   * Withdraw a device.
+   *
+   * `device_keys_delete_own` scopes this to your own rows, which is the whole
+   * design: a partner's device row is their claim about their own phone, not
+   * yours to retract. Deleting takes that device's wraps with it by cascade, so
+   * a device that is let back in is let in afresh.
+   */
+  deleteDeviceKey(id: string): Promise<void>;
 
   /**
    * Every wrap for the couple, at every epoch.
@@ -121,6 +130,11 @@ export function createKeyRepository(client: AppSupabaseClient): KeyRepository {
         .single();
       if (existing.error) throw new Error(existing.error.message);
       return toDeviceKey(existing.data);
+    },
+
+    async deleteDeviceKey(id) {
+      const { error } = await client.from('device_keys').delete().eq('id', id);
+      if (error) throw new Error(error.message);
     },
 
     async listWraps(coupleId) {

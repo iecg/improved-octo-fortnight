@@ -202,6 +202,34 @@ device wraps the key to itself — not for recovery (a reinstall mints a new
 keypair and could not open it), but so its own second install does not offer to
 re-approve it.
 
+**When the numbers don't match, the two sides do different things, and the split
+is not arbitrary.** Nothing has been written at that moment — the wrap only
+happens on approve — so the approver has nothing to undo and their action is to
+_dismiss_ and write nothing. It cannot be to revoke: `device_keys_delete_own`
+scopes deletion to your own rows, and a partner's row is their claim about their
+own phone (`tests/rls/policies.test.ts`). The remedy is `resetDeviceKey`, on the
+waiting device, which mints a fresh keypair and withdraws the old row.
+Republishing would achieve nothing — the safety number is a function of the
+keypair, so the same keypair reads out the same twelve characters however often
+it is announced. A _new_ keypair gives a new number, and that is what separates
+"we misread it" from "something is between these two phones": after a rotation
+the numbers should agree, and if they still don't, that is a signal.
+
+**`InvitePanel` is the invite code and the approval in one card**, on the pairing
+screen and in both apps' Settings. It shows the code until a device appears and
+then shows the safety number in its place — which is also what keeps a _stale_
+code off the screen, since `join_couple` rotates the code the instant it is
+redeemed and never tells this device. The distinction it turns on is `isMine`:
+your own second install publishes a device key without redeeming anything, so it
+must not retire a code that is still good.
+
+The two waiting screens poll every five seconds on top of their realtime
+subscription. `npm run db:test` runs SQL over a socket and never touches
+Realtime, so nothing in the suite proves a `postgres_changes` subscription is
+delivered under RLS over a websocket — and these are the only screens where a
+missed update is a dead end, with no pull-to-refresh and no way to tell "nobody
+has joined" from "the socket is dead".
+
 ### What this does not protect
 
 The first item is the deliberate limit of the whole design, not a gap in it.
