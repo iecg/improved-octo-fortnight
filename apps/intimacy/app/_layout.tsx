@@ -38,23 +38,39 @@ function RootNavigator() {
   const segments = useSegments();
   const router = useRouter();
 
+  const group = segments[0];
+  const onSignIn = group === 'sign-in';
+  const onPairing = group === 'pair';
+
+  /**
+   * Whether the route we are on contradicts the session we have.
+   *
+   * This has to be known during render, not only inside the effect below.
+   * `(tabs)` is the initial route, so on a cold start with no session it
+   * mounts, `usePairedSession()` finds no profile and throws, and the very
+   * first thing a new user sees is a red screen — the redirect is queued in an
+   * effect and effects run after the render that broke.
+   */
+  const misplaced =
+    (!session && !onSignIn) ||
+    (!!session && !couple && !onPairing) ||
+    (!!session && !!couple && (onSignIn || onPairing));
+
   useEffect(() => {
-    if (loading) return;
+    if (loading || !misplaced) return;
 
-    const group = segments[0];
-    const onSignIn = group === 'sign-in';
-    const onPairing = group === 'pair';
-
-    if (!session && !onSignIn) {
+    if (!session) {
       router.replace('/sign-in');
-    } else if (session && !couple && !onPairing) {
+    } else if (!couple) {
       router.replace('/pair');
-    } else if (session && couple && (onSignIn || onPairing)) {
+    } else {
       router.replace('/(tabs)');
     }
-  }, [loading, session, couple, segments, router]);
+  }, [loading, misplaced, session, couple, router]);
 
-  if (loading) return <Loading />;
+  // Hold the spinner until the route agrees with the session, rather than
+  // mounting a screen that is about to be navigated away from.
+  if (loading || misplaced) return <Loading />;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

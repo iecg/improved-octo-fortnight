@@ -135,10 +135,28 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=...
 
 ## Dev builds
 
-Expo Go cannot grant calendar, notification, or biometric permissions, so
-`packages/device` is inert in it — `hasCalendarAccess()` returns false and
-`useDeviceSync` correctly does nothing. Those paths only execute in a dev
-build. Both apps carry an `eas.json`:
+**Neither app runs in Expo Go at all.** It is not a limitation to work around;
+Expo Go segfaults on launch, in `worklets::jsi_utils::addMethod` inside its own
+compiled binary, before any of our JavaScript gets a chance to matter. A stock
+blank Expo app runs in the same Expo Go, so it is these apps' native surface —
+Reanimated 4 and worklets against a binary built elsewhere — not the tooling.
+`npm run ios` therefore runs `expo run:ios`, which compiles the native modules
+at the versions in `node_modules`. That works.
+
+Even if it launched, Expo Go could not grant calendar, notification, or
+biometric permissions, so `packages/device` would be inert in it —
+`hasCalendarAccess()` returns false and `useDeviceSync` correctly does nothing.
+
+```bash
+cd apps/intimacy && npm run ios     # local dev build, ~5 min the first time
+```
+
+If `pod install` dies with `Unicode Normalization not appropriate for
+ASCII-8BIT`, that is CocoaPods on Ruby 4 in a non-UTF-8 shell — and its error
+reporter crashes while formatting the _real_ error, so the message is doubly
+unhelpful. Prefix the command with `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8`.
+
+For a build on Expo's infrastructure instead, both apps carry an `eas.json`:
 
 ```bash
 cd apps/intimacy && npx eas build --profile development --platform ios
