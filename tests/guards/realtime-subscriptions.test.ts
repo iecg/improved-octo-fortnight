@@ -113,6 +113,11 @@ describe('realtime subscriptions', () => {
     expect([...publishedTables()].sort()).toEqual([
       'checkins',
       'plan_ideas',
+      // Where a plan is happening, which both partners read while deciding
+      // whether to go. Its coordinates ride along, and that is the decision
+      // being made visible here: they reach the other partner's phone, and
+      // nowhere else RLS does not already allow.
+      'plan_places',
       'plan_proposals',
       'plans',
     ]);

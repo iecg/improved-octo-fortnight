@@ -8,18 +8,20 @@
  * partner-authored, so it is shown verbatim and merely *labelled* with the
  * language it was written in when that differs from the reader's.
  *
- * Suggestions are the third source, and they are exactly that — a third source
- * alongside the other two, never a replacement for them. Everything above is
- * rendered before anything asks whether a key is configured, and with no key
- * the suggestion card collapses to one line pointing at settings while the
- * library and the shortlist carry on unchanged. That is the AI-optional rule
- * as a rendering decision rather than a promise: turn the key off and this
- * screen is the screen it was before the feature existed.
+ * Suggestions are the third source, and venues found on a map are the fourth.
+ * Both are exactly that — sources alongside the other two, never replacements
+ * for them. Everything above is rendered before anything asks whether a key is
+ * configured; with no key the suggestion card collapses to one line pointing at
+ * settings and the place search renders nothing at all, while the library and
+ * the shortlist carry on unchanged. That is both optional-dependency rules as a
+ * rendering decision rather than a promise: turn the keys off and this screen is
+ * the screen it was before either feature existed.
  *
  * A suggestion is written by a model rather than by us, so it is treated like
  * a partner's own words rather than like chrome: generated in the reader's
  * language, saved with that language recorded, shown verbatim, and labelled
- * rather than machine-translated for whoever reads it in the other one.
+ * rather than machine-translated for whoever reads it in the other one. A
+ * venue's name is authored by neither of them and is handled the same way.
  */
 import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain, type PlanIdea } from '@couple/core';
 import {
@@ -40,6 +42,7 @@ import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
 import { AiSuggestionCard, type SuggestedIdea } from '../../src/features/date-planner/ai';
+import { PlaceSearch } from '../../src/features/places/PlaceSearch';
 import { libraryFor, ideaSummaryKey, ideaTitleKey } from '../../src/ideas';
 import { useIdeas, useRemoveIdea, useSaveIdea } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
@@ -185,6 +188,24 @@ export default function Ideas() {
         savedTitles={savedTitles}
         onSave={(idea) => void saveSuggestion(idea)}
         onPlan={planIt}
+      />
+
+      {/* The fourth source. Renders nothing at all when no mapping key is
+          configured — not even a line pointing at settings, because unlike the
+          suggestion card there is nothing for a partner to set up on their own
+          device. */}
+      <PlaceSearch
+        kind={kind}
+        onPick={(result) =>
+          save.mutate({
+            kind,
+            title: result.name,
+            summary: result.address ?? null,
+            source: 'places',
+            sourceDomain: 'google',
+            locale,
+          })
+        }
       />
 
       <Card>

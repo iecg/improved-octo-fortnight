@@ -1,0 +1,44 @@
+{
+  "label": "Where",
+  "manual": {
+    "placeholder": "A place, or leave it open",
+    "hint": "Your partner sees this exactly as you write it, in whatever language you write it."
+  },
+  "calendar": {
+    "share": "Put the address in the calendar entry",
+    "shareHint": "Off by default. A calendar entry can sync to a shared computer, so the address only goes in if you ask for it."
+  },
+  "action": {
+    "openInMaps": "Open in Maps",
+    "remove": "Remove the place",
+    "use": "Use this one",
+    "findAStay": "Find somewhere to stay"
+  },
+  "empty": "No place set",
+  "search": {
+    "title": "Look one up",
+    "nearATown": "Search near a town",
+    "townPlaceholder": "A town or neighbourhood",
+    "queryPlaceholder": "Ramen, a wine bar, a bookshop",
+    "go": "Search",
+    "searching": "Looking…",
+    "noResults": "Nothing came back. Try a different wording, or just type the name yourself.",
+    "failed": "That didn't work. You can still type the place yourself.",
+    "rateLimited": "That's enough searching for one day. You can still type the place yourself."
+  },
+  "privacy": {
+    "notice": "The words you search and the town you name are sent to a mapping service. Nothing else about your plans is.",
+    "coarse": "Only the town, rounded to about a kilometre — never your exact position."
+  },
+  "travel": {
+    "within": "Within {{count}} hours' drive",
+    "minutes_one": "About {{count}} minute away",
+    "minutes_other": "About {{count}} minutes away",
+    "hours_one": "About {{count}} hour away",
+    "hours_other": "About {{count}} hours away",
+    "unknown": "Distance unknown"
+  },
+  "map": {
+    "alt": "A map of the area around this place"
+  }
+}

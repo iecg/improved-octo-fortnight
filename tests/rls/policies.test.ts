@@ -862,6 +862,245 @@ describe('2-2-2 owned tables', () => {
   });
 });
 
+describe('places on a 2-2-2 plan', () => {
+  /** A place typed by hand: no provider, no coordinates, no key anywhere. */
+  async function attachManualPlace(
+    userId: string,
+    coupleId: string,
+    planId: string,
+    name = 'Bar Nou',
+  ): Promise<string> {
+    return asUser(pool, userId, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plan_places
+           (couple_id, domain, plan_id, name, provider, locale, attached_by)
+         values ($1, 'two_two_two', $2, $3, 'manual', 'en', $4) returning id`,
+        [coupleId, planId, name, userId],
+      );
+      return rows[0]!.id;
+    });
+  }
+
+  it("hides one couple's places from another", async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    await attachManualPlace(alice, coupleA, planId);
+
+    const visible = await asUser(pool, carol, async (client) => {
+      const { rows } = await client.query('select id from public.plan_places');
+      return rows;
+    });
+
+    expect(visible).toEqual([]);
+  });
+
+  it('lets the other partner see and correct a place on a shared plan', async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    const placeId = await attachManualPlace(alice, coupleA, planId, 'the noodle place');
+
+    const updated = await asUser(pool, bob, async (client) => {
+      const result = await client.query(
+        'update public.plan_places set name = $1 where id = $2',
+        ['the other noodle place', placeId],
+      );
+      return result.rowCount;
+    });
+
+    // A shared plan is shared; either partner may fix where it is.
+    expect(updated).toBe(1);
+  });
+
+  it('will not let one partner attach a place as the other', async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_places
+             (couple_id, domain, plan_id, name, provider, locale, attached_by)
+           values ($1, 'two_two_two', $2, 'not mine', 'manual', 'en', $3)`,
+          [coupleA, planId, bob],
+        ),
+      ),
+    );
+
+    expect(error.message).toMatch(/row-level security/i);
+  });
+
+  /**
+   * The property the composite foreign key exists for.
+   *
+   * `couple_id` is denormalized onto this table so RLS can check membership
+   * without a join. That is only safe if Postgres itself refuses a row whose
+   * couple does not own the plan it points at — otherwise a client could pass
+   * its own couple_id past the policy and still attach to a stranger's plan.
+   */
+  it("refuses a place pointing at another couple's plan", async () => {
+    const strangersPlan = await seedPlan(carol, coupleB, 'two_two_two');
+
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_places
+             (couple_id, domain, plan_id, name, provider, locale, attached_by)
+           values ($1, 'two_two_two', $2, 'somewhere', 'manual', 'en', $3)`,
+          [coupleA, strangersPlan, alice],
+        ),
+      ),
+    );
+
+    expect(error.message).toMatch(/plan_places_plan_fk|foreign key/i);
+  });
+
+  it('insists a place belongs to exactly one thing', async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+
+    const neither = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_places
+             (couple_id, domain, name, provider, locale, attached_by)
+           values ($1, 'two_two_two', 'nowhere', 'manual', 'en', $2)`,
+          [coupleA, alice],
+        ),
+      ),
+    );
+    expect(neither.message).toMatch(/plan_places_one_target/i);
+
+    const ideaId = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plan_ideas
+           (couple_id, domain, kind, title, source, locale, saved_by)
+         values ($1, 'two_two_two', 'date_night', 'an idea', 'manual', 'en', $2) returning id`,
+        [coupleA, alice],
+      );
+      return rows[0]!.id;
+    });
+
+    const both = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_places
+             (couple_id, domain, plan_id, idea_id, name, provider, locale, attached_by)
+           values ($1, 'two_two_two', $2, $3, 'everywhere', 'manual', 'en', $4)`,
+          [coupleA, planId, ideaId, alice],
+        ),
+      ),
+    );
+    expect(both.message).toMatch(/plan_places_one_target/i);
+  });
+
+  it('refuses half a coordinate', async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_places
+             (couple_id, domain, plan_id, name, provider, locale, attached_by, latitude)
+           values ($1, 'two_two_two', $2, 'half a place', 'manual', 'en', $3, 41.385064)`,
+          [coupleA, planId, alice],
+        ),
+      ),
+    );
+
+    expect(error.message).toMatch(/plan_places_coords_paired/i);
+  });
+
+  it('drops the place when the plan goes', async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    await attachManualPlace(alice, coupleA, planId);
+
+    await asUser(pool, alice, (client) =>
+      client.query('delete from public.plans where id = $1', [planId]),
+    );
+
+    const left = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select id from public.plan_places where plan_id = $1', [
+        planId,
+      ]);
+      return rows;
+    });
+    expect(left).toEqual([]);
+  });
+
+  it('pins who attached a place, and what it is attached to', async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    const placeId = await attachManualPlace(alice, coupleA, planId);
+
+    // The update policy tests membership only, so without the trigger "either
+    // partner may correct a place" would also mean "either partner may claim
+    // the other's attribution, or move the row to another couple".
+    for (const [column, value] of [
+      ['attached_by', bob],
+      ['couple_id', coupleB],
+    ] as const) {
+      const error = await expectRejected(
+        asUser(pool, alice, (client) =>
+          client.query(`update public.plan_places set ${column} = $1 where id = $2`, [
+            value,
+            placeId,
+          ]),
+        ),
+      );
+      expect(error.message).toMatch(/cannot be changed after insert|row-level security/i);
+    }
+  });
+
+  it('keeps the places usage counter readable but not writable', async () => {
+    // Same posture as ai_usage: a client that could write here could reset its
+    // own daily cap on a billed third-party API.
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.places_usage (couple_id, day, request_count)
+           values ($1, current_date, 0)`,
+          [coupleA],
+        ),
+      ),
+    );
+    expect(error.message).toMatch(/permission denied/i);
+
+    const readable = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select * from public.places_usage');
+      return rows;
+    });
+    expect(readable).toEqual([]);
+  });
+
+  it('will not let a client call the metering function directly', async () => {
+    // It is SECURITY DEFINER, so an execute grant would hand every client the
+    // ability to write a table it is deliberately not allowed to write —
+    // including, with a bit of patience, nothing at all: the interesting attack
+    // is calling it for *another* couple's id to burn their allowance.
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query('select public.increment_places_usage($1)', [coupleB]),
+      ),
+    );
+
+    expect(error.message).toMatch(/permission denied/i);
+  });
+
+  it('counts one request per call, atomically', async () => {
+    // As the service role, which is the only caller.
+    const counts = await Promise.all([
+      pool.query<{ increment_places_usage: number }>('select public.increment_places_usage($1)', [
+        coupleA,
+      ]),
+      pool.query<{ increment_places_usage: number }>('select public.increment_places_usage($1)', [
+        coupleA,
+      ]),
+      pool.query<{ increment_places_usage: number }>('select public.increment_places_usage($1)', [
+        coupleA,
+      ]),
+    ]);
+
+    // Three concurrent calls must produce three distinct running totals. A
+    // read-then-write would let two of them return the same number and hand
+    // out a free request.
+    const seen = counts.map((result) => result.rows[0]!.increment_places_usage).sort();
+    expect(seen).toEqual([1, 2, 3]);
+  });
+});
+
 describe('column privileges', () => {
   it('lets a member set the couple timezone', async () => {
     const count = await asUser(pool, alice, async (client) => {

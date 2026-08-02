@@ -73,9 +73,17 @@ export default tseslint.config(
     },
   },
 
+  // Edge Functions run in Supabase's edge runtime, which is Deno rather than
+  // Node. `Deno` is declared locally in the one function that reads a secret,
+  // so this only stops the global itself reading as undefined.
+  {
+    files: ['supabase/functions/**/*.ts'],
+    languageOptions: { globals: { Deno: 'readonly' } },
+  },
+
   // Tests describe themselves in English on purpose.
   {
-    files: ['**/*.test.{ts,tsx}', 'tests/**/*.ts'],
+    files: ['**/*.test.{ts,tsx}', 'tests/**/*.ts', 'packages/data/src/testing/**/*.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       // Test doubles stand in for third-party fluent builders; typing them

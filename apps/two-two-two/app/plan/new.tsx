@@ -44,6 +44,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
+import { normalizeManualPlace } from '../../src/features/places/label';
+import type { PlaceResult } from '../../src/features/places/maps/types';
+import { PlaceSearch } from '../../src/features/places/PlaceSearch';
 import { useCreatePlan, usePlans, useServerBusy } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
@@ -65,7 +68,7 @@ const DURATIONS: Record<string, { unit: 'hour' | 'night'; values: number[]; defa
   };
 
 export default function NewPlan() {
-  const { t, i18n } = useTranslation(['app', 'common', 'cadence', 'plans']);
+  const { t, i18n } = useTranslation(['app', 'common', 'cadence', 'plans', 'places']);
   const { profile, couple } = usePairedSession();
   const router = useRouter();
 
@@ -84,6 +87,12 @@ export default function NewPlan() {
   );
   // Arriving from the ideas screen prefills the title, still editable.
   const [title, setTitle] = useState(params.title ?? '');
+  // Typed by hand. Nothing on this screen asks whether a mapping provider
+  // exists, which is what keeps the whole screen working without one — a
+  // searched place only ever fills these in for you.
+  const [place, setPlace] = useState('');
+  const [found, setFound] = useState<PlaceResult | null>(null);
+  const [shareAddress, setShareAddress] = useState(false);
   const [dayIndex, setDayIndex] = useState(0);
   const [hour, setHour] = useState<number | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
@@ -226,11 +235,29 @@ export default function NewPlan() {
   }
 
   async function save() {
+    const name = normalizeManualPlace(place);
+    // A searched result only counts while the field still holds its name — if
+    // the text was edited afterwards, what is on screen is what gets saved.
+    const searched = found && found.name === name ? found : null;
+
     await create.mutateAsync({
       kind,
       title: title.trim() || null,
       startsAt,
       endsAt,
+      place: name
+        ? {
+            name,
+            address: searched?.address ?? null,
+            provider: searched ? 'google' : 'manual',
+            providerPlaceId: searched?.providerPlaceId ?? null,
+            coordinates: searched?.coordinates ?? null,
+            // The language it was typed or returned in, so a partner reading in
+            // the other one is told rather than shown a translation.
+            locale,
+            shareWithCalendar: shareAddress,
+          }
+        : null,
     });
     router.back();
   }
@@ -273,6 +300,41 @@ export default function NewPlan() {
           />
           {/* Sets the expectation that this reaches the partner untranslated. */}
           <Muted>{t('app:plan.titleHint')}</Muted>
+        </View>
+      </Card>
+
+      <Card>
+        <View className="gap-2">
+          <Heading>{t('places:label')}</Heading>
+          <TextInput
+            className="min-h-12 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
+            value={place}
+            onChangeText={setPlace}
+            placeholder={t('places:manual.placeholder')}
+            accessibilityLabel={t('places:label')}
+          />
+          <Muted>{t('places:manual.hint')}</Muted>
+          {/* Renders nothing at all when no mapping key is configured, which
+              leaves the text field above as the whole feature. */}
+          <PlaceSearch
+            kind={kind}
+            onPick={(result) => {
+              setFound(result);
+              setPlace(result.name);
+            }}
+          />
+          {found?.address ? <Muted>{found.address}</Muted> : null}
+          {/* Only worth asking once there is an address to share. */}
+          {normalizeManualPlace(place) ? (
+            <View className="gap-2">
+              <Chip
+                label={t('places:calendar.share')}
+                selected={shareAddress}
+                onPress={() => setShareAddress((on) => !on)}
+              />
+              <Muted>{t('places:calendar.shareHint')}</Muted>
+            </View>
+          ) : null}
         </View>
       </Card>
 

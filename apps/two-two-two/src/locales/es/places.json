@@ -1,0 +1,44 @@
+{
+  "label": "Dónde",
+  "manual": {
+    "placeholder": "Un sitio, o déjalo abierto",
+    "hint": "Tu pareja lo ve tal como lo escribes, en el idioma en que lo escribas."
+  },
+  "calendar": {
+    "share": "Poner la dirección en el calendario",
+    "shareHint": "Desactivado por defecto. Una entrada del calendario puede sincronizarse con un ordenador compartido, así que la dirección solo se añade si lo pides."
+  },
+  "action": {
+    "openInMaps": "Abrir en Mapas",
+    "remove": "Quitar el sitio",
+    "use": "Usar este",
+    "findAStay": "Buscar dónde dormir"
+  },
+  "empty": "Sin sitio definido",
+  "search": {
+    "title": "Buscar uno",
+    "nearATown": "Buscar cerca de un pueblo",
+    "townPlaceholder": "Un pueblo o un barrio",
+    "queryPlaceholder": "Ramen, un bar de vinos, una librería",
+    "go": "Buscar",
+    "searching": "Buscando…",
+    "noResults": "No ha salido nada. Prueba con otras palabras, o escribe el nombre tú mismo.",
+    "failed": "No ha funcionado. Puedes escribir el sitio tú mismo.",
+    "rateLimited": "Ya son suficientes búsquedas por hoy. Puedes escribir el sitio tú mismo."
+  },
+  "privacy": {
+    "notice": "Las palabras que buscas y el pueblo que indicas se envían a un servicio de mapas. Nada más de sus planes se envía.",
+    "coarse": "Solo el pueblo, redondeado a un kilómetro aproximadamente — nunca tu posición exacta."
+  },
+  "travel": {
+    "within": "A menos de {{count}} horas en coche",
+    "minutes_one": "A unos {{count}} minuto",
+    "minutes_other": "A unos {{count}} minutos",
+    "hours_one": "A una {{count}} hora",
+    "hours_other": "A unas {{count}} horas",
+    "unknown": "Distancia desconocida"
+  },
+  "map": {
+    "alt": "Un mapa de la zona alrededor de este sitio"
+  }
+}
