@@ -23,6 +23,12 @@ android/
 supabase/.branches/
 supabase/.temp/
 
+# Git worktrees for other branches live here. They are whole checkouts, so a
+# `git add -A` from the root would otherwise try to commit one branch's tree
+# into another. Only the worktrees directory — anything else under .claude/ is
+# project configuration and stays trackable.
+.claude/worktrees/
+
 # Editor / OS
 .DS_Store
 .idea/
