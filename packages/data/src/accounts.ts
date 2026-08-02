@@ -51,7 +51,6 @@ export interface AccountRepository {
     id: string,
     patch: { displayName?: string | null; locale?: Locale; timezone?: string },
   ): Promise<Profile>;
-  setPushToken(id: string, token: string | null): Promise<void>;
   getCouple(): Promise<Couple | null>;
   createCouple(timezone: string): Promise<Couple>;
   joinCouple(inviteCode: string): Promise<JoinCoupleResult>;
@@ -89,14 +88,6 @@ export function createAccountRepository(client: AppSupabaseClient): AccountRepos
         .select()
         .single();
       return toProfile(unwrap(data, error));
-    },
-
-    async setPushToken(id, token) {
-      const { error } = await client
-        .from('profiles')
-        .update({ expo_push_token: token })
-        .eq('id', id);
-      if (error) throw new Error(error.message);
     },
 
     async getCouple() {

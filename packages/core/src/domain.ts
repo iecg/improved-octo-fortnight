@@ -43,7 +43,6 @@ export interface Profile {
   displayName: string | null;
   timezone: string;
   locale: Locale;
-  expoPushToken: string | null;
 }
 
 export interface Couple {

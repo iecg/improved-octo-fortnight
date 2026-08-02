@@ -123,7 +123,21 @@ but no automated test covers them, so treat a green suite accordingly.
 - `plans.calendar_event_ids` is a `profile_id -> event id` map because each
   partner's phone returns its own identifier for the same logical event.
 - Pairing is the `join_couple` RPC, never a client insert, so invite codes
-  cannot be enumerated through the table API. The code rotates once redeemed.
+  cannot be enumerated through the table API. The code rotates once redeemed —
+  and again whenever the couple loses a member, because leaving reopens the
+  seat and would otherwise make a circulated code live again.
+- **A couple with no members left is deleted, not kept.** Nothing can reach an
+  empty couple's rows through any policy, so retaining them serves nobody and
+  leaves intimate history sitting behind a redeemable code.
+- Authorship columns (`created_by`, `saved_by`, `profile_id`, `proposed_by`)
+  and `couple_id` are pinned immutable by trigger. Every authorship rule in RLS
+  is an insert-time `with check` and the update policies test only membership,
+  so without the pin each rule was one `UPDATE` away from meaningless.
+- **Never store a push token.** Reminders are local (invariant 3), a partner
+  can read the whole profile row, and an Expo token is a bearer credential for
+  writing to that device's lock screen. `profiles.expo_push_token` was carried
+  and never written; it is gone. Push would need its own table and its own
+  argument for overriding discretion.
 - All RLS lives in one migration so the access surface is reviewable at a
   glance.
 - A table read live on both phones needs **two** things that live far apart: a
