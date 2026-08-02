@@ -116,11 +116,16 @@ a schema change that typechecks but does not _work_ gets caught.
 What it deliberately does not cover, because Node cannot: email OTP delivery
 (that is Supabase's auth service — rows are inserted into `auth.users`
 directly), PostgREST (statements run over a socket as the `authenticated` role,
-not through supabase-js), and writing to a device calendar. All three have been
-walked by hand on a simulator dev build against the local stack — sign in with
-a real code, check in, search free/busy, propose, and watch a partner-booked
-plan produce a calendar entry titled with the neutral label and nothing else —
-but no automated test covers them, so treat a green suite accordingly.
+not through supabase-js), and writing to a device calendar. No automated test
+covers any of them, so treat a green suite accordingly.
+
+**`docs/simulator-walk.md` is the checklist for that gap** — a dev build on two
+simulators against a local stack, covering the auth service, the second
+install, discretion on the device (calendar titles, reminder copy, the lock),
+the two-partner paths, and free/busy with each of its three sources removed in
+turn. Run it before a release and after any change to `packages/device`, the
+propose or plan screens, or the busy-times view. It needs a Mac: neither app
+runs in Expo Go, so a dev build is not optional.
 
 ## Data model notes
 
