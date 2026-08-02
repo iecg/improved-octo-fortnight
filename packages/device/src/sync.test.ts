@@ -77,7 +77,9 @@ describe('reconcileDevice', () => {
 
     await reconcileDevice(opts, NEVER_CANCELLED);
 
-    // The neutral label, and nothing else about the plan.
+    // The neutral label, and nothing else about the plan. No
+    // `calendarLocationFor` was supplied, which is how the intimacy app calls
+    // this and what every caller gets by default.
     expect(writeCalendarEvent).toHaveBeenCalledTimes(1);
     const written = vi.mocked(writeCalendarEvent).mock.calls[0]![0];
     expect(written.title).toBe('Evening');
@@ -86,6 +88,32 @@ describe('reconcileDevice', () => {
 
     expect(opts.onCalendarEvent).toHaveBeenCalledWith(opts.plans[0], 'event-new');
     expect(scheduleReminder).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes an address only when the app supplies one', async () => {
+    await reconcileDevice(
+      options([bookedPlan('plan-1')], {
+        calendarLocationFor: () => 'Carrer dels Almogàvers 1, Barcelona',
+      }),
+      NEVER_CANCELLED,
+    );
+
+    const written = vi.mocked(writeCalendarEvent).mock.calls[0]![0];
+    expect(written.location).toBe('Carrer dels Almogàvers 1, Barcelona');
+    // Still nothing else — an address is the only thing being opted into.
+    expect(written.notes).toBeUndefined();
+  });
+
+  it('writes nothing when the opt-in callback declines for this plan', async () => {
+    // A place exists on some plans and not others, and a place that was never
+    // opted in answers undefined. That must be indistinguishable from having no
+    // callback at all.
+    await reconcileDevice(
+      options([bookedPlan('plan-1')], { calendarLocationFor: () => undefined }),
+      NEVER_CANCELLED,
+    );
+
+    expect(vi.mocked(writeCalendarEvent).mock.calls[0]![0].location).toBeUndefined();
   });
 
   it('does nothing without calendar permission, rather than asking for it', async () => {

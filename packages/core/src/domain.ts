@@ -137,6 +137,45 @@ export interface PlanIdea {
   createdAt: string;
 }
 
+/**
+ * Where a place's details came from.
+ *
+ * `manual` is a partner typing a venue name, and it is the only provider that
+ * exists with no mapping key configured. Everything downstream must keep
+ * working when it is the only one it ever sees.
+ */
+export const PLACE_PROVIDERS = ['manual', 'google'] as const;
+export type PlaceProvider = (typeof PLACE_PROVIDERS)[number];
+
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
+}
+
+/** A venue attached to a 2-2-2 plan or idea. The intimacy app has no accessor. */
+export interface PlanPlace {
+  id: string;
+  coupleId: string;
+  domain: AppDomain;
+  /** Exactly one of these is set; the table enforces it. */
+  planId: string | null;
+  ideaId: string | null;
+  /** Shown verbatim. A proper noun, so it is never labelled with a language. */
+  name: string;
+  /** Labelled with `locale` when it differs from the reader's, like an idea. */
+  address: string | null;
+  provider: PlaceProvider;
+  providerPlaceId: string | null;
+  /** Null whenever the place was typed rather than searched. */
+  coordinates: Coordinates | null;
+  locale: Locale;
+  /** Opt-in, per place. Nothing reaches a calendar entry without it. */
+  shareWithCalendar: boolean;
+  /** Null once the person who attached it deletes their account. */
+  attachedBy: string | null;
+  createdAt: string;
+}
+
 export interface Checkin {
   id: string;
   coupleId: string;

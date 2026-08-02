@@ -1,0 +1,16 @@
+{
+  "label": "Where",
+  "manual": {
+    "placeholder": "A place, or leave it open",
+    "hint": "Your partner sees this exactly as you write it, in whatever language you write it."
+  },
+  "calendar": {
+    "share": "Put the address in the calendar entry",
+    "shareHint": "Off by default. A calendar entry can sync to a shared computer, so the address only goes in if you ask for it."
+  },
+  "action": {
+    "openInMaps": "Open in Maps",
+    "remove": "Remove the place"
+  },
+  "empty": "No place set"
+}

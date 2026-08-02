@@ -10,11 +10,12 @@
  * are intimacy-owned and reachable only through their own factory.
  */
 import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
-import type { Cadence, IdeaSource, Locale, Plan } from '@couple/core';
-import { createDomainRepository, createIdeaRepository } from '@couple/data';
+import type { Cadence, Coordinates, IdeaSource, Locale, PlaceProvider, Plan } from '@couple/core';
+import { createDomainRepository, createIdeaRepository, createPlaceRepository } from '@couple/data';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
+import { placeLabel } from '../features/places/label';
 import { supabase } from './runtime';
 
 export const DOMAIN = 'two_two_two' as const;
@@ -24,10 +25,14 @@ export const plans = createDomainRepository(supabase, DOMAIN);
 /** 2-2-2-owned. Its own factory, so the intimacy app has nothing to import. */
 export const ideas = createIdeaRepository(supabase);
 
+/** Also 2-2-2-owned, and also without a domain parameter. */
+export const places = createPlaceRepository(supabase);
+
 const keys = {
   plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
   cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
   ideas: (coupleId: string) => ['ideas', DOMAIN, coupleId] as const,
+  places: (coupleId: string) => ['places', DOMAIN, coupleId] as const,
 };
 
 export function usePlans(coupleId: string) {
@@ -53,21 +58,135 @@ export function useCadences(coupleId: string) {
 export function useCreatePlan(coupleId: string, profileId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { kind: string; title: string | null; startsAt: Date; endsAt: Date }) =>
-      plans.createPlan({
+    mutationFn: async (input: {
+      kind: string;
+      title: string | null;
+      startsAt: Date;
+      endsAt: Date;
+      /** Optional, and independent of whether any mapping provider exists. */
+      place?: AttachPlaceDraft | null;
+    }) => {
+      const plan = await plans.createPlan({
         coupleId,
         kind: input.kind,
         createdBy: profileId,
         // Partner-authored, stored and shown verbatim in whatever language it
         // was written.
         title: input.title,
+        // The label, not the coordinates. This column is the one that can reach
+        // a device calendar.
+        location: input.place ? placeLabel(input.place.name, input.place.address) : null,
         startsAt: input.startsAt.toISOString(),
         endsAt: input.endsAt.toISOString(),
         status: 'scheduled',
-      }),
+      });
+
+      if (input.place) {
+        await places.attach({
+          coupleId,
+          attachedBy: profileId,
+          planId: plan.id,
+          name: input.place.name,
+          address: input.place.address ?? null,
+          provider: input.place.provider,
+          providerPlaceId: input.place.providerPlaceId ?? null,
+          coordinates: input.place.coordinates ?? null,
+          locale: input.place.locale,
+          shareWithCalendar: input.place.shareWithCalendar ?? false,
+        });
+      }
+
+      return plan;
+    },
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
       void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+      void client.invalidateQueries({ queryKey: keys.places(coupleId) });
+    },
+  });
+}
+
+/**
+ * A place as a screen has it, before it belongs to anything.
+ *
+ * `provider: 'manual'` with no coordinates is the whole of this in an app with
+ * nothing configured; a searched place fills in the remaining fields.
+ */
+export interface AttachPlaceDraft {
+  name: string;
+  address?: string | null;
+  provider: PlaceProvider;
+  providerPlaceId?: string | null;
+  coordinates?: Coordinates | null;
+  locale: Locale;
+  shareWithCalendar?: boolean;
+}
+
+export function usePlaces(coupleId: string) {
+  return useQuery({
+    queryKey: keys.places(coupleId),
+    queryFn: () => places.listForCouple(coupleId),
+  });
+}
+
+/**
+ * Attach a place to a plan that already exists, and project its label onto
+ * `plans.location` in the same step.
+ *
+ * The two writes are deliberately here rather than inside the repository: the
+ * label is what can reach a calendar entry, so it is written where someone
+ * reading a screen can see it happen.
+ */
+export function useAttachPlace(coupleId: string, profileId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { planId: string; place: AttachPlaceDraft }) => {
+      const attached = await places.attach({
+        coupleId,
+        attachedBy: profileId,
+        planId: input.planId,
+        name: input.place.name,
+        address: input.place.address ?? null,
+        provider: input.place.provider,
+        providerPlaceId: input.place.providerPlaceId ?? null,
+        coordinates: input.place.coordinates ?? null,
+        locale: input.place.locale,
+        shareWithCalendar: input.place.shareWithCalendar ?? false,
+      });
+      await plans.updatePlan(input.planId, {
+        location: placeLabel(input.place.name, input.place.address),
+      });
+      return attached;
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.places(coupleId) });
+      void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+    },
+  });
+}
+
+export function useDetachPlace(coupleId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { placeId: string; planId: string | null }) => {
+      await places.detach(input.placeId);
+      // Leaving the label behind would keep a removed place in the calendar.
+      if (input.planId) await plans.updatePlan(input.planId, { location: null });
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.places(coupleId) });
+      void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+    },
+  });
+}
+
+export function useSetPlaceCalendarSharing(coupleId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { placeId: string; share: boolean }) =>
+      places.setShareWithCalendar(input.placeId, input.share),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.places(coupleId) });
     },
   });
 }

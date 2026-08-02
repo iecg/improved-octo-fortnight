@@ -5,7 +5,7 @@ import { Tabs } from 'expo-router';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { plans as repository, usePlans } from '../../src/queries';
+import { plans as repository, usePlaces, usePlans } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 /** Three hours: a date night is worth rearranging an evening for. */
@@ -16,12 +16,30 @@ export default function TabsLayout() {
   const { profile, couple } = usePairedSession();
   const client = useQueryClient();
   const plansQuery = usePlans(couple.id);
+  const placesQuery = usePlaces(couple.id);
 
   // Unlike the intimacy app, there is nothing to conceal here: the real title
   // goes in the calendar, falling back to the ritual's name.
   const calendarTitleFor = useCallback(
     (plan: Plan) => plan.title?.trim() || t(kindLabelKey(plan.domain as AppDomain, plan.kind)),
     [t],
+  );
+
+  /**
+   * The address, but only for a place someone opted in.
+   *
+   * A title is one thing — a calendar entry saying "dinner" reveals nothing.
+   * An address is "we are not at home, and here is where we are", and a
+   * calendar syncs to shared computers and family views this app cannot see.
+   * So this returns undefined unless the place carries `shareWithCalendar`,
+   * and undefined is what `reconcileDevice` treats as "write nothing".
+   */
+  const calendarLocationFor = useCallback(
+    (plan: Plan) => {
+      const place = (placesQuery.data ?? []).find((candidate) => candidate.planId === plan.id);
+      return place?.shareWithCalendar ? (plan.location ?? undefined) : undefined;
+    },
+    [placesQuery.data],
   );
 
   const reminder = useMemo(
@@ -45,8 +63,18 @@ export default function TabsLayout() {
     plans: plansQuery.data ?? [],
     profileId: profile.id,
     timeZone: couple.timezone,
-    enabled: !plansQuery.isLoading,
+    /**
+     * Paused while places are in flight, not merely while they first load.
+     *
+     * Booking a plan invalidates both queries, and `calendarActions` only ever
+     * writes an entry that does not exist yet — it never rewrites one. So a
+     * pass that ran with the new plan but the old places would write the event
+     * without the address, and nothing would ever correct it. Waiting for
+     * places to settle costs one render and removes that race entirely.
+     */
+    enabled: !plansQuery.isLoading && !placesQuery.isFetching,
     calendarTitleFor,
+    calendarLocationFor,
     reminder,
     onCalendarEvent,
   });

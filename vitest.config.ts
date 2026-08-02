@@ -12,6 +12,14 @@ export default defineConfig({
     environment: 'node',
     include: [
       'packages/*/src/**/*.test.ts',
+      // Pure modules that belong to one app rather than to a shared package —
+      // the 2-2-2 places filters live here rather than in `packages/cadence`,
+      // which is the recurrence engine and nothing else. Without this line they
+      // would sit there looking tested and never run.
+      'apps/*/features/**/*.test.ts',
+      // Edge Functions' request/response shaping. Only the plain-TypeScript
+      // modules are collected; the Deno entry point that imports them is not.
+      'supabase/functions/**/*.test.ts',
       'tests/i18n/**/*.test.ts',
       'tests/guards/**/*.test.ts',
     ],

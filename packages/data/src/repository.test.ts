@@ -13,54 +13,8 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { AppSupabaseClient } from './client';
 import { createDomainRepository } from './repository';
-
-interface RecordedCall {
-  method: string;
-  args: unknown[];
-}
-
-function fakeClient(result: unknown): { client: AppSupabaseClient; calls: RecordedCall[] } {
-  const calls: RecordedCall[] = [];
-
-  const builder: any = new Proxy(
-    {},
-    {
-      get(_target, property) {
-        if (typeof property !== 'string') return undefined;
-        // Thenable, so `await` on the builder resolves like a PostgREST call.
-        if (property === 'then') {
-          return (resolve: (value: unknown) => unknown) => resolve({ data: result, error: null });
-        }
-        return (...args: unknown[]) => {
-          calls.push({ method: property, args });
-          return builder;
-        };
-      },
-    },
-  );
-
-  const client = {
-    from(table: string) {
-      calls.push({ method: 'from', args: [table] });
-      return builder;
-    },
-  } as unknown as AppSupabaseClient;
-
-  return { client, calls };
-}
-
-/** Did the query constrain `column` to `value`? */
-function filtersOn(calls: RecordedCall[], column: string, value: unknown): boolean {
-  return calls.some(
-    (call) => call.method === 'eq' && call.args[0] === column && call.args[1] === value,
-  );
-}
-
-function payloadOf(calls: RecordedCall[], method: 'insert' | 'upsert' | 'update'): any {
-  return calls.find((call) => call.method === method)?.args[0];
-}
+import { fakeClient, filtersOn, payloadOf, tablesTouched } from './testing/fake-client';
 
 const PLAN_ROW = {
   id: 'plan-1',
@@ -240,8 +194,9 @@ describe('the two apps cannot see each other', () => {
     await repo.listProposals('couple-1');
 
     // Check-ins are intimacy-owned and reachable only through their own
-    // factory, so the 2-2-2 app has nothing to import by accident.
-    const tables = calls.filter((call) => call.method === 'from').map((call) => call.args[0]);
-    expect(tables).not.toContain('checkins');
+    // factory, so the 2-2-2 app has nothing to import by accident. The same
+    // goes for places, which are 2-2-2-owned in the other direction.
+    expect(tablesTouched(calls)).not.toContain('checkins');
+    expect(tablesTouched(calls)).not.toContain('plan_places');
   });
 });

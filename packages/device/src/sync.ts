@@ -32,6 +32,15 @@ export interface DeviceSyncOptions {
    * the plan is written either way.
    */
   calendarTitleFor: (plan: Plan) => string;
+  /**
+   * The address to write into the OS calendar entry, or undefined for none.
+   *
+   * Optional, and undefined by default, so the intimacy app — which writes a
+   * neutral label and nothing else — is unchanged by its existence. The 2-2-2
+   * app supplies it only for a plan whose place was explicitly opted in, since
+   * a calendar entry syncs to desktops and shared views this app cannot see.
+   */
+  calendarLocationFor?: (plan: Plan) => string | undefined;
   /** Notification copy, already translated on this device, in its owner's language. */
   reminder: { leadMinutes: number; title: string; body: string };
   /** Persist (or clear) this device's event id for a plan. */
@@ -61,7 +70,15 @@ export async function reconcileDevice(
   options: DeviceSyncOptions,
   isCancelled: () => boolean,
 ): Promise<void> {
-  const { plans, profileId, timeZone, calendarTitleFor, reminder, onCalendarEvent } = options;
+  const {
+    plans,
+    profileId,
+    timeZone,
+    calendarTitleFor,
+    calendarLocationFor,
+    reminder,
+    onCalendarEvent,
+  } = options;
   if (!profileId) return;
 
   const { toWrite, toRemove } = calendarActions(plans, profileId);
@@ -72,6 +89,9 @@ export async function reconcileDevice(
   if ((toWrite.length > 0 || toRemove.length > 0) && (await hasCalendarAccess())) {
     for (const plan of toWrite) {
       if (isCancelled() || !plan.startsAt) break;
+      // Absent unless the app opted this plan in, so the default entry is
+      // still a title, a time, and nothing else.
+      const location = calendarLocationFor?.(plan);
       const eventId = await writeCalendarEvent({
         title: calendarTitleFor(plan),
         startsAt: new Date(plan.startsAt),
@@ -79,6 +99,7 @@ export async function reconcileDevice(
         // sensible shape in a week view.
         endsAt: new Date(plan.endsAt ?? new Date(plan.startsAt).getTime() + 3_600_000),
         timeZone,
+        ...(location ? { location } : {}),
       });
       if (eventId) await onCalendarEvent(plan, eventId);
     }

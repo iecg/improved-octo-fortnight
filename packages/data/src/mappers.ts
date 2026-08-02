@@ -9,11 +9,14 @@ import type {
   AppDomain,
   Cadence,
   Checkin,
+  Coordinates,
   CostBand,
   Couple,
   IdeaSource,
   Plan,
+  PlaceProvider,
   PlanIdea,
+  PlanPlace,
   PlanProposal,
   Profile,
 } from '@couple/core';
@@ -114,6 +117,44 @@ export function toPlanIdea(row: Tables['plan_ideas']['Row']): PlanIdea {
     source: row.source as IdeaSource,
     locale: row.locale,
     savedBy: row.saved_by,
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * `latitude` and `longitude` are `numeric`, which both PostgREST and
+ * node-postgres hand back as *strings* rather than lose precision on a float.
+ * Coercing here — and treating anything unparseable as absent — keeps every
+ * caller from silently doing string arithmetic on `"41.385064"`.
+ *
+ * A half-set pair is treated as no coordinate at all. The table forbids it, but
+ * this mapper is what the rest of the app trusts.
+ */
+function toCoordinates(latitude: unknown, longitude: unknown): Coordinates | null {
+  if (latitude === null || longitude === null || latitude === undefined || longitude === undefined) {
+    return null;
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  return { latitude: lat, longitude: lng };
+}
+
+export function toPlanPlace(row: Tables['plan_places']['Row']): PlanPlace {
+  return {
+    id: row.id,
+    coupleId: row.couple_id,
+    domain: row.domain as AppDomain,
+    planId: row.plan_id,
+    ideaId: row.idea_id,
+    name: row.name,
+    address: row.address,
+    provider: row.provider as PlaceProvider,
+    providerPlaceId: row.provider_place_id,
+    coordinates: toCoordinates(row.latitude, row.longitude),
+    locale: row.locale,
+    shareWithCalendar: row.share_with_calendar,
+    attachedBy: row.attached_by,
     createdAt: row.created_at,
   };
 }

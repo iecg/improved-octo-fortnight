@@ -21,6 +21,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
+import { normalizeManualPlace } from '../../features/places/label';
 import { useCreatePlan } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
@@ -42,7 +43,7 @@ const DURATIONS: Record<string, { unit: 'hour' | 'night'; values: number[]; defa
   };
 
 export default function NewPlan() {
-  const { t, i18n } = useTranslation(['app', 'common', 'cadence', 'plans']);
+  const { t, i18n } = useTranslation(['app', 'common', 'cadence', 'plans', 'places']);
   const { profile, couple } = usePairedSession();
   const router = useRouter();
 
@@ -61,6 +62,10 @@ export default function NewPlan() {
   );
   // Arriving from the ideas screen prefills the title, still editable.
   const [title, setTitle] = useState(params.title ?? '');
+  // Typed by hand. Nothing on this screen asks whether a mapping provider
+  // exists, which is what keeps the whole screen working without one.
+  const [place, setPlace] = useState('');
+  const [shareAddress, setShareAddress] = useState(false);
   const [dayIndex, setDayIndex] = useState(0);
   const [hour, setHour] = useState<number | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
@@ -108,11 +113,22 @@ export default function NewPlan() {
   }
 
   async function save() {
+    const name = normalizeManualPlace(place);
     await create.mutateAsync({
       kind,
       title: title.trim() || null,
       startsAt,
       endsAt,
+      place: name
+        ? {
+            name,
+            provider: 'manual',
+            // The language it was typed in, so a partner reading in the other
+            // one is told rather than shown a translation.
+            locale,
+            shareWithCalendar: shareAddress,
+          }
+        : null,
     });
     router.back();
   }
@@ -155,6 +171,31 @@ export default function NewPlan() {
           />
           {/* Sets the expectation that this reaches the partner untranslated. */}
           <Muted>{t('app:plan.titleHint')}</Muted>
+        </View>
+      </Card>
+
+      <Card>
+        <View className="gap-2">
+          <Heading>{t('places:label')}</Heading>
+          <TextInput
+            className="min-h-12 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
+            value={place}
+            onChangeText={setPlace}
+            placeholder={t('places:manual.placeholder')}
+            accessibilityLabel={t('places:label')}
+          />
+          <Muted>{t('places:manual.hint')}</Muted>
+          {/* Only worth asking once there is an address to share. */}
+          {normalizeManualPlace(place) ? (
+            <View className="gap-2">
+              <Chip
+                label={t('places:calendar.share')}
+                selected={shareAddress}
+                onPress={() => setShareAddress((on) => !on)}
+              />
+              <Muted>{t('places:calendar.shareHint')}</Muted>
+            </View>
+          ) : null}
         </View>
       </Card>
 
