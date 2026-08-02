@@ -13,6 +13,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { createBusyRepository } from './busy';
 import type { AppSupabaseClient } from './client';
 import { createDomainRepository } from './repository';
 
@@ -243,5 +244,71 @@ describe('the two apps cannot see each other', () => {
     // factory, so the 2-2-2 app has nothing to import by accident.
     const tables = calls.filter((call) => call.method === 'from').map((call) => call.args[0]);
     expect(tables).not.toContain('checkins');
+  });
+});
+
+/**
+ * The one accessor that reads across the boundary, and why that is allowed.
+ *
+ * `createBusyRepository` deliberately sees both apps' plans. It is safe only
+ * because of what it *cannot* see: the view behind it selects three columns,
+ * so there is no domain to filter, no title to leak, and no parameter anyone
+ * could add later to widen it. These tests pin that shape — if someone ever
+ * points this factory at `plans` to "save a migration", the redaction becomes
+ * a client-side promise instead of a Postgres one, and this fails.
+ */
+describe('the busy-times repository', () => {
+  const BUSY_ROW = {
+    couple_id: 'couple-1',
+    starts_at: '2026-09-12T18:00:00.000Z',
+    ends_at: '2026-09-12T20:00:00.000Z',
+  };
+
+  const FROM = new Date('2026-09-01T00:00:00.000Z');
+  const TO = new Date('2026-09-30T00:00:00.000Z');
+
+  it('reads the redacted view and never the plans table', async () => {
+    const { client, calls } = fakeClient([BUSY_ROW]);
+
+    await createBusyRepository(client).listBetween('couple-1', FROM, TO);
+
+    const tables = calls.filter((call) => call.method === 'from').map((call) => call.args[0]);
+    expect(tables).toEqual(['plan_busy_times']);
+    expect(tables).not.toContain('plans');
+  });
+
+  it('never filters on a domain, because the view has none to filter', async () => {
+    const { client, calls } = fakeClient([BUSY_ROW]);
+
+    await createBusyRepository(client).listBetween('couple-1', FROM, TO);
+
+    expect(filtersOn(calls, 'couple_id', 'couple-1')).toBe(true);
+    expect(calls.some((call) => call.method === 'eq' && call.args[0] === 'domain')).toBe(false);
+  });
+
+  it('bounds the read by overlap, so a span containing the window still counts', async () => {
+    const { client, calls } = fakeClient([BUSY_ROW]);
+
+    await createBusyRepository(client).listBetween('couple-1', FROM, TO);
+
+    // starts before the window ends, and ends after it begins — a getaway
+    // straddling the whole range has neither endpoint inside it.
+    expect(calls).toContainEqual({ method: 'lt', args: ['starts_at', TO.toISOString()] });
+    expect(calls).toContainEqual({ method: 'gt', args: ['ends_at', FROM.toISOString()] });
+  });
+
+  it('returns instants rather than strings, ready for the cadence engine', async () => {
+    const { client } = fakeClient([BUSY_ROW]);
+
+    const windows = await createBusyRepository(client).listBetween('couple-1', FROM, TO);
+
+    expect(windows).toEqual([
+      { start: new Date('2026-09-12T18:00:00.000Z'), end: new Date('2026-09-12T20:00:00.000Z') },
+    ]);
+  });
+
+  it('survives an empty result', async () => {
+    const { client } = fakeClient(null);
+    expect(await createBusyRepository(client).listBetween('couple-1', FROM, TO)).toEqual([]);
   });
 });
