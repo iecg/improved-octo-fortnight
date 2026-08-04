@@ -32,7 +32,26 @@ export interface SessionState {
   keyState: KeyState;
   refresh: () => Promise<void>;
   setLocale: (locale: Locale) => Promise<void>;
+  /**
+   * Set or clear your own display name.
+   *
+   * Alongside `setLocale` rather than left to each screen, because it is the
+   * same shape — write the profile, update the one copy of it every screen
+   * reads — and because the name is sealed under the couple key, so it needs
+   * the repository this module already holds rather than one a screen builds.
+   */
+  setDisplayName: (name: string | null) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Give up the seat in this couple, from either app.
+   *
+   * Lives here rather than in an app because there is one pairing across both,
+   * so leaving from Two22 and leaving from the intimacy app are the same act.
+   * The database does the rest: a trigger rotates the invite code so the one
+   * the departing partner circulated stops working, and deletes the couple
+   * outright once nobody is left.
+   */
+  leaveCouple: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionState | null>(null);
@@ -145,6 +164,17 @@ export function createSessionModule(deps: {
       [profile],
     );
 
+    const setDisplayName = useCallback(
+      async (name: string | null) => {
+        if (!profile) return;
+        // `updateProfile` normalises and enforces the length rule; a screen
+        // that checked first is being helpful, not authoritative.
+        const updated = await accounts.updateProfile(profile.id, { displayName: name });
+        setProfile(updated);
+      },
+      [profile],
+    );
+
     const signOut = useCallback(async () => {
       // Memory only. The keychain copy stays, so signing back in on your own
       // phone does not need another approval — but nothing readable survives
@@ -154,6 +184,23 @@ export function createSessionModule(deps: {
       keys.lock();
       await supabase.auth.signOut();
     }, []);
+
+    /**
+     * The account survives; only the pairing ends. Reloading rather than
+     * signing out is what puts the router back on `/pair` — the same three
+     * states as a fresh install, minus the sign-in.
+     */
+    const leaveCouple = useCallback(async () => {
+      if (!profile) return;
+      // Leave first, forget second. The other order would throw the key away
+      // and then, on a failure, leave a device still in the couple and unable
+      // to read it. `forget` clears the keychain as well as memory: the couple
+      // this key belongs to is one the device has just left, and every row it
+      // could open is about to be deleted or handed to a new partner.
+      await accounts.leaveCouple(profile.id);
+      await keys.forget();
+      await refresh();
+    }, [profile, refresh]);
 
     const value = useMemo<SessionState>(
       () => ({
@@ -165,9 +212,23 @@ export function createSessionModule(deps: {
         keyState,
         refresh,
         setLocale,
+        setDisplayName,
         signOut,
+        leaveCouple,
       }),
-      [loading, session, profile, couple, partner, keyState, refresh, setLocale, signOut],
+      [
+        loading,
+        session,
+        profile,
+        couple,
+        partner,
+        keyState,
+        refresh,
+        setLocale,
+        setDisplayName,
+        signOut,
+        leaveCouple,
+      ],
     );
 
     return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

@@ -70,6 +70,7 @@ export class PayloadTooLargeError extends Error {}
 export type RecordIdentity =
   | { table: 'plans'; coupleId: string; id: string }
   | { table: 'plan_ideas'; coupleId: string; id: string }
+  | { table: 'plan_places'; coupleId: string; id: string }
   | { table: 'checkins'; coupleId: string; profileId: string; onDate: string }
   | { table: 'profiles'; coupleId: string; profileId: string };
 
@@ -93,6 +94,7 @@ export function identityString(identity: RecordIdentity): string {
   switch (identity.table) {
     case 'plans':
     case 'plan_ideas':
+    case 'plan_places':
       return `${identity.table}|${couple}|${component(identity.id, 'id')}`;
     case 'checkins':
       return `checkins|${couple}|${component(identity.profileId, 'profileId')}|${component(

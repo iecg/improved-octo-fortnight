@@ -1,6 +1,7 @@
 import '../global.css';
 
 import { routeIntent } from '@couple/auth';
+import { configureNotificationHandler } from '@couple/device';
 import { Loading } from '@couple/ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -16,6 +17,13 @@ import { SessionProvider, useSession } from '../src/session';
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 });
+
+// The tabs layout composes a reminder for every booked plan and hands it to
+// `useDeviceSync`. Without this — and without the permission prompt in
+// Settings — `reconcileDevice` finds no permission and silently schedules
+// nothing, which is how date-night reminders came to be written, translated,
+// and never delivered.
+configureNotificationHandler();
 
 /**
  * Routing follows the four states the app can be in: signed out, signed in but
@@ -63,6 +71,7 @@ function RootNavigator() {
       <Stack.Screen name="recovery" />
       <Stack.Screen name="approve" options={{ presentation: 'modal' }} />
       <Stack.Screen name="plan/new" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="connected" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }

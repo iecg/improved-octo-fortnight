@@ -62,10 +62,10 @@ export function sealCheckin(
   coupleId: string,
   profileId: string,
   onDate: string,
-  fields: { interest: string; energy?: number | null; note?: string | null },
+  fields: { interest: string; note?: string | null },
 ): string {
   return cipherFor(coupleId).seal(
-    { interest: fields.interest, energy: fields.energy ?? null, note: fields.note ?? null },
+    { interest: fields.interest, note: fields.note ?? null },
     { table: 'checkins', coupleId, profileId, onDate },
   );
 }
@@ -84,6 +84,31 @@ export function sealIdea(
       locale: fields.locale ?? 'en',
     },
     { table: 'plan_ideas', coupleId, id },
+  );
+}
+
+export function sealPlace(
+  coupleId: string,
+  id: string,
+  fields: {
+    name: string;
+    address?: string | null;
+    providerPlaceId?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    locale?: string;
+  },
+): string {
+  return cipherFor(coupleId, 'two_two_two').seal(
+    {
+      name: fields.name,
+      address: fields.address ?? null,
+      providerPlaceId: fields.providerPlaceId ?? null,
+      latitude: fields.latitude ?? null,
+      longitude: fields.longitude ?? null,
+      locale: fields.locale ?? 'en',
+    },
+    { table: 'plan_places', coupleId, id },
   );
 }
 

@@ -20,8 +20,8 @@
  *    needs a hardware dev build.
  */
 import { addInterval, calendarActions, computeCadenceStatus } from '@couple/cadence';
-import type { Cadence, Plan } from '@couple/core';
-import { toPlan } from '@couple/data';
+import { DISPLAY_NAME_MAX, displayNameLength, type Cadence, type Plan } from '@couple/core';
+import { toPlan, toPlanPlace, toProfile } from '@couple/data';
 import { createI18n } from '@couple/i18n';
 import { differenceInCalendarDays } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -808,7 +808,7 @@ describe('8. losing both devices', () => {
   it('seals the couple key under a code Alice writes down', async () => {
     code = generateRecoveryCode(testRandom);
 
-    const envelope = wrapWithRecoveryCode({
+    const envelope = await wrapWithRecoveryCode({
       root: coupleRoot,
       code,
       coupleId: world.coupleId,
@@ -877,7 +877,7 @@ describe('8. losing both devices', () => {
     // all of it, which is the difference between a recovery code and a puzzle.
     const asTyped = code.toLowerCase().replace(/-/g, ' ');
 
-    const root: CoupleRootKey = unwrapWithRecoveryCode({
+    const root: CoupleRootKey = await unwrapWithRecoveryCode({
       envelope: stored.envelope,
       code: asTyped,
       coupleId: world.coupleId,
@@ -905,13 +905,264 @@ describe('8. losing both devices', () => {
     // the Poly1305 tag is the checksum, and it fails closed.
     const wrong = code.slice(0, -1) + (code.endsWith('0') ? '1' : '0');
 
-    expect(() =>
+    await expect(
       unwrapWithRecoveryCode({
         envelope: stored.envelope,
         code: wrong,
         coupleId: world.coupleId,
         epoch: stored.epoch,
       }),
-    ).toThrow();
+    ).rejects.toThrow();
+  });
+});
+
+/**
+ * The one rule encryption took off the server.
+ *
+ * `profiles.display_name` used to be a plain column with a 1..80 `CHECK`. What
+ * the server holds now is `name_payload`, and `profiles_name_payload_bounded`
+ * bounds the *ciphertext* at 64..1000 base64 characters — a ceiling to stop the
+ * column becoming blob storage, not a measurement of the name inside it.
+ *
+ * Those two limits were written at different times and never checked against
+ * each other. A name at the client-side maximum has to clear the server-side
+ * one after JSON framing, 64-byte padding and base64, and a one-character name
+ * has to reach the floor. Neither is obvious by inspection, and getting it
+ * wrong means a constraint violation on a name somebody actually typed.
+ */
+describe('9. putting a name to it', () => {
+  function sealName(name: string, profileId: string): string {
+    return cipherWithKey(coupleRoot, world.coupleId, 'shared').seal(
+      { displayName: name },
+      { table: 'profiles', coupleId: world.coupleId, profileId },
+    );
+  }
+
+  it('accepts a name at the client-side maximum, in its longest possible form', async () => {
+    // 80 code points of four UTF-8 bytes each — the worst case the rule admits,
+    // and 320 bytes rather than the 80 an ASCII reading would assume.
+    const longest = '😀'.repeat(DISPLAY_NAME_MAX);
+    expect(displayNameLength(longest)).toBe(DISPLAY_NAME_MAX);
+
+    const payload = sealName(longest, alice);
+    expect(payload.length).toBeGreaterThanOrEqual(64);
+    expect(payload.length).toBeLessThanOrEqual(1000);
+
+    await asUser(pool, alice, (client) =>
+      client.query('update public.profiles set name_payload = $1 where id = $2', [payload, alice]),
+    );
+  });
+
+  it('reaches the floor with a one-character name', async () => {
+    // The other end: 64 is a *minimum*, and a short name padded to one bucket
+    // has to clear it. It does, because the header, nonce and tag alone are 46
+    // bytes before any content.
+    const payload = sealName('A', bob);
+    expect(payload.length).toBeGreaterThanOrEqual(64);
+
+    await asUser(pool, bob, (client) =>
+      client.query('update public.profiles set name_payload = $1 where id = $2', [payload, bob]),
+    );
+  });
+
+  it('shows each partner the other by name, and the server neither', async () => {
+    const seen = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query('select * from public.profiles order by id');
+      return rows.map((row) =>
+        toProfile(row, cipherWithKey(coupleRoot, world.coupleId, 'shared'), world.coupleId),
+      );
+    });
+
+    const names = new Map(seen.map((profile) => [profile.id, profile.displayName]));
+    expect(names.get(alice)).toBe('😀'.repeat(DISPLAY_NAME_MAX));
+    expect(names.get(bob)).toBe('A');
+    expect(seen.every((profile) => !profile.unreadable)).toBe(true);
+
+    // And as owner, which is what an operator is: base64 and nothing else.
+    // Checked against Alice's name rather than Bob's — 'A' would turn up in
+    // base64 by chance, which would make the assertion a coin toss instead of
+    // a statement.
+    const { rows } = await pool.query('select * from public.profiles where id = $1', [alice]);
+    const asText = JSON.stringify(rows[0]);
+
+    expect(rows[0]!.name_payload).toMatch(/^[A-Za-z0-9+/]+={0,2}$/);
+    expect(asText).not.toContain('😀');
+    // No leftover column to read it out of, either.
+    expect(Object.keys(rows[0]!)).not.toContain('display_name');
+  });
+});
+
+/**
+ * Where it actually is.
+ *
+ * The 2-2-2 app is the one that answers "where", and it answers it with no
+ * mapping provider configured — which is the state every install is in until
+ * someone sets a key, and the state this suite runs in. A place typed by hand
+ * has to survive the round trip, reach the label a calendar would show, and
+ * stay out of that calendar unless somebody asked for it.
+ */
+describe('10. a place on a 2-2-2 plan', () => {
+  let planId = '';
+  let placeId = '';
+
+  /** Accented, em-dashed, and in the partner's own language on purpose. */
+  const NAME = 'Café Anglès';
+  const ADDRESS = 'Carrer dels Almogàvers 1, Barcelona';
+
+  it('books a 2-2-2 date night and attaches a place typed by hand', async () => {
+    const startsAt = new Date(Date.now() + 5 * 86_400_000).toISOString();
+
+    const newPlanId = cipherOf(alice).newId();
+    const newPlaceId = cipherOf(alice).newId();
+    const twoTwoTwo = cipherWithKey(coupleRoot, world.coupleId, 'two_two_two');
+
+    [planId, placeId] = await asUser(pool, alice, async (client) => {
+      const { rows: planRows } = await client.query<{ id: string }>(
+        `insert into public.plans (id, couple_id, domain, kind, payload, starts_at, status, created_by)
+         values ($1, $2, 'two_two_two', 'date_night', $3, $4, 'scheduled', $5)
+         returning id`,
+        [
+          newPlanId,
+          world.coupleId,
+          // The plan's own cipher is the 2-2-2 one — the domain subkey the
+          // other app cannot derive a payload from.
+          twoTwoTwo.seal(
+            { title: 'dinner', notes: null, location: `${NAME} — ${ADDRESS}` },
+            { table: 'plans', coupleId: world.coupleId, id: newPlanId },
+          ),
+          startsAt,
+          alice,
+        ],
+      );
+      const { rows: placeRows } = await client.query<{ id: string }>(
+        `insert into public.plan_places
+           (id, couple_id, domain, plan_id, payload, provider, attached_by)
+         values ($1, $2, 'two_two_two', $3, $4, 'manual', $5)
+         returning id`,
+        [
+          newPlaceId,
+          world.coupleId,
+          planRows[0]!.id,
+          twoTwoTwo.seal(
+            {
+              name: NAME,
+              address: ADDRESS,
+              providerPlaceId: null,
+              latitude: null,
+              longitude: null,
+              locale: 'es',
+            },
+            { table: 'plan_places', coupleId: world.coupleId, id: newPlaceId },
+          ),
+          alice,
+        ],
+      );
+      return [planRows[0]!.id, placeRows[0]!.id];
+    });
+
+    expect(planId).toBeTruthy();
+    expect(placeId).toBeTruthy();
+  });
+
+  it('shows Bob the place verbatim, accents and all', async () => {
+    const row = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query('select * from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows[0];
+    });
+
+    // Bob's device derives the same 2-2-2 content key from the couple key his
+    // own device unwrapped in step 2b, and opens what Alice's device sealed.
+    const place = toPlanPlace(row, cipherWithKey(coupleRoot, world.coupleId, 'two_two_two'));
+
+    // Authored text. Byte-identical, never machine-translated — the same
+    // property this suite already pins for a proposal's note.
+    expect(place.unreadable).toBe(false);
+    expect(place.name).toBe(NAME);
+    expect(place.address).toBe(ADDRESS);
+    // Labelled with the language it was written in, so Bob is told rather than
+    // shown a translation.
+    expect(place.locale).toBe('es');
+    // Nothing was searched, so there is nothing a provider gave us.
+    expect(place.provider).toBe('manual');
+    expect(place.coordinates).toBeNull();
+    expect(place.providerPlaceId).toBeNull();
+
+    // And to whoever runs the database, the row says only that this couple has
+    // a manually-entered place on a 2-2-2 plan.
+    const { rows } = await pool.query('select * from public.plan_places where id = $1', [placeId]);
+    const asText = JSON.stringify(rows[0]);
+    expect(asText).not.toContain(NAME);
+    expect(asText).not.toContain(ADDRESS);
+    expect(Object.keys(rows[0]!)).not.toContain('address');
+  });
+
+  it('keeps the address out of the calendar until someone opts in', async () => {
+    const place = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select * from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows[0];
+    });
+    expect(place.share_with_calendar).toBe(false);
+
+    // What the device would do with it. The plan is booked, so an entry is
+    // wanted — but the app's own opt-in check is what decides whether the
+    // address rides along, and nobody asked.
+    const plan = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select * from public.plans where id = $1', [planId]);
+      return toPlan(rows[0], cipherWithKey(coupleRoot, world.coupleId, 'two_two_two'));
+    });
+    const { toWrite } = calendarActions([plan], alice);
+
+    expect(toWrite).toHaveLength(1);
+    expect(place.share_with_calendar ? (plan.location ?? undefined) : undefined).toBeUndefined();
+  });
+
+  it('lets either partner opt the address in, and then it is the label', async () => {
+    await asUser(pool, bob, (client) =>
+      client.query('update public.plan_places set share_with_calendar = true where id = $1', [
+        placeId,
+      ]),
+    );
+
+    const twoTwoTwo = cipherWithKey(coupleRoot, world.coupleId, 'two_two_two');
+    const [place, plan] = await Promise.all([
+      asUser(pool, bob, async (client) => {
+        const { rows } = await client.query('select * from public.plan_places where id = $1', [
+          placeId,
+        ]);
+        return rows[0];
+      }),
+      asUser(pool, bob, async (client) => {
+        const { rows } = await client.query('select * from public.plans where id = $1', [planId]);
+        // The 2-2-2 cipher, deliberately: this is a 2-2-2 plan, and the
+        // intimacy cipher the rest of this file uses cannot open it. That is
+        // invariant 2 as arithmetic rather than convention.
+        return toPlan(rows[0], twoTwoTwo);
+      }),
+    ]);
+
+    expect(place.share_with_calendar).toBe(true);
+    // plans.location is the column that reaches a calendar entry, and it holds
+    // the label rather than a coordinate.
+    const written = place.share_with_calendar ? (plan.location ?? undefined) : undefined;
+    expect(written).toBe(`${NAME} — ${ADDRESS}`);
+    expect(written!.length).toBeLessThanOrEqual(200);
+  });
+
+  it('takes the place with it when the plan is deleted', async () => {
+    await asUser(pool, alice, (client) =>
+      client.query('delete from public.plans where id = $1', [planId]),
+    );
+
+    const left = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select id from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows;
+    });
+    expect(left).toEqual([]);
   });
 });

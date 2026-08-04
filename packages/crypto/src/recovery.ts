@@ -21,8 +21,24 @@
  * A BIP-39-style phrase would need a language, and invariant 1 says one partner
  * reads Spanish. Symbols sidestep the question the way the invite code alphabet
  * already does.
+ *
+ * ## Why both functions are async
+ *
+ * `scryptAsync`, not `scrypt`, and the difference is visible rather than
+ * academic. The synchronous version holds the JS thread for the whole
+ * derivation — a few hundred milliseconds on a recent phone and worse on an old
+ * one — during which React cannot paint. The screen that calls this shows a
+ * `Button loading` spinner, and that spinner would sit frozen for exactly the
+ * period it exists to explain, which reads as a dead tap rather than as work in
+ * progress. `asyncTick` yields to the scheduler every 10 ms by default, so the
+ * spinner spins.
+ *
+ * It costs both callers an `await` and makes the two exported functions
+ * promise-returning. That is the whole price, and it is the right one: nothing
+ * else in this package is slow enough to care, and this is the one operation a
+ * user waits on.
  */
-import { scrypt } from '@noble/hashes/scrypt.js';
+import { scryptAsync } from '@noble/hashes/scrypt.js';
 
 import { CipherError } from './cipher';
 import { fromBase64, toBase64, utf8ToBytes } from './codec';
@@ -98,8 +114,12 @@ export interface RecoveryEnvelope {
   wrapped: string;
 }
 
-function stretch(code: string, salt: Uint8Array, params: ScryptParams): Uint8Array {
-  return scrypt(utf8ToBytes(normalizeRecoveryCode(code)), salt, {
+async function stretch(code: string, salt: Uint8Array, params: ScryptParams): Promise<Uint8Array> {
+  // Normalised *before* the await, so a malformed code fails immediately rather
+  // than after the user has watched a spinner for half a second.
+  const normalised = utf8ToBytes(normalizeRecoveryCode(code));
+
+  return scryptAsync(normalised, salt, {
     N: params.N,
     r: params.r,
     p: params.p,
@@ -107,15 +127,15 @@ function stretch(code: string, salt: Uint8Array, params: ScryptParams): Uint8Arr
   });
 }
 
-export function wrapWithRecoveryCode(args: {
+export async function wrapWithRecoveryCode(args: {
   root: CoupleRootKey;
   code: string;
   coupleId: string;
   epoch: number;
   random: RandomSource;
-}): RecoveryEnvelope {
+}): Promise<RecoveryEnvelope> {
   const salt = randomBytes(args.random, SALT_BYTES);
-  const key = stretch(args.code, salt, SCRYPT_PARAMS);
+  const key = await stretch(args.code, salt, SCRYPT_PARAMS);
 
   return {
     kdf: RECOVERY_KDF,
@@ -125,12 +145,12 @@ export function wrapWithRecoveryCode(args: {
   };
 }
 
-export function unwrapWithRecoveryCode(args: {
+export async function unwrapWithRecoveryCode(args: {
   envelope: RecoveryEnvelope;
   code: string;
   coupleId: string;
   epoch: number;
-}): CoupleRootKey {
+}): Promise<CoupleRootKey> {
   if (args.envelope.kdf !== RECOVERY_KDF) {
     throw new CipherError(`unknown recovery kdf ${args.envelope.kdf}`);
   }
@@ -142,7 +162,7 @@ export function unwrapWithRecoveryCode(args: {
     throw new CipherError('recovery salt is not canonical base64');
   }
 
-  const key = stretch(args.code, salt, args.envelope.params);
+  const key = await stretch(args.code, salt, args.envelope.params);
 
   // A mistyped code fails the Poly1305 tag. There is no separate checksum
   // because the tag already is one.

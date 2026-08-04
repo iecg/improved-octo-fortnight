@@ -1,14 +1,23 @@
 /**
  * Suggest a time.
  *
- * Free/busy is read from the phone's own calendar and never leaves it — the
- * blocks go straight into `suggestWindows`, a pure function, and only the
- * window the couple actually picks is sent to the server. That is the whole
- * privacy story of this screen, and it is why the search lives on-device
- * rather than behind a calendar OAuth integration.
+ * Free/busy comes from three places, and none of them sends the couple's
+ * calendar anywhere. The phone's own calendar is read on-device and stays
+ * there. This app's plans are already loaded. The third is the server's busy
+ * view, which returns start and end times for both apps and carries no title,
+ * no notes and no domain — it cannot say what fills a window, only that one is
+ * filled. All three go into `suggestWindows`, a pure function, and only the
+ * window the couple actually picks is written back.
+ *
+ * The server source is what makes this screen work at all for someone who
+ * refused calendar access — it used to offer nothing whatsoever — and it is
+ * the only thing that knows about a `proposed` time, which by design reaches
+ * no calendar. It is read unconditionally here: what it discloses in this
+ * direction is that a date night is booked, and this is the app behind the
+ * lock. The 2-2-2 app asks first.
  */
-import { suggestWindows, type TimeRange } from '@couple/cadence';
-import { INTIMACY_KINDS } from '@couple/core';
+import { busyFromPlans, mergeRanges, suggestWindows, type TimeRange } from '@couple/cadence';
+import { INTIMACY_KINDS, findKind, kindLabelKey, kindsForDomain } from '@couple/core';
 import { hasCalendarAccess, readBusyBlocks, requestCalendarAccess } from '@couple/device';
 import { Body, Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -17,7 +26,7 @@ import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
 import { formatWindowParts } from '../../src/format';
-import { useCounterProposal, useProposeTime } from '../../src/queries';
+import { useCounterProposal, usePlans, useProposeTime, useServerBusy } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 /** Evening hours in the couple's timezone. */
@@ -46,20 +55,40 @@ export default function NewPlan() {
    * fresh one. Both must be present to count — half a pair is a malformed
    * link, and answering the wrong proposal is worse than starting over.
    */
-  const params = useLocalSearchParams<{ counterOf?: string; planId?: string }>();
+  const params = useLocalSearchParams<{ counterOf?: string; planId?: string; kind?: string }>();
   const counterOf =
     params.counterOf && params.planId
       ? { proposalId: params.counterOf, planId: params.planId }
       : null;
 
+  /**
+   * Which ritual this suggestion is for.
+   *
+   * Arriving from a bar on Today preselects that one. An unrecognised param is
+   * ignored rather than trusted — it reaches a `kind` column with a slug
+   * constraint on it — which is what `findKind` is for.
+   *
+   * This used to be hard-coded to `intimacy`, and the other two rituals were
+   * therefore unreachable: Today drew a countdown for each, `computeCadenceStatus`
+   * re-anchors only on plans matching `(domain, kind)`, and nothing could ever
+   * produce one. Two clocks counted up forever.
+   */
+  const [kind, setKind] = useState<string>(
+    (params.kind && findKind('intimacy', params.kind)?.kind) ?? INTIMACY_KINDS.intimacy.kind,
+  );
+
   const propose = useProposeTime(couple.id, profile.id);
   const counter = useCounterProposal(couple.id, profile.id);
   const pending = counterOf ? counter.isPending : propose.isPending;
 
+  const searchTo = useMemo(
+    () => new Date(now.getTime() + SEARCH_DAYS * 24 * 60 * 60 * 1000),
+    [now],
+  );
+
   const loadBusy = useCallback(async () => {
-    const to = new Date(now.getTime() + SEARCH_DAYS * 24 * 60 * 60 * 1000);
-    setBusyBlocks(await readBusyBlocks(now, to));
-  }, [now]);
+    setBusyBlocks(await readBusyBlocks(now, searchTo));
+  }, [now, searchTo]);
 
   useEffect(() => {
     void (async () => {
@@ -69,18 +98,48 @@ export default function NewPlan() {
     })();
   }, [loadBusy]);
 
-  const suggestions = useMemo(() => {
-    if (busyBlocks === null) return [];
-    return suggestWindows(busyBlocks, {
-      from: now,
-      to: new Date(now.getTime() + SEARCH_DAYS * 24 * 60 * 60 * 1000),
-      durationMinutes: duration,
-      earliestHour: EARLIEST_HOUR,
-      latestHour: LATEST_HOUR,
-      timeZone,
-      limit: 5,
-    });
-  }, [busyBlocks, duration, now, timeZone]);
+  const plansQuery = usePlans(couple.id);
+  const serverBusy = useServerBusy(couple.id, now, searchTo);
+
+  /**
+   * Everything the screen knows about, coalesced once.
+   *
+   * `mergeRanges` sorts and joins, so a plan that is both in this app's list
+   * and on the phone's calendar — which is every booked plan — collapses to one
+   * block instead of being subtracted twice.
+   */
+  const busy = useMemo(
+    () =>
+      mergeRanges([
+        ...busyFromPlans(plansQuery.data ?? []),
+        ...(busyBlocks ?? []),
+        ...(serverBusy.data ?? []),
+      ]),
+    [plansQuery.data, busyBlocks, serverBusy.data],
+  );
+
+  /**
+   * Note there is no "we do not know yet" early return any more.
+   *
+   * There used to be: with no calendar permission this returned `[]` and the
+   * screen offered nothing at all, which made a refused permission look like a
+   * broken app. Two of the three sources need no permission, so a search
+   * always runs. Granting calendar access sharpens the answer; it no longer
+   * gates it.
+   */
+  const suggestions = useMemo(
+    () =>
+      suggestWindows(busy, {
+        from: now,
+        to: searchTo,
+        durationMinutes: duration,
+        earliestHour: EARLIEST_HOUR,
+        latestHour: LATEST_HOUR,
+        timeZone,
+        limit: 5,
+      }),
+    [busy, duration, now, searchTo, timeZone],
+  );
 
   function durationLabel(minutes: number): string {
     return minutes % 60 === 0
@@ -106,7 +165,7 @@ export default function NewPlan() {
       });
     } else {
       await propose.mutateAsync({
-        kind: INTIMACY_KINDS.intimacy.kind,
+        kind,
         startsAt: chosen.start,
         endsAt: chosen.end,
         notes: notes.trim() || null,
@@ -119,6 +178,26 @@ export default function NewPlan() {
     <Screen>
       <Title>{counterOf ? t('plans:proposal.counter') : t('app:propose.title')}</Title>
       {counterOf ? <Muted>{t('plans:proposal.counteredNote')}</Muted> : null}
+
+      {/* A counter answers the time on a plan that already exists, so its kind
+          is settled and not offered again. */}
+      {counterOf ? null : (
+        <Card>
+          <View className="gap-3">
+            <Heading>{t('app:propose.kind')}</Heading>
+            <View className="flex-row flex-wrap gap-2">
+              {kindsForDomain('intimacy').map((definition) => (
+                <Chip
+                  key={definition.kind}
+                  label={t(kindLabelKey(definition.domain, definition.kind))}
+                  selected={kind === definition.kind}
+                  onPress={() => setKind(definition.kind)}
+                />
+              ))}
+            </View>
+          </View>
+        </Card>
+      )}
 
       <Card>
         <View className="gap-3">
@@ -143,9 +222,11 @@ export default function NewPlan() {
         <View className="gap-3">
           <Heading>{t('app:propose.suggestions')}</Heading>
 
+          {/* An offer, not a gate. The suggestions below are rendered either
+              way; calendar access only makes them better informed. */}
           {calendarOk === false ? (
             <>
-              <Muted>{t('app:propose.needCalendar')}</Muted>
+              <Muted>{t('app:propose.sharperWithCalendar')}</Muted>
               <Button
                 label={t('app:propose.grantCalendar')}
                 variant="secondary"
@@ -159,9 +240,7 @@ export default function NewPlan() {
             </>
           ) : null}
 
-          {calendarOk && suggestions.length === 0 ? (
-            <Muted>{t('app:propose.noSuggestions')}</Muted>
-          ) : null}
+          {suggestions.length === 0 ? <Muted>{t('app:propose.noSuggestions')}</Muted> : null}
 
           {suggestions.map((window) => (
             <Chip

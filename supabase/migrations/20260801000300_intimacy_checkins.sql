@@ -28,7 +28,15 @@ create table public.checkins (
   -- reader of this table learns which days each partner checked in, and
   -- nothing whatsoever about what they said.
   on_date date not null,
-  -- interest, energy and the note.
+  -- The interest and the note.
+  --
+  -- There was an `energy` column here too — a 1-5 self-rating — and it is gone
+  -- rather than sealed. Encryption would have hidden it; invariant 4 says it
+  -- should not exist. A number between 1 and 5 attached to how someone felt
+  -- about a night is the exact shape of a score: the kind of value that
+  -- acquires an average, then a trend line, then a reason to feel bad about a
+  -- Tuesday. `interest` stays, being three neutral tokens with "not tonight"
+  -- styled identically to "yes".
   payload text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

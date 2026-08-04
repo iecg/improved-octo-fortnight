@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./calendar', () => ({
   hasCalendarAccess: vi.fn(),
   writeCalendarEvent: vi.fn(),
+  updateCalendarEvent: vi.fn(),
   deleteCalendarEvent: vi.fn(),
 }));
 vi.mock('./notifications', () => ({
@@ -20,7 +21,12 @@ vi.mock('./notifications', () => ({
   scheduleReminder: vi.fn(),
 }));
 
-import { deleteCalendarEvent, hasCalendarAccess, writeCalendarEvent } from './calendar';
+import {
+  deleteCalendarEvent,
+  hasCalendarAccess,
+  updateCalendarEvent,
+  writeCalendarEvent,
+} from './calendar';
 import { cancelAllReminders, hasNotificationPermission, scheduleReminder } from './notifications';
 import { reconcileDevice, type DeviceSyncOptions } from './sync';
 
@@ -68,6 +74,7 @@ beforeEach(() => {
   vi.mocked(hasCalendarAccess).mockResolvedValue(true);
   vi.mocked(hasNotificationPermission).mockResolvedValue(true);
   vi.mocked(writeCalendarEvent).mockResolvedValue('event-new');
+  vi.mocked(updateCalendarEvent).mockResolvedValue(undefined);
   vi.mocked(deleteCalendarEvent).mockResolvedValue(undefined);
   vi.mocked(cancelAllReminders).mockResolvedValue(undefined);
   vi.mocked(scheduleReminder).mockResolvedValue(null);
@@ -79,15 +86,51 @@ describe('reconcileDevice', () => {
 
     await reconcileDevice(opts, NEVER_CANCELLED);
 
-    // The neutral label, and nothing else about the plan.
+    // The neutral label, and nothing else about the plan. No
+    // `calendarLocationFor` was supplied, which is how the intimacy app calls
+    // this and what every caller gets by default.
     expect(writeCalendarEvent).toHaveBeenCalledTimes(1);
     const written = vi.mocked(writeCalendarEvent).mock.calls[0]![0];
     expect(written.title).toBe('Evening');
-    expect(written.notes).toBeUndefined();
     expect(written.location).toBeUndefined();
+    // Nothing else is even offered: an entry is a label, a span, and at most an
+    // address the couple opted into. `notes` is not a field on this type.
+    expect(Object.keys(written).sort()).toEqual(['endsAt', 'startsAt', 'timeZone', 'title']);
 
     expect(opts.onCalendarEvent).toHaveBeenCalledWith(opts.plans[0], 'event-new');
     expect(scheduleReminder).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes an address only when the app supplies one', async () => {
+    await reconcileDevice(
+      options([bookedPlan('plan-1')], {
+        calendarLocationFor: () => 'Carrer dels Almogàvers 1, Barcelona',
+      }),
+      NEVER_CANCELLED,
+    );
+
+    const written = vi.mocked(writeCalendarEvent).mock.calls[0]![0];
+    expect(written.location).toBe('Carrer dels Almogàvers 1, Barcelona');
+    // Still nothing else — an address is the only thing being opted into.
+    expect(Object.keys(written).sort()).toEqual([
+      'endsAt',
+      'location',
+      'startsAt',
+      'timeZone',
+      'title',
+    ]);
+  });
+
+  it('writes nothing when the opt-in callback declines for this plan', async () => {
+    // A place exists on some plans and not others, and a place that was never
+    // opted in answers undefined. That must be indistinguishable from having no
+    // callback at all.
+    await reconcileDevice(
+      options([bookedPlan('plan-1')], { calendarLocationFor: () => undefined }),
+      NEVER_CANCELLED,
+    );
+
+    expect(vi.mocked(writeCalendarEvent).mock.calls[0]![0].location).toBeUndefined();
   });
 
   it('does nothing without calendar permission, rather than asking for it', async () => {
@@ -152,6 +195,67 @@ describe('reconcileDevice', () => {
 
     expect(writeCalendarEvent).toHaveBeenCalledTimes(2);
     expect(cancelAllReminders).toHaveBeenCalled();
+    expect(scheduleReminder).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * An entry used to be written once and then frozen. Move a date night,
+   * rename it, or attach a place, and the phone kept showing whatever was true
+   * the first time — confidently wrong, which is worse than showing nothing.
+   */
+  it('brings an existing entry back into line with the plan', async () => {
+    const plan = bookedPlan('plan-1', { [ME]: 'mine' });
+    const opts = options([plan], {
+      calendarTitleFor: () => 'Renamed',
+      calendarLocationFor: () => 'Bar Nou',
+    });
+
+    await reconcileDevice(opts, NEVER_CANCELLED);
+
+    // Nothing new is created — the entry already exists on this device.
+    expect(writeCalendarEvent).not.toHaveBeenCalled();
+    // And the stored id is left alone: the OS entry changes, the row does not.
+    expect(opts.onCalendarEvent).not.toHaveBeenCalled();
+    expect(updateCalendarEvent).toHaveBeenCalledTimes(1);
+
+    const [eventId, written] = vi.mocked(updateCalendarEvent).mock.calls[0]!;
+    expect(eventId).toBe('mine');
+    expect(written.title).toBe('Renamed');
+    expect(written.location).toBe('Bar Nou');
+    // A moved plan is the other half of this: the entry follows the time.
+    expect(written.startsAt.toISOString()).toBe(plan.startsAt);
+  });
+
+  it('still writes no address into an updated entry by default', async () => {
+    // The opt-in governs a rewrite exactly as it governs the first write.
+    await reconcileDevice(options([bookedPlan('plan-1', { [ME]: 'mine' })]), NEVER_CANCELLED);
+
+    expect(vi.mocked(updateCalendarEvent).mock.calls[0]![1].location).toBeUndefined();
+  });
+
+  it('leaves a completed plan’s entry alone', async () => {
+    // It happened. Rewriting history is not reconciliation.
+    const done = { ...bookedPlan('plan-1', { [ME]: 'mine' }), status: 'completed' as const };
+
+    await reconcileDevice(options([done]), NEVER_CANCELLED);
+
+    expect(updateCalendarEvent).not.toHaveBeenCalled();
+    expect(deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it('keeps reconciling when one entry has been deleted from the Calendar app', async () => {
+    // A perfectly reasonable thing for someone to have done, and not a reason
+    // to abandon the rest of the pass.
+    vi.mocked(updateCalendarEvent).mockRejectedValueOnce(new Error('no such event'));
+
+    const opts = options([
+      bookedPlan('a', { [ME]: 'mine-a' }),
+      bookedPlan('b', { [ME]: 'mine-b' }),
+    ]);
+    await reconcileDevice(opts, NEVER_CANCELLED);
+
+    expect(updateCalendarEvent).toHaveBeenCalledTimes(2);
+    // And the reminders, which come last, still land.
     expect(scheduleReminder).toHaveBeenCalledTimes(2);
   });
 

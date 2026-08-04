@@ -11,91 +11,18 @@
  * that silently drops its domain filter fails here rather than in production
  * as one app showing the other's data.
  */
-import type { FieldCipher, RecordIdentity } from '@couple/crypto';
 import { describe, expect, it } from 'vitest';
 
-import type { AppSupabaseClient } from './client';
+import { createBusyRepository } from './busy';
 import { toPlan } from './mappers';
 import { createDomainRepository } from './repository';
-
-/**
- * A cipher that does not encrypt.
- *
- * These tests are about the domain boundary, not about the crypto — that has
- * its own suite in `packages/crypto`. Sealing here is a JSON string tagged with
- * the scope, so a payload sealed by the wrong cipher still fails to open and
- * the boundary tests keep their meaning.
- */
-function fakeCipher(scope: FieldCipher['scope']): FieldCipher {
-  let counter = 0;
-  return {
-    scope,
-    seal: (fields, identity) => JSON.stringify({ scope, identity, fields }),
-    open(blob, identity: RecordIdentity) {
-      const parsed = JSON.parse(blob) as {
-        scope: string;
-        identity: RecordIdentity;
-        fields: Record<string, unknown>;
-      };
-      if (parsed.scope !== scope) throw new Error('wrong scope');
-      if (JSON.stringify(parsed.identity) !== JSON.stringify(identity))
-        throw new Error('wrong row');
-      return parsed.fields;
-    },
-    newId: () => `generated-${(counter += 1)}`,
-  };
-}
+import { fakeCipher } from './testing/fake-cipher';
+import { fakeClient, filtersOn, payloadOf, tablesTouched } from './testing/fake-client';
 
 const intimacyCipher = fakeCipher('intimacy');
 
 function sealedPlan(fields: Record<string, unknown>, coupleId: string, id: string): string {
   return intimacyCipher.seal(fields, { table: 'plans', coupleId, id });
-}
-
-interface RecordedCall {
-  method: string;
-  args: unknown[];
-}
-
-function fakeClient(result: unknown): { client: AppSupabaseClient; calls: RecordedCall[] } {
-  const calls: RecordedCall[] = [];
-
-  const builder: any = new Proxy(
-    {},
-    {
-      get(_target, property) {
-        if (typeof property !== 'string') return undefined;
-        // Thenable, so `await` on the builder resolves like a PostgREST call.
-        if (property === 'then') {
-          return (resolve: (value: unknown) => unknown) => resolve({ data: result, error: null });
-        }
-        return (...args: unknown[]) => {
-          calls.push({ method: property, args });
-          return builder;
-        };
-      },
-    },
-  );
-
-  const client = {
-    from(table: string) {
-      calls.push({ method: 'from', args: [table] });
-      return builder;
-    },
-  } as unknown as AppSupabaseClient;
-
-  return { client, calls };
-}
-
-/** Did the query constrain `column` to `value`? */
-function filtersOn(calls: RecordedCall[], column: string, value: unknown): boolean {
-  return calls.some(
-    (call) => call.method === 'eq' && call.args[0] === column && call.args[1] === value,
-  );
-}
-
-function payloadOf(calls: RecordedCall[], method: 'insert' | 'upsert' | 'update'): any {
-  return calls.find((call) => call.method === method)?.args[0];
 }
 
 const PLAN_ROW = {
@@ -288,8 +215,75 @@ describe('the two apps cannot see each other', () => {
     await repo.listProposals('couple-1');
 
     // Check-ins are intimacy-owned and reachable only through their own
-    // factory, so the 2-2-2 app has nothing to import by accident.
+    // factory, so the 2-2-2 app has nothing to import by accident. The same
+    // goes for places, which are 2-2-2-owned in the other direction.
+    expect(tablesTouched(calls)).not.toContain('checkins');
+    expect(tablesTouched(calls)).not.toContain('plan_places');
+  });
+});
+
+/**
+ * The one accessor that reads across the boundary, and why that is allowed.
+ *
+ * `createBusyRepository` deliberately sees both apps' plans. It is safe only
+ * because of what it *cannot* see: the view behind it selects three columns,
+ * so there is no domain to filter, no title to leak, and no parameter anyone
+ * could add later to widen it. These tests pin that shape — if someone ever
+ * points this factory at `plans` to "save a migration", the redaction becomes
+ * a client-side promise instead of a Postgres one, and this fails.
+ */
+describe('the busy-times repository', () => {
+  const BUSY_ROW = {
+    couple_id: 'couple-1',
+    starts_at: '2026-09-12T18:00:00.000Z',
+    ends_at: '2026-09-12T20:00:00.000Z',
+  };
+
+  const FROM = new Date('2026-09-01T00:00:00.000Z');
+  const TO = new Date('2026-09-30T00:00:00.000Z');
+
+  it('reads the redacted view and never the plans table', async () => {
+    const { client, calls } = fakeClient([BUSY_ROW]);
+
+    await createBusyRepository(client).listBetween('couple-1', FROM, TO);
+
     const tables = calls.filter((call) => call.method === 'from').map((call) => call.args[0]);
-    expect(tables).not.toContain('checkins');
+    expect(tables).toEqual(['plan_busy_times']);
+    expect(tables).not.toContain('plans');
+  });
+
+  it('never filters on a domain, because the view has none to filter', async () => {
+    const { client, calls } = fakeClient([BUSY_ROW]);
+
+    await createBusyRepository(client).listBetween('couple-1', FROM, TO);
+
+    expect(filtersOn(calls, 'couple_id', 'couple-1')).toBe(true);
+    expect(calls.some((call) => call.method === 'eq' && call.args[0] === 'domain')).toBe(false);
+  });
+
+  it('bounds the read by overlap, so a span containing the window still counts', async () => {
+    const { client, calls } = fakeClient([BUSY_ROW]);
+
+    await createBusyRepository(client).listBetween('couple-1', FROM, TO);
+
+    // starts before the window ends, and ends after it begins — a getaway
+    // straddling the whole range has neither endpoint inside it.
+    expect(calls).toContainEqual({ method: 'lt', args: ['starts_at', TO.toISOString()] });
+    expect(calls).toContainEqual({ method: 'gt', args: ['ends_at', FROM.toISOString()] });
+  });
+
+  it('returns instants rather than strings, ready for the cadence engine', async () => {
+    const { client } = fakeClient([BUSY_ROW]);
+
+    const windows = await createBusyRepository(client).listBetween('couple-1', FROM, TO);
+
+    expect(windows).toEqual([
+      { start: new Date('2026-09-12T18:00:00.000Z'), end: new Date('2026-09-12T20:00:00.000Z') },
+    ]);
+  });
+
+  it('survives an empty result', async () => {
+    const { client } = fakeClient(null);
+    expect(await createBusyRepository(client).listBetween('couple-1', FROM, TO)).toEqual([]);
   });
 });

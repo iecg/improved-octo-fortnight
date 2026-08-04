@@ -1,0 +1,142 @@
+-- Where a 2-2-2 outing actually happens.
+--
+-- A separate table rather than columns on `plans`, deliberately. `plans` is
+-- shared with the intimacy app and is in the realtime publication: coordinates
+-- there would replicate to an app that has no use for them, and `toPlan` would
+-- grow four fields that are null for every intimacy row forever. This table is
+-- 2-2-2-owned in the same way `plan_ideas` is, reached only through its own
+-- factory in `packages/data/src/places.ts`.
+--
+-- `plans.location` keeps doing what it always did: hold the human label, which
+-- is the value that can reach a device calendar. The machine reference
+-- (`provider_place_id`, coordinates) lives only here. Two columns, two
+-- different privacy stories, on purpose — the calendar sees a label a partner
+-- opted into, never a coordinate.
+--
+-- Nothing here needs a mapping provider. A place typed by hand is
+-- `provider = 'manual'` with no coordinates, and every feature downstream
+-- treats a missing coordinate as "no travel time, no map" rather than an error.
+-- That is what makes the whole feature work with no API key configured.
+
+-- Lets plan_places carry a denormalized couple_id that Postgres itself keeps
+-- honest, the same composite-foreign-key trick plan_proposals already uses
+-- against plans. Without it a client could attach a place to another couple's
+-- idea by guessing an id.
+alter table public.plan_ideas
+  add constraint plan_ideas_id_couple_key unique (id, couple_id);
+
+create table public.plan_places (
+  id uuid primary key default gen_random_uuid(),
+  couple_id uuid not null references public.couples (id) on delete cascade,
+  domain public.slug not null,
+
+  -- Exactly one target. A place hangs off the plan it is for, or off the idea
+  -- that has not been booked yet.
+  plan_id uuid,
+  idea_id uuid,
+
+  -- Sealed into one blob: the venue name, the address, the provider's opaque
+  -- handle, the coordinates, and the language the address is written in.
+  --
+  -- This is the most precise location data in the schema — where these two
+  -- people are going, to six decimal places — so it is the last thing that
+  -- should have stayed readable. One payload rather than a column each for the
+  -- reason every other table here has one: with separate ciphertext,
+  -- `address is null` would tell a reader of this table which places were
+  -- typed by hand and which were searched for, on every row.
+  payload text not null,
+
+  -- 'manual' is a partner typing a name. It is the only provider that exists
+  -- with nothing configured, and it stays a first-class case everywhere.
+  -- Readable, like `plan_ideas.source`: provenance rather than content — which
+  -- kind of record this is, not what it says.
+  provider text not null check (provider in ('manual', 'google')),
+
+  -- Off by default. A calendar entry is visible to anyone holding an unlocked
+  -- phone and syncs to a shared desktop, so an address goes there only because
+  -- someone asked for it.
+  share_with_calendar boolean not null default false,
+
+  attached_by uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint plan_places_one_target
+    check ((plan_id is null) <> (idea_id is null)),
+  -- The paired-coordinates and google-has-an-id rules used to live here. They
+  -- are client-side now, in `packages/data/src/places.ts`, because the columns
+  -- they constrained are inside the payload and Postgres cannot read it. The
+  -- same trade the display name makes, and the same note applies: the only
+  -- party these ever protected against was the couple themselves.
+  constraint plan_places_payload_format check (payload ~ '^[A-Za-z0-9+/]+={0,2}$'),
+  constraint plan_places_payload_bounded check (length(payload) between 64 and 4000),
+  constraint plan_places_plan_fk
+    foreign key (plan_id, couple_id)
+    references public.plans (id, couple_id) on delete cascade,
+  constraint plan_places_idea_fk
+    foreign key (idea_id, couple_id)
+    references public.plan_ideas (id, couple_id) on delete cascade
+);
+
+create unique index plan_places_one_per_plan
+  on public.plan_places (plan_id) where plan_id is not null;
+create unique index plan_places_one_per_idea
+  on public.plan_places (idea_id) where idea_id is not null;
+create index plan_places_couple_idx on public.plan_places (couple_id, domain);
+
+create trigger plan_places_touch_updated_at
+  before update on public.plan_places
+  for each row execute function public.touch_updated_at();
+
+-- Same pin as every other table with an authorship column.
+--
+-- The update policy tests membership and nothing else — deliberately, since
+-- either partner may correct a place on a shared plan. Without this, "either
+-- partner may edit" would also mean "either partner may reassign this row to
+-- another couple, or claim the other's attribution", and the insert-time
+-- `with check` on `attached_by` would be one UPDATE away from meaningless.
+--
+-- `plan_id` and `idea_id` are pinned for the same reason the composite foreign
+-- key exists: what a place is attached to is not something an edit changes.
+create trigger plan_places_immutable_authorship
+  before update on public.plan_places
+  for each row
+  execute function public.enforce_immutable_columns(
+    'couple_id', 'plan_id', 'idea_id', 'attached_by'
+  );
+
+alter table public.plan_places enable row level security;
+
+create policy plan_places_select_member on public.plan_places
+  for select to authenticated
+  using (public.is_couple_member(couple_id));
+
+create policy plan_places_insert_member on public.plan_places
+  for insert to authenticated
+  with check (public.is_couple_member(couple_id) and attached_by = (select auth.uid()));
+
+-- Either partner may correct or remove a place on a shared plan; that is the
+-- point of a shared plan.
+create policy plan_places_update_member on public.plan_places
+  for update to authenticated
+  using (public.is_couple_member(couple_id))
+  with check (public.is_couple_member(couple_id));
+
+create policy plan_places_delete_member on public.plan_places
+  for delete to authenticated
+  using (public.is_couple_member(couple_id));
+
+-- Privileges live beside the policies, matching plan_ideas rather than the
+-- already-applied 20260802000300_table_grants.sql. Same shape as the policies
+-- above: two locks, one outline.
+revoke all on public.plan_places from anon;
+grant select, insert, update, delete on public.plan_places to authenticated;
+
+-- Published, because the 2-2-2 app subscribes to it and a subscription to an
+-- unpublished table connects, reports success, and silently never fires — the
+-- exact failure `plan_ideas` had until it was found. Where a plan is happening
+-- is as shared as when it is happening, and leaning on the plans channel
+-- instead would leave the other phone holding a new location with no name,
+-- address or map beside it. `tests/guards/realtime-subscriptions.test.ts` holds
+-- this and the client's subscription list together.
+alter publication supabase_realtime add table public.plan_places;

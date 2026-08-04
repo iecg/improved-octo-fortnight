@@ -1,19 +1,57 @@
 /**
  * Suggesting open windows.
  *
- * Pure, like the rest of this package. The device layer reads busy blocks from
- * the phone's calendar and hands them here; this decides where a plan could
- * go. Keeping the algorithm out of the native wrapper means it is testable
- * without a device, and — the part that matters for this app — it means the
- * couple's busy times are never marshalled anywhere except through the caller.
- * Only the window they choose is ever written to the server.
+ * Pure, like the rest of this package. Busy blocks arrive from the caller —
+ * the phone's calendar, the couple's own plans, the redacted server view — and
+ * this decides where a plan could go. Keeping the algorithm out of the native
+ * wrapper means it is testable without a device, and — the part that matters
+ * for this app — it means the couple's busy times are never marshalled
+ * anywhere except through the caller. Only the window they choose is ever
+ * written to the server.
  */
+import type { Plan, PlanStatus, TimeRange } from '@couple/core';
 import { addDays, startOfDay } from 'date-fns';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
-export interface TimeRange {
-  start: Date;
-  end: Date;
+// Re-exported so callers that already reach for the engine's vocabulary keep
+// working; the declaration itself lives in `@couple/core`.
+export type { TimeRange };
+
+/**
+ * Statuses that occupy time.
+ *
+ * Deliberately **not** `BOOKED` from `./sync`, and the difference is the whole
+ * point. `BOOKED` decides what earns a calendar entry and a reminder, and a
+ * time nobody has agreed to earns neither — a proposal is a question, and
+ * putting a question on a shared calendar or firing a notification about it
+ * would answer it on the couple's behalf.
+ *
+ * Occupying time is a weaker claim than being booked. A window under
+ * negotiation is exactly the one you do not want the other app to offer, so it
+ * counts here and nowhere else. `completed` and `skipped` are behind us;
+ * `idea` and `declined` were never a commitment.
+ */
+export const BUSY_STATUSES: readonly PlanStatus[] = ['proposed', 'scheduled'];
+
+/**
+ * The couple's own plans as busy blocks.
+ *
+ * Costs nothing — every screen that needs this already holds its plans in a
+ * query — and it is what lets free/busy work at all on a phone where calendar
+ * access was refused. Plans without both endpoints are not yet a time.
+ */
+export function busyFromPlans(plans: Plan[]): TimeRange[] {
+  const busy: TimeRange[] = [];
+  for (const plan of plans) {
+    if (!BUSY_STATUSES.includes(plan.status)) continue;
+    if (!plan.startsAt || !plan.endsAt) continue;
+    const start = new Date(plan.startsAt);
+    const end = new Date(plan.endsAt);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
+    if (end <= start) continue;
+    busy.push({ start, end });
+  }
+  return busy;
 }
 
 export interface SuggestWindowsOptions {
@@ -60,6 +98,22 @@ export function atHourInZone(anchor: Date, hour: number, timeZone: string): Date
   const wall = startOfDay(zoned);
   wall.setHours(hour, 0, 0, 0);
   return fromZonedTime(wall, timeZone);
+}
+
+/**
+ * Whether a candidate collides with anything already booked.
+ *
+ * The other direction from `suggestWindows`: that one asks "where could this
+ * go", this one asks "is this particular time taken". A screen that offers
+ * fixed choices rather than searching for them needs the second question, and
+ * answering it here keeps every screen's idea of "busy" the same one.
+ *
+ * Half-open, matching `mergeRanges` — a block ending exactly when the
+ * candidate starts is back-to-back, not a conflict.
+ */
+export function overlapsAny(candidate: TimeRange, busy: TimeRange[]): boolean {
+  if (candidate.end <= candidate.start) return false;
+  return busy.some((block) => block.start < candidate.end && block.end > candidate.start);
 }
 
 /** Subtract busy blocks from a band, returning what is left. */

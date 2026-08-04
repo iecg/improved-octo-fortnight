@@ -92,7 +92,37 @@ const ALLOWED_COLUMNS: Record<string, readonly string[]> = {
     'updated_at',
   ],
   checkins: ['id', 'couple_id', 'profile_id', 'on_date', 'payload', 'created_at', 'updated_at'],
-  plan_ideas: ['id', 'couple_id', 'domain', 'kind', 'payload', 'source', 'saved_by', 'created_at'],
+  plan_ideas: [
+    'id',
+    'couple_id',
+    'domain',
+    'kind',
+    'payload',
+    'source',
+    // Which provider named the idea. Provenance, like `source` — where it came
+    // from rather than what it says.
+    'source_domain',
+    'saved_by',
+    'created_at',
+  ],
+  // The venue name, the address, the provider's handle and the coordinates are
+  // all in the payload. `provider` is provenance and `share_with_calendar` is a
+  // switch this app acts on; neither says where anybody is going.
+  plan_places: [
+    'id',
+    'couple_id',
+    'domain',
+    'plan_id',
+    'idea_id',
+    'payload',
+    'provider',
+    'share_with_calendar',
+    'attached_by',
+    'created_at',
+    'updated_at',
+  ],
+  // A counter, like ai_usage. Nothing a partner wrote.
+  places_usage: ['couple_id', 'day', 'request_count'],
   ai_usage: ['couple_id', 'day', 'request_count'],
   join_attempts: ['profile_id', 'attempts', 'window_started_at'],
   device_keys: ['id', 'profile_id', 'public_key', 'created_at'],

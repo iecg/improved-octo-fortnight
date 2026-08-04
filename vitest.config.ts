@@ -12,6 +12,15 @@ export default defineConfig({
     environment: 'node',
     include: [
       'packages/*/src/**/*.test.ts',
+      // The 2-2-2 app's optional features have to live under
+      // `apps/*/src/features/<name>/` for the guards in `tests/guards/`, so
+      // their pure modules cannot sit in `packages/` and their tests cannot
+      // either. Deliberately `.ts` only: a `.tsx` test would need a renderer,
+      // and this suite promises no native modules.
+      'apps/*/src/**/*.test.ts',
+      // Edge Functions' request/response shaping. Only the plain-TypeScript
+      // modules are collected; the Deno entry point that imports them is not.
+      'supabase/functions/**/*.test.ts',
       'tests/i18n/**/*.test.ts',
       'tests/guards/**/*.test.ts',
     ],

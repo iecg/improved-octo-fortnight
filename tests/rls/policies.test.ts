@@ -8,7 +8,7 @@
  */
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cipherFor, newId, sealCheckin, sealIdea, sealPlan } from '../support/crypto';
+import { cipherFor, newId, sealCheckin, sealIdea, sealPlace, sealPlan } from '../support/crypto';
 import { asAnon, asUser, createTestDatabase, createUser, expectRejected } from './harness';
 
 let pool: Pool;
@@ -959,8 +959,9 @@ describe('2-2-2 owned tables', () => {
   });
 
   it('keeps the AI usage counter readable but not writable', async () => {
-    // Only the Edge Function's service role increments it; a client that could
-    // write here could reset its own daily cap.
+    // Nothing increments it — suggestions are BYOK and reach no server of ours
+    // — but a client that could write here could reset its own daily cap if a
+    // metered path ever existed, so the grant stays `select`-only.
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
         client.query(
@@ -976,6 +977,330 @@ describe('2-2-2 owned tables', () => {
       return rows;
     });
     expect(readable).toEqual([]);
+  });
+
+  /**
+   * `tests/guards/realtime-subscriptions.test.ts` checks that a migration says
+   * this; this checks that the database agrees. The two catch different
+   * mistakes — a statement that is present but misspelled, or in a migration
+   * that never applied, reads fine to a grep and still leaves the shortlist
+   * frozen on the partner's phone.
+   */
+  it('streams the shortlist to both devices', async () => {
+    const { rows } = await pool.query(
+      `select tablename from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public'`,
+    );
+    const published = rows.map((row) => row.tablename as string);
+
+    expect(published).toContain('plan_ideas');
+    // A counter that streamed live is a scoreboard waiting to happen.
+    expect(published).not.toContain('ai_usage');
+  });
+});
+
+describe('places on a 2-2-2 plan', () => {
+  /** A place typed by hand: no provider, no coordinates, no key anywhere. */
+  async function attachManualPlace(
+    userId: string,
+    coupleId: string,
+    planId: string,
+    name = 'Bar Nou',
+  ): Promise<string> {
+    const id = newId();
+    return asUser(pool, userId, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plan_places
+           (id, couple_id, domain, plan_id, payload, provider, attached_by)
+         values ($1, $2, 'two_two_two', $3, $4, 'manual', $5) returning id`,
+        [id, coupleId, planId, sealPlace(coupleId, id, { name }), userId],
+      );
+      return rows[0]!.id;
+    });
+  }
+
+  it("hides one couple's places from another", async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    await attachManualPlace(alice, coupleA, planId);
+
+    const visible = await asUser(pool, carol, async (client) => {
+      const { rows } = await client.query('select id from public.plan_places');
+      return rows;
+    });
+
+    expect(visible).toEqual([]);
+  });
+
+  it('lets the other partner see and correct a place on a shared plan', async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    const placeId = await attachManualPlace(alice, coupleA, planId, 'the noodle place');
+
+    const updated = await asUser(pool, bob, async (client) => {
+      const result = await client.query(
+        'update public.plan_places set payload = $1 where id = $2',
+        [sealPlace(coupleA, placeId, { name: 'the other noodle place' }), placeId],
+      );
+      return result.rowCount;
+    });
+
+    // A shared plan is shared; either partner may fix where it is.
+    expect(updated).toBe(1);
+  });
+
+  it('will not let one partner attach a place as the other', async () => {
+    const placeId = newId();
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_places
+             (id, couple_id, domain, plan_id, payload, provider, attached_by)
+           values ($4, $1, 'two_two_two', $2, $5, 'manual', $3)`,
+          [coupleA, planId, bob, placeId, sealPlace(coupleA, placeId, { name: 'Bar Nou' })],
+        ),
+      ),
+    );
+
+    expect(error.message).toMatch(/row-level security/i);
+  });
+
+  /**
+   * The property the composite foreign key exists for.
+   *
+   * `couple_id` is denormalized onto this table so RLS can check membership
+   * without a join. That is only safe if Postgres itself refuses a row whose
+   * couple does not own the plan it points at — otherwise a client could pass
+   * its own couple_id past the policy and still attach to a stranger's plan.
+   */
+  it("refuses a place pointing at another couple's plan", async () => {
+    const placeId = newId();
+    const strangersPlan = await seedPlan(carol, coupleB, 'two_two_two');
+
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_places
+             (id, couple_id, domain, plan_id, payload, provider, attached_by)
+           values ($4, $1, 'two_two_two', $2, $5, 'manual', $3)`,
+          [
+            coupleA,
+            strangersPlan,
+            alice,
+            placeId,
+            sealPlace(coupleA, placeId, { name: 'Bar Nou' }),
+          ],
+        ),
+      ),
+    );
+
+    expect(error.message).toMatch(/plan_places_plan_fk|foreign key/i);
+  });
+
+  it('insists a place belongs to exactly one thing', async () => {
+    const neitherId = newId();
+    const bothId = newId();
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+
+    const neither = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_places
+             (id, couple_id, domain, payload, provider, attached_by)
+           values ($3, $1, 'two_two_two', $4, 'manual', $2)`,
+          [coupleA, alice, neitherId, sealPlace(coupleA, neitherId, { name: 'nowhere' })],
+        ),
+      ),
+    );
+    expect(neither.message).toMatch(/plan_places_one_target/i);
+
+    const ideaRowId = newId();
+    const ideaId = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plan_ideas
+           (id, couple_id, domain, kind, payload, source, saved_by)
+         values ($3, $1, 'two_two_two', 'date_night', $4, 'manual', $2) returning id`,
+        [coupleA, alice, ideaRowId, sealIdea(coupleA, ideaRowId, { title: 'an idea' })],
+      );
+      return rows[0]!.id;
+    });
+
+    const both = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_places
+             (id, couple_id, domain, plan_id, idea_id, payload, provider, attached_by)
+           values ($5, $1, 'two_two_two', $2, $3, $6, 'manual', $4)`,
+          [
+            coupleA,
+            planId,
+            ideaId,
+            alice,
+            bothId,
+            sealPlace(coupleA, bothId, { name: 'everywhere' }),
+          ],
+        ),
+      ),
+    );
+    expect(both.message).toMatch(/plan_places_one_target/i);
+  });
+
+  /**
+   * Half a coordinate used to be `plan_places_coords_paired`, and it is gone
+   * from here on purpose: latitude and longitude are inside the payload now, so
+   * Postgres has nothing to compare. The rule lives in
+   * `packages/data/src/places.ts` with its own test, the same move the display
+   * name's length rule made.
+   */
+
+  it('drops the place when the plan goes', async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    await attachManualPlace(alice, coupleA, planId);
+
+    await asUser(pool, alice, (client) =>
+      client.query('delete from public.plans where id = $1', [planId]),
+    );
+
+    const left = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select id from public.plan_places where plan_id = $1', [
+        planId,
+      ]);
+      return rows;
+    });
+    expect(left).toEqual([]);
+  });
+
+  it('pins who attached a place, and what it is attached to', async () => {
+    const planId = await seedPlan(alice, coupleA, 'two_two_two');
+    const placeId = await attachManualPlace(alice, coupleA, planId);
+
+    // The update policy tests membership only, so without the trigger "either
+    // partner may correct a place" would also mean "either partner may claim
+    // the other's attribution, or move the row to another couple".
+    for (const [column, value] of [
+      ['attached_by', bob],
+      ['couple_id', coupleB],
+    ] as const) {
+      const error = await expectRejected(
+        asUser(pool, alice, (client) =>
+          client.query(`update public.plan_places set ${column} = $1 where id = $2`, [
+            value,
+            placeId,
+          ]),
+        ),
+      );
+      expect(error.message).toMatch(/cannot be changed after insert|row-level security/i);
+    }
+  });
+
+  it('drops a place attached to an idea when the idea goes', async () => {
+    // A venue found on a map is saved as an idea plus a place, so removing the
+    // idea from the shortlist has to take the place with it — otherwise the
+    // couple's place list grows a row nothing on any screen can reach.
+    const noodleIdeaId = newId();
+    const ideaId = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plan_ideas
+           (id, couple_id, domain, kind, payload, source, source_domain, saved_by)
+         values ($3, $1, 'two_two_two', 'date_night', $4, 'places', 'google', $2)
+         returning id`,
+        [
+          coupleA,
+          alice,
+          noodleIdeaId,
+          sealIdea(coupleA, noodleIdeaId, { title: 'the noodle place' }),
+        ],
+      );
+      return rows[0]!.id;
+    });
+
+    const googlePlaceId = newId();
+    const placeId = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.plan_places
+           (id, couple_id, domain, idea_id, payload, provider, attached_by)
+         values ($4, $1, 'two_two_two', $2, $5, 'google', $3)
+         returning id`,
+        [
+          coupleA,
+          ideaId,
+          alice,
+          googlePlaceId,
+          sealPlace(coupleA, googlePlaceId, {
+            name: 'the noodle place',
+            providerPlaceId: 'abc123',
+          }),
+        ],
+      );
+      return rows[0]!.id;
+    });
+
+    await asUser(pool, alice, (client) =>
+      client.query('delete from public.plan_ideas where id = $1', [ideaId]),
+    );
+
+    const left = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select id from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows;
+    });
+    expect(left).toEqual([]);
+  });
+
+  it('keeps the places usage counter readable but not writable', async () => {
+    // Same posture as ai_usage: a client that could write here could reset its
+    // own daily cap on a billed third-party API.
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.places_usage (couple_id, day, request_count)
+           values ($1, current_date, 0)`,
+          [coupleA],
+        ),
+      ),
+    );
+    expect(error.message).toMatch(/permission denied/i);
+
+    const readable = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select * from public.places_usage');
+      return rows;
+    });
+    expect(readable).toEqual([]);
+  });
+
+  it('will not let a client call the metering function directly', async () => {
+    // It is SECURITY DEFINER, so an execute grant would hand every client the
+    // ability to write a table it is deliberately not allowed to write —
+    // including, with a bit of patience, nothing at all: the interesting attack
+    // is calling it for *another* couple's id to burn their allowance.
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query('select public.increment_places_usage($1)', [coupleB]),
+      ),
+    );
+
+    expect(error.message).toMatch(/permission denied/i);
+  });
+
+  it('counts one request per call, atomically', async () => {
+    // As the service role, which is the only caller.
+    const counts = await Promise.all([
+      pool.query<{ increment_places_usage: number }>('select public.increment_places_usage($1)', [
+        coupleA,
+      ]),
+      pool.query<{ increment_places_usage: number }>('select public.increment_places_usage($1)', [
+        coupleA,
+      ]),
+      pool.query<{ increment_places_usage: number }>('select public.increment_places_usage($1)', [
+        coupleA,
+      ]),
+    ]);
+
+    // Three concurrent calls must produce three distinct running totals. A
+    // read-then-write would let two of them return the same number and hand
+    // out a free request.
+    const seen = counts.map((result) => result.rows[0]!.increment_places_usage).sort();
+    expect(seen).toEqual([1, 2, 3]);
   });
 });
 
@@ -1015,6 +1340,9 @@ describe('anonymous access', () => {
     'plans',
     'plan_proposals',
     'checkins',
+    // A view is not covered by the blanket revoke the tables got; it relies on
+    // `alter default privileges` plus its own explicit revoke.
+    'plan_busy_times',
   ])('refuses a signed-out reader on %s', async (table) => {
     const error = await expectRejected(
       asAnon(pool, (client) => client.query(`select * from public.${table}`)),
@@ -1200,6 +1528,23 @@ describe('no plaintext content column survives anywhere', () => {
       'payload',
       'saved_by',
       'source',
+      // Which provider named it. Provenance, like `source`.
+      'source_domain',
+    ],
+    // The venue, the address, the handle and the coordinates are all inside
+    // the payload. What is left cannot say where anybody is going.
+    plan_places: [
+      'attached_by',
+      'couple_id',
+      'created_at',
+      'domain',
+      'id',
+      'idea_id',
+      'payload',
+      'plan_id',
+      'provider',
+      'share_with_calendar',
+      'updated_at',
     ],
   };
 
@@ -1284,5 +1629,170 @@ describe('constraints', () => {
     );
 
     expect(error.message).toMatch(/duplicate key|unique/i);
+  });
+});
+
+/**
+ * The busy-times view.
+ *
+ * The one object in the schema that either app may read regardless of domain,
+ * so what it *cannot* return matters more than what it can. Three separate
+ * things have to hold, and each fails silently in a different direction:
+ * without the grant it is unreadable, without `security_invoker` it hands
+ * every couple's schedule to everyone, and with one column too many it stops
+ * being a redaction at all.
+ */
+describe('the busy-times view', () => {
+  async function seedWindow(
+    userId: string,
+    coupleId: string,
+    domain: string,
+    status: string,
+    startsAt: string,
+    endsAt: string,
+  ): Promise<void> {
+    const busyPlanId = newId();
+    await asUser(pool, userId, (client) =>
+      client.query(
+        `insert into public.plans
+           (id, couple_id, domain, kind, payload, status, created_by, starts_at, ends_at, completed_at)
+         values ($8, $1, $2, 'intimacy', $9, $3, $4, $5, $6, $7)`,
+        // `completed` and `completed_at` are a biconditional in the schema:
+        // one without the other is rejected, in either direction.
+        [
+          coupleId,
+          domain,
+          status,
+          userId,
+          startsAt,
+          endsAt,
+          status === 'completed' ? endsAt : null,
+          busyPlanId,
+          sealPlan(coupleId, busyPlanId, { title: 'busy' }),
+        ],
+      ),
+    );
+  }
+
+  it('exposes times and nothing else', async () => {
+    const { rows } = await pool.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+       where table_schema = 'public' and table_name = 'plan_busy_times'
+       order by column_name`,
+    );
+
+    // No domain, so a caller cannot tell which app a window belongs to; no
+    // title, notes or location, so it cannot tell what fills one. The
+    // redaction is the view body, not a caller remembering to select less.
+    expect(rows.map((row) => row.column_name)).toEqual(['couple_id', 'ends_at', 'starts_at']);
+  });
+
+  it('runs as the caller, so the policy on plans still applies', async () => {
+    const { rows } = await pool.query<{ options: string[] | null }>(
+      `select reloptions as options from pg_class
+       where relname = 'plan_busy_times' and relkind = 'v'`,
+    );
+
+    // Without this a view executes as its owner and sails straight past
+    // plans_select_member, which would be every couple's schedule.
+    expect(rows[0]?.options ?? []).toContain('security_invoker=on');
+  });
+
+  it('shows a couple their own occupied windows, whichever app booked them', async () => {
+    await seedWindow(
+      alice,
+      coupleA,
+      'two_two_two',
+      'scheduled',
+      '2026-10-01T18:00:00Z',
+      '2026-10-01T22:00:00Z',
+    );
+
+    const rows = await asUser(pool, bob, async (client) => {
+      const result = await client.query(
+        `select * from public.plan_busy_times where starts_at = '2026-10-01T18:00:00Z'`,
+      );
+      return result.rows;
+    });
+
+    // Bob is in the intimacy app; the window came from the other one. That is
+    // the point — he learns the evening is taken, and nothing more.
+    expect(rows).toHaveLength(1);
+  });
+
+  it('counts a proposed window, which no calendar ever sees', async () => {
+    await seedWindow(
+      alice,
+      coupleA,
+      'intimacy',
+      'proposed',
+      '2026-10-02T20:00:00Z',
+      '2026-10-02T22:00:00Z',
+    );
+
+    const rows = await asUser(pool, alice, async (client) => {
+      const result = await client.query(
+        `select * from public.plan_busy_times where starts_at = '2026-10-02T20:00:00Z'`,
+      );
+      return result.rows;
+    });
+
+    // `BOOKED` in packages/cadence is ['scheduled'] on purpose, so a proposal
+    // reaches no device calendar. This view is the only thing that knows.
+    expect(rows).toHaveLength(1);
+  });
+
+  it.each(['idea', 'declined', 'completed', 'skipped'])(
+    'ignores a %s plan, which is not time still spoken for',
+    async (status) => {
+      const startsAt = `2026-11-0${['idea', 'declined', 'completed', 'skipped'].indexOf(status) + 1}T20:00:00Z`;
+      await seedWindow(alice, coupleA, 'intimacy', status, startsAt, '2026-11-30T22:00:00Z');
+
+      const rows = await asUser(pool, alice, async (client) => {
+        const result = await client.query(
+          `select * from public.plan_busy_times where starts_at = $1`,
+          [startsAt],
+        );
+        return result.rows;
+      });
+
+      expect(rows).toHaveLength(0);
+    },
+  );
+
+  it("returns nothing for the other couple's windows", async () => {
+    await seedWindow(
+      carol,
+      coupleB,
+      'two_two_two',
+      'scheduled',
+      '2026-10-03T18:00:00Z',
+      '2026-10-03T22:00:00Z',
+    );
+
+    const rows = await asUser(pool, alice, async (client) => {
+      const result = await client.query(
+        `select * from public.plan_busy_times where starts_at = '2026-10-03T18:00:00Z'`,
+      );
+      return result.rows;
+    });
+
+    // Reads are refused by returning no rows rather than by raising. If
+    // security_invoker were off, this would be a row.
+    expect(rows).toHaveLength(0);
+  });
+
+  it('is read-only — there is no writing through it', async () => {
+    const error = await expectRejected(
+      asUser(pool, alice, (client) =>
+        client.query(
+          `insert into public.plan_busy_times (couple_id, starts_at, ends_at)
+           values ($1, '2026-10-04T18:00:00Z', '2026-10-04T20:00:00Z')`,
+          [coupleA],
+        ),
+      ),
+    );
+
+    expect(error.message).toMatch(/permission denied/i);
   });
 });

@@ -13,50 +13,72 @@
  * The rule is the 2-2-2 app's alone — the intimacy app has no AI story at all,
  * which is why the whole repo is scanned rather than just that app.
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { extname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { libraryFor } from '../../apps/two-two-two/src/ideas';
 import en from '../../apps/two-two-two/src/locales/en/ideas.json';
 import es from '../../apps/two-two-two/src/locales/es/ideas.json';
 import { TWO_TWO_TWO_KINDS } from '../../packages/core/src/kinds';
-
-const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const SCANNED = ['apps', 'packages', 'supabase'];
-const IGNORED_DIRS = new Set(['node_modules', '.git', '.expo', 'dist', 'ios', 'android']);
-const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+// The walk itself is shared with `maps-optional.test.ts`, which enforces the
+// same shape of rule about a different external dependency. `tests` is
+// deliberately outside the scanned set: this file names every marker it looks
+// for, so scanning itself would fail on the first line of `MODEL_MARKERS`.
+import { isFeatureSegmentPath, REPO_ROOT, scannedFiles } from './sources';
 
 /**
  * Anything that only makes sense when a model is reachable. Deliberately
  * includes the env var itself: reading it outside the AI feature is the exact
  * shape of "assumes a model exists".
  */
-const MODEL_MARKERS = [/ANTHROPIC_API_KEY/, /@anthropic-ai\//, /\bnew\s+Anthropic\b/];
+const MODEL_MARKERS = [
+  /ANTHROPIC_API_KEY/,
+  /@anthropic-ai\//,
+  /\bnew\s+Anthropic\b/,
 
-/** The one place any of this is allowed to live. */
-function isAiFeaturePath(relativePath: string): boolean {
-  const parts = relativePath.split(sep);
-  const features = parts.indexOf('features');
-  // .../features/<name>/ai/...
-  return features !== -1 && parts[features + 2] === 'ai';
+  // The BYOK providers the ideas feature can call. Keys are the user's own and
+  // live in the device keychain, but "which provider, at which URL" is still
+  // the shape of assuming a model exists.
+  //
+  // Deliberately specific. A generic /api[_ ]?key/i would fail
+  // `packages/data/src/ideas.ts`, whose header says "no API key configured" —
+  // prose about the absence of a model is exactly what this rule wants to
+  // allow everywhere.
+  /openrouter/i,
+  /generativelanguage\.googleapis\.com/,
+  /\bgemini[\w-]*\b/i,
+  /\bx-goog-api-key\b/i,
+  /@google\/(genai|generative-ai)\b/,
+  /\bapi_key_(openrouter|gemini)\b/,
+];
+
+/**
+ * The one server-side exemption, and it is not about models.
+ *
+ * `SCANNED` includes `supabase/`, and the places function legitimately sends
+ * `X-Goog-Api-Key` — which trips a marker above, because Gemini and Google Maps
+ * share a vendor and very nearly share a header. So one directory has to be
+ * exempt.
+ *
+ * It is scoped to `places/` rather than to `supabase/functions/`, which is the
+ * whole point. This guard briefly exempted the entire tree, on the argument
+ * that an Edge Function is "precisely where a key should live" — true of a
+ * mapping key, and the exact opposite of how this repo handles a model key. A
+ * model key here is the user's own, kept in their own keychain, and requests go
+ * from their device straight to the provider. A `suggest-ideas` function
+ * holding an OpenRouter key is the thing this rule exists to prevent, and under
+ * the broad exemption it passed `npm test`.
+ *
+ * `tests/guards/maps-optional.test.ts` scopes its own exemption the same way,
+ * to the same directory. Adding a second Edge Function means deciding, in
+ * review, which of the two rules it belongs to.
+ */
+function isPlacesFunctionPath(relativePath: string): boolean {
+  return relativePath.startsWith(join('supabase', 'functions', 'places') + sep);
 }
 
-function sourceFilesIn(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (IGNORED_DIRS.has(entry)) continue;
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) sourceFilesIn(full, found);
-    else if (SOURCE_EXTENSIONS.has(extname(entry))) found.push(full);
-  }
-  return found;
-}
-
-const files = SCANNED.flatMap((dir) => {
-  const full = join(REPO_ROOT, dir);
-  return statSync(full).isDirectory() ? sourceFilesIn(full) : [];
-});
+const files = scannedFiles();
 
 describe('the AI-optional rule', () => {
   it('has source files to check', () => {
@@ -65,12 +87,12 @@ describe('the AI-optional rule', () => {
 
   it('keeps every assumption that a model exists inside features/*/ai/', () => {
     const offenders = files
-      .filter((file) => !isAiFeaturePath(relative(REPO_ROOT, file)))
-      .filter((file) => {
-        const contents = readFileSync(file, 'utf8');
+      .map((file) => relative(REPO_ROOT, file))
+      .filter((path) => !isFeatureSegmentPath(path, 'ai') && !isPlacesFunctionPath(path))
+      .filter((path) => {
+        const contents = readFileSync(join(REPO_ROOT, path), 'utf8');
         return MODEL_MARKERS.some((marker) => marker.test(contents));
-      })
-      .map((file) => relative(REPO_ROOT, file));
+      });
 
     expect(offenders).toEqual([]);
   });

@@ -88,18 +88,24 @@ export interface DomainRepository {
    * payload per row: the blob has to be decrypted, merged and re-sealed, so the
    * caller must be holding the row it is editing. Shaped like
    * `recordCalendarEvent`, which already works this way.
+   *
+   * It replaces `updatePlan`, which took a patch of arbitrary columns. That
+   * shape cannot survive encryption — the sealed fields are one column now, so
+   * "patch some of them" means read, merge, re-seal.
    */
   updatePlanContent(plan: Plan, patch: PlanContent): Promise<Plan>;
   /**
-   * Move a plan in time, or change where it is in its lifecycle.
+   * Move a plan in time.
    *
    * Structural only — it touches no sealed field, so it stays keyed by id and
-   * needs no precondition, exactly as before. Keeping the two apart means the
-   * common write is still one statement and the split says which is which.
+   * needs no precondition. Status is deliberately not here: `plans` carries
+   * `check ((status = 'completed') = (completed_at is not null))`, so a
+   * transition has to write both columns together, and `setPlanStatus` is the
+   * only door to one.
    */
   setPlanSchedule(
     planId: string,
-    patch: { startsAt?: string | null; endsAt?: string | null; status?: PlanStatus },
+    patch: { startsAt?: string | null; endsAt?: string | null },
   ): Promise<Plan>;
   setPlanStatus(planId: string, status: PlanStatus, completedAt?: string | null): Promise<Plan>;
   recordCalendarEvent(plan: Plan, profileId: string, eventId: string | null): Promise<Plan>;
@@ -258,7 +264,6 @@ export function createDomainRepository(
         .update({
           ...(patch.startsAt !== undefined ? { starts_at: patch.startsAt } : {}),
           ...(patch.endsAt !== undefined ? { ends_at: patch.endsAt } : {}),
-          ...(patch.status !== undefined ? { status: patch.status } : {}),
         })
         .eq('id', planId)
         .eq('domain', domain)

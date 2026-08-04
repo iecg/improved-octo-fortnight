@@ -39,7 +39,12 @@ shadow_port = 54320
 health_timeout = "2m"
 # The database major version to use. This has to be the same as your remote database's. Run `SHOW
 # server_version;` on the remote database to check.
-major_version = 17
+#
+# 16, matching the `postgres:16` service the RLS job runs against and the
+# `postgresql@16` the README tells you to install. The three had drifted apart,
+# which is the one way to get a migration that passes locally and fails in CI —
+# or worse, the reverse.
+major_version = 16
 
 [db.pooler]
 enabled = false
@@ -388,8 +393,15 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
-# [edge_runtime.secrets]
-# secret_key = "env(SECRET_VALUE)"
+[edge_runtime.secrets]
+# The optional places feature. Absent is a supported configuration, and the
+# one every install starts in: the `places` function then answers
+# `capabilities: all false` and the app falls back to places typed by hand.
+#
+# This is the one key in the project that must never become an EXPO_PUBLIC_
+# value — see supabase/functions/.env.example.
+GOOGLE_MAPS_API_KEY = "env(GOOGLE_MAPS_API_KEY)"
+PLACES_DAILY_LIMIT = "env(PLACES_DAILY_LIMIT)"
 
 [analytics]
 enabled = true

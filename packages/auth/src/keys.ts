@@ -453,7 +453,7 @@ export function createKeyService(deps: {
         profileId,
         coupleId,
         epoch: held.epoch,
-        envelope: wrapWithRecoveryCode({
+        envelope: await wrapWithRecoveryCode({
           root: held.root,
           code,
           coupleId,
@@ -482,7 +482,7 @@ export function createKeyService(deps: {
       try {
         // Both the shape check inside `normalizeRecoveryCode` and the Poly1305
         // tag land here, and they are deliberately indistinguishable.
-        root = unwrapWithRecoveryCode({
+        root = await unwrapWithRecoveryCode({
           envelope: stored.envelope,
           code,
           coupleId,

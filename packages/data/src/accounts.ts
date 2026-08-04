@@ -4,7 +4,15 @@
  * Pairing happens once and serves all of them: installing the second app never
  * asks the couple to link up again.
  */
-import type { Couple, Locale, Profile } from '@couple/core';
+import {
+  displayNameLength,
+  DisplayNameTooLongError,
+  isDisplayNameValid,
+  normalizeDisplayName,
+  type Couple,
+  type Locale,
+  type Profile,
+} from '@couple/core';
 import type { FieldCipher } from '@couple/crypto';
 
 import type { AppSupabaseClient } from './client';
@@ -99,16 +107,27 @@ export function createAccountRepository(
         throw new Error('a display name cannot be set before pairing');
       }
 
+      // The length rule, enforced here because this is where the name stops
+      // being readable. `profiles_name_payload_bounded` bounds the ciphertext
+      // and cannot bound the name — the database has no way to measure a string
+      // it cannot open. A screen checks this too, so the person is told before
+      // they tap; this is what stops a caller that forgot.
+      const name =
+        patch.displayName === undefined ? undefined : normalizeDisplayName(patch.displayName);
+      if (name !== undefined && !isDisplayNameValid(name)) {
+        throw new DisplayNameTooLongError(displayNameLength(name ?? ''));
+      }
+
       const { data, error } = await client
         .from('profiles')
         .update({
-          ...(patch.displayName !== undefined && coupleId !== null
+          ...(name !== undefined && coupleId !== null
             ? {
                 name_payload:
-                  patch.displayName === null
+                  name === null
                     ? null
                     : cipher.seal(
-                        { displayName: patch.displayName },
+                        { displayName: name },
                         { table: 'profiles', coupleId, profileId: id },
                       ),
               }

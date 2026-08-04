@@ -1,40 +1,13 @@
 {
-  "appName": "Nosotros",
   "action": {
-    "save": "Guardar",
     "cancel": "Cancelar",
-    "confirm": "Confirmar",
-    "done": "Listo",
     "back": "Atrás",
-    "next": "Siguiente",
-    "skip": "Omitir",
-    "edit": "Editar",
-    "delete": "Eliminar",
-    "retry": "Reintentar",
-    "close": "Cerrar"
+    "delete": "Eliminar"
   },
   "state": {
-    "loading": "Cargando…",
-    "empty": "Aún no hay nada aquí",
-    "offline": "Estás sin conexión. Los cambios se sincronizarán al reconectarte.",
-    "error": "Algo salió mal."
-  },
-  "time": {
-    "today": "Hoy",
-    "tomorrow": "Mañana",
-    "yesterday": "Ayer",
-    "dayCount_one": "{{count}} día",
-    "dayCount_other": "{{count}} días",
-    "weekCount_one": "{{count}} semana",
-    "weekCount_other": "{{count}} semanas",
-    "monthCount_one": "{{count}} mes",
-    "monthCount_other": "{{count}} meses",
-    "yearCount_one": "{{count}} año",
-    "yearCount_other": "{{count}} años"
+    "empty": "Aún no hay nada aquí"
   },
   "partner": {
-    "you": "Tú",
-    "them": "Tu pareja",
     "unnamed": "Tu pareja"
   },
   "language": {

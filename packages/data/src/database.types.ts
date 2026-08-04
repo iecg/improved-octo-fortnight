@@ -167,7 +167,7 @@ export interface Database {
           couple_id: string;
           profile_id: string;
           on_date: string;
-          /** interest, energy and the note. */
+          /** The interest and the note. */
           payload: string;
           created_at: string;
           updated_at: string;
@@ -194,6 +194,7 @@ export interface Database {
           /** Title, summary, url, cost band, and the language it is written in. */
           payload: string;
           source: string;
+          source_domain: string | null;
           saved_by: string | null;
           created_at: string;
         };
@@ -205,12 +206,45 @@ export interface Database {
           kind: string;
           payload: string;
           source: string;
+          source_domain?: string | null;
           saved_by?: string | null;
         };
         Update: { payload?: string };
         Relationships: [];
       };
-      // Read-only to clients; only the Edge Function's service role writes it.
+      // 2-2-2-owned. Reachable only through createPlaceRepository.
+      plan_places: {
+        Row: {
+          id: string;
+          couple_id: string;
+          domain: string;
+          plan_id: string | null;
+          idea_id: string | null;
+          /** Name, address, provider handle, coordinates, and the locale. */
+          payload: string;
+          provider: string;
+          share_with_calendar: boolean;
+          attached_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          /** Required: the payload's AAD binds to the row id. */
+          id: string;
+          couple_id: string;
+          domain: string;
+          plan_id?: string | null;
+          idea_id?: string | null;
+          payload: string;
+          provider: string;
+          share_with_calendar?: boolean;
+          attached_by?: string | null;
+        };
+        Update: { payload?: string; share_with_calendar?: boolean };
+        Relationships: [];
+      };
+      // Read-only to clients, and written by nothing: suggestions are BYOK, so
+      // no server of ours is in that path to count them. Empty by design.
       ai_usage: {
         Row: { couple_id: string; day: string; request_count: number };
         Insert: { couple_id: string; day: string; request_count?: number };
@@ -269,8 +303,22 @@ export interface Database {
         Update: { kdf?: string; kdf_salt?: string; kdf_params?: Json; wrapped_key?: string };
         Relationships: [];
       };
+      // Read-only to clients; only the Edge Function's service role writes it.
+      places_usage: {
+        Row: { couple_id: string; day: string; request_count: number };
+        Insert: { couple_id: string; day: string; request_count?: number };
+        Update: { request_count?: number };
+        Relationships: [];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      // Times only, by construction — the view carries no domain, title, notes
+      // or location. Read through createBusyRepository.
+      plan_busy_times: {
+        Row: { couple_id: string; starts_at: string; ends_at: string };
+        Relationships: [];
+      };
+    };
     Functions: {
       create_couple: {
         Args: { p_timezone: string };
