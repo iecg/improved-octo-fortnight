@@ -21,7 +21,8 @@
     "library": "Some suggestions",
     "libraryHint": "Bundled with the app. No account, no connection, no cleverness required.",
     "save": "Save it",
-    "planIt": "Plan it"
+    "planIt": "Plan it",
+    "fromAi": "Suggested by a model"
   },
   "home": {
     "title": "Your rhythm",
@@ -45,7 +46,9 @@
     "nights_one": "{{count}} night",
     "nights_other": "{{count}} nights",
     "summary": "Booked for {{date}}",
-    "save": "Put it on the calendar"
+    "save": "Put it on the calendar",
+    "busyHint": "Marked times are already spoken for. You can still pick them.",
+    "busyOption": "{{option}} — already booked"
   },
   "settings": {
     "title": "Settings",
@@ -56,6 +59,9 @@
     "calendarAccess": "Calendar access",
     "allow": "Allow",
     "allowed": "Allowed",
+    "crossAppBusy": "Avoid times you are busy elsewhere",
+    "crossAppBusyHint": "Marks times the two of you are already booked in your other app. Times only — never what they are for.",
+    "notificationAccess": "Reminders",
     "signOut": "Sign out"
   },
   "notification": {

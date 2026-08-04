@@ -40,15 +40,9 @@
     "in_one": "Toca en {{count}} día",
     "in_other": "Toca en {{count}} días",
     "overdue_one": "Hace {{count}} día que tocaba",
-    "overdue_other": "Hace {{count}} días que tocaba",
-    "scheduled": "Reservado para el {{date}}"
-  },
-  "last": {
-    "never": "Aún no hay historial",
-    "on": "La última vez fue el {{date}}"
+    "overdue_other": "Hace {{count}} días que tocaba"
   },
   "interval": {
-    "label": "Con qué frecuencia",
     "every_day_one": "Cada día",
     "every_day_other": "Cada {{count}} días",
     "every_week_one": "Cada semana",
@@ -59,9 +53,6 @@
     "every_year_other": "Cada {{count}} años"
   },
   "action": {
-    "markDone": "Marcar como hecho",
-    "schedule": "Ponerlo en el calendario",
-    "skipThisOne": "Saltar esta vez",
     "pause": "Pausar esto"
   }
 }

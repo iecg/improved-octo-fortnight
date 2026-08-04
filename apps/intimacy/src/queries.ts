@@ -4,25 +4,44 @@
  * Everything goes through the domain-scoped repositories in `@couple/data`,
  * which is what keeps this app's rows separate from the 2-2-2 app's.
  */
-import { computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
+import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, CheckinInterest, Plan, PlanProposal } from '@couple/core';
-import { createCheckinRepository, createDomainRepository } from '@couple/data';
+import {
+  createBusyRepository,
+  createCheckinRepository,
+  createDomainRepository,
+} from '@couple/data';
 import { calendarDateIn } from '@couple/i18n';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { contentCipher, supabase } from './runtime';
+import { contentCipher, DEFAULT_INTIMACY_CADENCES, supabase } from './runtime';
 
 export const DOMAIN = 'intimacy' as const;
 
 export const plans = createDomainRepository(supabase, DOMAIN, contentCipher);
 export const checkins = createCheckinRepository(supabase, contentCipher);
 
+/**
+ * Times the couple is occupied, across both apps — and only times.
+ *
+ * Read unconditionally here, unlike in the 2-2-2 app. What it exposes in this
+ * direction is that a date night is booked, which is not a secret, and this
+ * app is the one behind the lock. The reverse direction is the one that needs
+ * asking about.
+ */
+export const busy = createBusyRepository(supabase);
+
 const keys = {
   plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
   cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
   proposals: (coupleId: string) => ['proposals', DOMAIN, coupleId] as const,
   checkins: (coupleId: string, date: string) => ['checkins', coupleId, date] as const,
+  // Not domain-keyed: this list is the same one either app would read.
+  busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
+  // Every bounds pair for a couple. The bounds are part of the key, so
+  // invalidating one window would leave every other range stale.
+  busyAll: (coupleId: string) => ['busy', coupleId] as const,
 };
 
 export function usePlans(coupleId: string) {
@@ -36,6 +55,86 @@ export function useCadences(coupleId: string) {
   return useQuery({
     queryKey: keys.cadences(coupleId),
     queryFn: () => plans.listCadences(coupleId),
+  });
+}
+
+/**
+ * Pause a ritual, or bring it back.
+ *
+ * A paused cadence keeps its row with `enabled = false` rather than being
+ * deleted, which is what lets `useEnsureCadences` tell "never seeded" from
+ * "switched off". The plans already made under it stay where they are: this
+ * turns off a countdown, not a history.
+ */
+export function useSetCadenceEnabled(coupleId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { cadenceId: string; enabled: boolean }) =>
+      plans.setCadenceEnabled(input.cadenceId, input.enabled),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+    },
+  });
+}
+
+/**
+ * Seed this app's standing rituals from its own kind catalog.
+ *
+ * Deliberately not a database trigger — a trigger on `couples` would give
+ * every couple every app's cadences whichever app they actually installed.
+ * Idempotent, because `upsertCadence` upserts on `(couple_id, domain, kind)`.
+ */
+export async function seedCadences(coupleId: string): Promise<void> {
+  for (const kind of DEFAULT_INTIMACY_CADENCES) {
+    await plans.upsertCadence({
+      coupleId,
+      kind: kind.kind,
+      intervalValue: kind.defaultIntervalValue,
+      intervalUnit: kind.defaultIntervalUnit,
+    });
+  }
+}
+
+/**
+ * Seed on first run of *this app*, not just on first pairing.
+ *
+ * Pairing happens once and serves both apps, so the partner who installs the
+ * second one never passes through the pairing screen — and that screen was the
+ * only thing that had ever called `seedCadences`. Without this the second app
+ * opens to an empty rhythm and there is no other way to create a cadence.
+ *
+ * Only a genuinely empty list seeds. A ritual switched off keeps its row with
+ * `enabled = false`, so turning one off never resurrects it here.
+ */
+export function useEnsureCadences(coupleId: string): void {
+  const client = useQueryClient();
+  const { data, isLoading } = useCadences(coupleId);
+  const empty = !isLoading && data?.length === 0;
+
+  useEffect(() => {
+    if (!empty) return;
+    void seedCadences(coupleId).then(() =>
+      client.invalidateQueries({ queryKey: keys.cadences(coupleId) }),
+    );
+  }, [client, coupleId, empty]);
+}
+
+/**
+ * Occupied windows from the server, both apps' plans, times only.
+ *
+ * This is what lets the propose screen work on a phone where calendar access
+ * was refused — and it is the only thing that knows about a `proposed` time,
+ * which by design reaches no calendar at all.
+ *
+ * The bounds are part of the key so a screen that widens its range refetches
+ * rather than quietly reusing a narrower answer.
+ */
+export function useServerBusy(coupleId: string, from: Date, to: Date) {
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
+  return useQuery({
+    queryKey: keys.busy(coupleId, fromIso, toIso),
+    queryFn: () => busy.listBetween(coupleId, from, to),
   });
 }
 
@@ -79,14 +178,18 @@ export function useRespondToProposal(coupleId: string) {
     mutationFn: async (input: { proposal: PlanProposal; response: 'accepted' | 'declined' }) => {
       await plans.respond(input.proposal.id, input.response);
       // Accepting is what turns a suggestion into something on the calendar.
+      // The time is written first and the status second, through the one
+      // method that maintains `completed_at` alongside it — `updatePlan` never
+      // touched that column, and the two are pinned to each other by a check
+      // constraint.
       if (input.response === 'accepted') {
         await plans.setPlanSchedule(input.proposal.planId, {
-          status: 'scheduled',
           startsAt: input.proposal.startsAt,
           endsAt: input.proposal.endsAt,
         });
+        await plans.setPlanStatus(input.proposal.planId, 'scheduled');
       } else {
-        await plans.setPlanSchedule(input.proposal.planId, { status: 'declined' });
+        await plans.setPlanStatus(input.proposal.planId, 'declined');
       }
     },
     onSuccess: () => {
@@ -183,6 +286,17 @@ export function useCompletePlan(coupleId: string) {
  *
  * Without this, a partner's reply only appears on the next manual refresh —
  * and the whole point of the loop is that the other person sees it.
+ *
+ * Mounted once, in the tabs layout, rather than per screen: both tabs stay
+ * mounted, so a per-screen call opened the same topic twice for no benefit.
+ * The 2-2-2 app found this first; the two apps now do the same thing.
+ *
+ * Every subscription carries a `filter`. On `plans` it is the domain, which is
+ * the boundary RLS cannot express and the one thing keeping the two apps'
+ * rows apart; on the other two it is the couple, which RLS already enforces
+ * but which costs nothing to say twice. `postgres_changes` accepts a single
+ * `column=op.value`, so each table gets the filter that does the most work —
+ * and `plan_proposals` has no `domain` column to filter on anyway.
  */
 export function useRealtimeSync(coupleId: string | null): void {
   const client = useQueryClient();
@@ -192,15 +306,37 @@ export function useRealtimeSync(coupleId: string | null): void {
 
     const channel = supabase
       .channel(`couple:${coupleId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
-        void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'plan_proposals' }, () => {
-        void client.invalidateQueries({ queryKey: keys.proposals(coupleId) });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, () => {
-        void client.invalidateQueries({ queryKey: ['checkins', coupleId] });
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'plans', filter: `domain=eq.${DOMAIN}` },
+        () => {
+          void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+          void client.invalidateQueries({ queryKey: keys.busyAll(coupleId) });
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'plan_proposals',
+          filter: `couple_id=eq.${coupleId}`,
+        },
+        () => {
+          void client.invalidateQueries({ queryKey: keys.proposals(coupleId) });
+          // A proposed time occupies a window as far as the busy view is
+          // concerned, so the propose screen's suggestions are stale the
+          // moment one lands.
+          void client.invalidateQueries({ queryKey: keys.busyAll(coupleId) });
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'checkins', filter: `couple_id=eq.${coupleId}` },
+        () => {
+          void client.invalidateQueries({ queryKey: ['checkins', coupleId] });
+        },
+      )
       .subscribe();
 
     return () => {
@@ -228,5 +364,5 @@ export function cadenceStatuses(
         timeZone,
       }),
     )
-    .sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+    .sort(compareUrgency);
 }

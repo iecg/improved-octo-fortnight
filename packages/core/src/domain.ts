@@ -117,11 +117,12 @@ export interface PlanProposal {
  * Where an idea came from.
  *
  * `library` is the bundled curated set and `manual` is written by a partner —
- * between them the feature works with no model configured anywhere, which is
- * the whole point of the 2-2-2 app's AI-optional rule. `ai` is the optional
- * third case.
+ * between them the feature works with nothing configured anywhere, which is the
+ * whole point of the 2-2-2 app's AI-optional and maps-optional rules. `ai` and
+ * `places` are the optional cases: each needs a key, and each simply never
+ * appears without one.
  */
-export const IDEA_SOURCES = ['library', 'manual', 'ai'] as const;
+export const IDEA_SOURCES = ['library', 'manual', 'ai', 'places'] as const;
 export type IdeaSource = (typeof IDEA_SOURCES)[number];
 
 export const COST_BANDS = ['free', 'low', 'medium', 'high'] as const;
@@ -139,6 +140,8 @@ export interface PlanIdea {
   url: string | null;
   estCostBand: CostBand | null;
   source: IdeaSource;
+  /** Which provider named this, for the sources that came from one. */
+  sourceDomain: string | null;
   /**
    * The language this idea's text is written in. Ideas are labelled rather
    * than machine-translated, exactly as with any other authored text.
@@ -150,6 +153,89 @@ export interface PlanIdea {
   unreadable: boolean;
 }
 
+/**
+ * Where a place's details came from.
+ *
+ * `manual` is a partner typing a venue name, and it is the only provider that
+ * exists with no mapping key configured. Everything downstream must keep
+ * working when it is the only one it ever sees.
+ */
+export const PLACE_PROVIDERS = ['manual', 'google'] as const;
+export type PlaceProvider = (typeof PLACE_PROVIDERS)[number];
+
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
+}
+
+/** A venue attached to a 2-2-2 plan or idea. The intimacy app has no accessor. */
+export interface PlanPlace {
+  id: string;
+  coupleId: string;
+  domain: AppDomain;
+  /** Exactly one of these is set; the table enforces it. */
+  planId: string | null;
+  ideaId: string | null;
+  /**
+   * Shown verbatim. A proper noun, so it is never labelled with a language.
+   *
+   * Empty when `unreadable`, the same stand-in `PlanIdea.title` uses: the
+   * column is not null, and rendering nothing is better than rendering
+   * somebody else's words.
+   */
+  name: string;
+  /** Labelled with `locale` when it differs from the reader's, like an idea. */
+  address: string | null;
+  provider: PlaceProvider;
+  providerPlaceId: string | null;
+  /** Null whenever the place was typed rather than searched. */
+  coordinates: Coordinates | null;
+  locale: Locale;
+  /**
+   * Opt-in, per place. Nothing reaches a calendar entry without it.
+   *
+   * It governs the *device calendar*, not storage. The venue's label is written
+   * to `plans.location` either way, because that is what the plan is — and
+   * because a flag flipped on later would otherwise have nothing to show. What
+   * the opt-in decides is whether the address leaves this app for the OS,
+   * where a shared Mac or a family calendar can see it. `plan_busy_times`
+   * selects three columns and `location` is not one of them, so nothing crosses
+   * to the other app in either case.
+   */
+  shareWithCalendar: boolean;
+  /** Null once the person who attached it deletes their account. */
+  attachedBy: string | null;
+  createdAt: string;
+  /** True when the payload would not open on this device. */
+  unreadable: boolean;
+}
+
+/**
+ * A span between two instants.
+ *
+ * Declared once, here, because three layers pass it to each other: the device
+ * reads free/busy off the phone's calendar, the cadence engine merges and
+ * subtracts those spans to find an opening, and both apps hand the result
+ * between the two. It used to be declared separately in each of the three,
+ * identically — so the values flowed across the boundaries and typechecked by
+ * coincidence rather than by agreement.
+ */
+export interface TimeRange {
+  start: Date;
+  end: Date;
+}
+
+/**
+ * A window the couple is occupied in, and nothing more.
+ *
+ * The same two instants, named for what they mean when they come from the
+ * server: no title, no domain and no author — not because those are stripped
+ * on the way out, but because the `plan_busy_times` view never selects them.
+ * Both apps consume this to stop offering a time that is already spoken for,
+ * and neither can learn what is occupying it.
+ */
+export type BusyWindow = TimeRange;
+
 export interface Checkin {
   id: string;
   coupleId: string;
@@ -158,7 +244,7 @@ export interface Checkin {
   onDate: string;
   /** Null exactly when `unreadable`: there is no honest stand-in for an answer nobody can read. */
   interest: CheckinInterest | null;
-  energy: number | null;
+  /** Partner-authored, shown verbatim and never machine-translated. */
   note: string | null;
   createdAt: string;
   unreadable: boolean;

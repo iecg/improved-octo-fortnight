@@ -21,7 +21,7 @@
  */
 import { addInterval, calendarActions, computeCadenceStatus } from '@couple/cadence';
 import { DISPLAY_NAME_MAX, displayNameLength, type Cadence, type Plan } from '@couple/core';
-import { toPlan, toProfile } from '@couple/data';
+import { toPlan, toPlanPlace, toProfile } from '@couple/data';
 import { createI18n } from '@couple/i18n';
 import { differenceInCalendarDays } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -989,5 +989,180 @@ describe('9. putting a name to it', () => {
     expect(asText).not.toContain('😀');
     // No leftover column to read it out of, either.
     expect(Object.keys(rows[0]!)).not.toContain('display_name');
+  });
+});
+
+/**
+ * Where it actually is.
+ *
+ * The 2-2-2 app is the one that answers "where", and it answers it with no
+ * mapping provider configured — which is the state every install is in until
+ * someone sets a key, and the state this suite runs in. A place typed by hand
+ * has to survive the round trip, reach the label a calendar would show, and
+ * stay out of that calendar unless somebody asked for it.
+ */
+describe('10. a place on a 2-2-2 plan', () => {
+  let planId = '';
+  let placeId = '';
+
+  /** Accented, em-dashed, and in the partner's own language on purpose. */
+  const NAME = 'Café Anglès';
+  const ADDRESS = 'Carrer dels Almogàvers 1, Barcelona';
+
+  it('books a 2-2-2 date night and attaches a place typed by hand', async () => {
+    const startsAt = new Date(Date.now() + 5 * 86_400_000).toISOString();
+
+    const newPlanId = cipherOf(alice).newId();
+    const newPlaceId = cipherOf(alice).newId();
+    const twoTwoTwo = cipherWithKey(coupleRoot, world.coupleId, 'two_two_two');
+
+    [planId, placeId] = await asUser(pool, alice, async (client) => {
+      const { rows: planRows } = await client.query<{ id: string }>(
+        `insert into public.plans (id, couple_id, domain, kind, payload, starts_at, status, created_by)
+         values ($1, $2, 'two_two_two', 'date_night', $3, $4, 'scheduled', $5)
+         returning id`,
+        [
+          newPlanId,
+          world.coupleId,
+          // The plan's own cipher is the 2-2-2 one — the domain subkey the
+          // other app cannot derive a payload from.
+          twoTwoTwo.seal(
+            { title: 'dinner', notes: null, location: `${NAME} — ${ADDRESS}` },
+            { table: 'plans', coupleId: world.coupleId, id: newPlanId },
+          ),
+          startsAt,
+          alice,
+        ],
+      );
+      const { rows: placeRows } = await client.query<{ id: string }>(
+        `insert into public.plan_places
+           (id, couple_id, domain, plan_id, payload, provider, attached_by)
+         values ($1, $2, 'two_two_two', $3, $4, 'manual', $5)
+         returning id`,
+        [
+          newPlaceId,
+          world.coupleId,
+          planRows[0]!.id,
+          twoTwoTwo.seal(
+            {
+              name: NAME,
+              address: ADDRESS,
+              providerPlaceId: null,
+              latitude: null,
+              longitude: null,
+              locale: 'es',
+            },
+            { table: 'plan_places', coupleId: world.coupleId, id: newPlaceId },
+          ),
+          alice,
+        ],
+      );
+      return [planRows[0]!.id, placeRows[0]!.id];
+    });
+
+    expect(planId).toBeTruthy();
+    expect(placeId).toBeTruthy();
+  });
+
+  it('shows Bob the place verbatim, accents and all', async () => {
+    const row = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query('select * from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows[0];
+    });
+
+    // Bob's device derives the same 2-2-2 content key from the couple key his
+    // own device unwrapped in step 2b, and opens what Alice's device sealed.
+    const place = toPlanPlace(row, cipherWithKey(coupleRoot, world.coupleId, 'two_two_two'));
+
+    // Authored text. Byte-identical, never machine-translated — the same
+    // property this suite already pins for a proposal's note.
+    expect(place.unreadable).toBe(false);
+    expect(place.name).toBe(NAME);
+    expect(place.address).toBe(ADDRESS);
+    // Labelled with the language it was written in, so Bob is told rather than
+    // shown a translation.
+    expect(place.locale).toBe('es');
+    // Nothing was searched, so there is nothing a provider gave us.
+    expect(place.provider).toBe('manual');
+    expect(place.coordinates).toBeNull();
+    expect(place.providerPlaceId).toBeNull();
+
+    // And to whoever runs the database, the row says only that this couple has
+    // a manually-entered place on a 2-2-2 plan.
+    const { rows } = await pool.query('select * from public.plan_places where id = $1', [placeId]);
+    const asText = JSON.stringify(rows[0]);
+    expect(asText).not.toContain(NAME);
+    expect(asText).not.toContain(ADDRESS);
+    expect(Object.keys(rows[0]!)).not.toContain('address');
+  });
+
+  it('keeps the address out of the calendar until someone opts in', async () => {
+    const place = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select * from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows[0];
+    });
+    expect(place.share_with_calendar).toBe(false);
+
+    // What the device would do with it. The plan is booked, so an entry is
+    // wanted — but the app's own opt-in check is what decides whether the
+    // address rides along, and nobody asked.
+    const plan = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select * from public.plans where id = $1', [planId]);
+      return toPlan(rows[0], cipherWithKey(coupleRoot, world.coupleId, 'two_two_two'));
+    });
+    const { toWrite } = calendarActions([plan], alice);
+
+    expect(toWrite).toHaveLength(1);
+    expect(place.share_with_calendar ? (plan.location ?? undefined) : undefined).toBeUndefined();
+  });
+
+  it('lets either partner opt the address in, and then it is the label', async () => {
+    await asUser(pool, bob, (client) =>
+      client.query('update public.plan_places set share_with_calendar = true where id = $1', [
+        placeId,
+      ]),
+    );
+
+    const twoTwoTwo = cipherWithKey(coupleRoot, world.coupleId, 'two_two_two');
+    const [place, plan] = await Promise.all([
+      asUser(pool, bob, async (client) => {
+        const { rows } = await client.query('select * from public.plan_places where id = $1', [
+          placeId,
+        ]);
+        return rows[0];
+      }),
+      asUser(pool, bob, async (client) => {
+        const { rows } = await client.query('select * from public.plans where id = $1', [planId]);
+        // The 2-2-2 cipher, deliberately: this is a 2-2-2 plan, and the
+        // intimacy cipher the rest of this file uses cannot open it. That is
+        // invariant 2 as arithmetic rather than convention.
+        return toPlan(rows[0], twoTwoTwo);
+      }),
+    ]);
+
+    expect(place.share_with_calendar).toBe(true);
+    // plans.location is the column that reaches a calendar entry, and it holds
+    // the label rather than a coordinate.
+    const written = place.share_with_calendar ? (plan.location ?? undefined) : undefined;
+    expect(written).toBe(`${NAME} — ${ADDRESS}`);
+    expect(written!.length).toBeLessThanOrEqual(200);
+  });
+
+  it('takes the place with it when the plan is deleted', async () => {
+    await asUser(pool, alice, (client) =>
+      client.query('delete from public.plans where id = $1', [planId]),
+    );
+
+    const left = await asUser(pool, alice, async (client) => {
+      const { rows } = await client.query('select id from public.plan_places where id = $1', [
+        placeId,
+      ]);
+      return rows;
+    });
+    expect(left).toEqual([]);
   });
 });

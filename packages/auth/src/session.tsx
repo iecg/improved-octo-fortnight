@@ -42,6 +42,16 @@ export interface SessionState {
    */
   setDisplayName: (name: string | null) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Give up the seat in this couple, from either app.
+   *
+   * Lives here rather than in an app because there is one pairing across both,
+   * so leaving from Two22 and leaving from the intimacy app are the same act.
+   * The database does the rest: a trigger rotates the invite code so the one
+   * the departing partner circulated stops working, and deletes the couple
+   * outright once nobody is left.
+   */
+  leaveCouple: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionState | null>(null);
@@ -175,6 +185,23 @@ export function createSessionModule(deps: {
       await supabase.auth.signOut();
     }, []);
 
+    /**
+     * The account survives; only the pairing ends. Reloading rather than
+     * signing out is what puts the router back on `/pair` — the same three
+     * states as a fresh install, minus the sign-in.
+     */
+    const leaveCouple = useCallback(async () => {
+      if (!profile) return;
+      // Leave first, forget second. The other order would throw the key away
+      // and then, on a failure, leave a device still in the couple and unable
+      // to read it. `forget` clears the keychain as well as memory: the couple
+      // this key belongs to is one the device has just left, and every row it
+      // could open is about to be deleted or handed to a new partner.
+      await accounts.leaveCouple(profile.id);
+      await keys.forget();
+      await refresh();
+    }, [profile, refresh]);
+
     const value = useMemo<SessionState>(
       () => ({
         loading,
@@ -187,6 +214,7 @@ export function createSessionModule(deps: {
         setLocale,
         setDisplayName,
         signOut,
+        leaveCouple,
       }),
       [
         loading,
@@ -199,6 +227,7 @@ export function createSessionModule(deps: {
         setLocale,
         setDisplayName,
         signOut,
+        leaveCouple,
       ],
     );
 

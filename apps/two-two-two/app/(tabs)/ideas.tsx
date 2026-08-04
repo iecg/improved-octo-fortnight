@@ -8,10 +8,20 @@
  * partner-authored, so it is shown verbatim and merely *labelled* with the
  * language it was written in when that differs from the reader's.
  *
- * That is the whole AI-optional rule in practice: nothing on this screen
- * asks whether a key is configured, because nothing here has a model in its
- * path. A suggestion feature would be a third source alongside these two, not
- * a replacement for them.
+ * Suggestions are the third source, and venues found on a map are the fourth.
+ * Both are exactly that — sources alongside the other two, never replacements
+ * for them. Everything above is rendered before anything asks whether a key is
+ * configured; with no key the suggestion card collapses to one line pointing at
+ * settings and the place search renders nothing at all, while the library and
+ * the shortlist carry on unchanged. That is both optional-dependency rules as a
+ * rendering decision rather than a promise: turn the keys off and this screen is
+ * the screen it was before either feature existed.
+ *
+ * A suggestion is written by a model rather than by us, so it is treated like
+ * a partner's own words rather than like chrome: generated in the reader's
+ * language, saved with that language recorded, shown verbatim, and labelled
+ * rather than machine-translated for whoever reads it in the other one. A
+ * venue's name is authored by neither of them and is handled the same way.
  */
 import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain, type PlanIdea } from '@couple/core';
 import {
@@ -31,12 +41,18 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
+import {
+  AiSuggestionCard,
+  usePlannerInputs,
+  type SuggestedIdea,
+} from '../../src/features/date-planner/ai';
+import { PlaceSearch } from '../../src/features/places/PlaceSearch';
 import { libraryFor, ideaSummaryKey, ideaTitleKey } from '../../src/ideas';
 import { useIdeas, useRemoveIdea, useSaveIdea } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 export default function Ideas() {
-  const { t, i18n } = useTranslation(['app', 'common', 'cadence', 'ideas']);
+  const { t, i18n } = useTranslation(['app', 'common', 'cadence', 'ideas', 'ai']);
   const { profile, couple } = usePairedSession();
   const router = useRouter();
 
@@ -44,6 +60,16 @@ export default function Ideas() {
 
   const [kind, setKind] = useState<string>(TWO_TWO_TWO_KINDS.date_night.kind);
   const [draft, setDraft] = useState('');
+
+  /**
+   * The suggestion form's own memory, borrowed.
+   *
+   * Both cards on this screen ask where the couple is planning around, and
+   * being asked twice on one screen is the kind of thing that reads as the app
+   * not paying attention. The screen hands both the same value; neither feature
+   * imports the other, because neither of them owns the question.
+   */
+  const plannerInputs = usePlannerInputs(kind);
 
   const ideasQuery = useIdeas(couple.id);
   const save = useSaveIdea(couple.id, profile.id);
@@ -57,8 +83,15 @@ export default function Ideas() {
   /** Ids already on the shortlist, so the library stops offering them. */
   const savedTitles = useMemo(() => new Set(saved.map((idea) => idea.title)), [saved]);
 
-  function planIt(title: string) {
-    router.push({ pathname: '/plan/new', params: { kind, title } });
+  /**
+   * Carry the idea's id, not its place.
+   *
+   * The booking screen looks the place up rather than having it passed: a
+   * coordinate pair in a navigation parameter is a string that has to be
+   * re-parsed and can go stale, and the place list is already loaded there.
+   */
+  function planIt(title: string, ideaId?: string) {
+    router.push({ pathname: '/plan/new', params: { kind, title, ...(ideaId ? { ideaId } : {}) } });
   }
 
   async function addOwn() {
@@ -69,6 +102,23 @@ export default function Ideas() {
     setDraft('');
   }
 
+  /**
+   * A suggestion joins the shortlist only when someone deliberately saves it,
+   * never because the other partner asked for some. It is stamped with the
+   * language it was generated in — the asker's — so the reader in the other
+   * language gets the label rather than a translation of a model's words.
+   */
+  async function saveSuggestion(idea: SuggestedIdea) {
+    await save.mutateAsync({
+      kind,
+      title: idea.title,
+      summary: idea.summary,
+      estCostBand: idea.estCostBand,
+      source: 'ai',
+      locale,
+    });
+  }
+
   function SavedIdea({ idea }: { idea: PlanIdea }) {
     return (
       <View className="gap-2 py-2">
@@ -77,12 +127,14 @@ export default function Ideas() {
         {idea.summary ? <Muted>{idea.summary}</Muted> : null}
         {/* Labelled, not translated, when it is not in the reader's language. */}
         {idea.locale !== locale ? <Muted>{t(`common:language.${idea.locale}`)}</Muted> : null}
+        {/* Who wrote it is separate from what language it is in, and both matter. */}
+        {idea.source === 'ai' ? <Muted>{t('app:ideas.fromAi')}</Muted> : null}
         <View className="flex-row gap-2">
           <View className="grow basis-0">
             <Button
               label={t('app:ideas.planIt')}
               variant="secondary"
-              onPress={() => planIt(idea.title)}
+              onPress={() => planIt(idea.title, idea.id)}
             />
           </View>
           <View className="grow basis-0">
@@ -150,6 +202,45 @@ export default function Ideas() {
           />
         </View>
       </Card>
+
+      <AiSuggestionCard
+        kind={kind}
+        locale={locale}
+        savedTitles={savedTitles}
+        onSave={(idea) => void saveSuggestion(idea)}
+        onPlan={planIt}
+      />
+
+      {/* The fourth source. Renders nothing at all when no mapping key is
+          configured — not even a line pointing at settings, because unlike the
+          suggestion card there is nothing for a partner to set up on their own
+          device. */}
+      <PlaceSearch
+        kind={kind}
+        town={plannerInputs.location}
+        onTownChange={plannerInputs.setLocation}
+        onPick={(result) =>
+          save.mutate({
+            kind,
+            title: result.name,
+            summary: result.address ?? null,
+            source: 'places',
+            sourceDomain: 'google',
+            locale,
+            // Kept as a place row, not just flattened into the summary above:
+            // the coordinates and the provider's id are what let this idea
+            // carry a map, a drive time and a stay search into the booking.
+            place: {
+              name: result.name,
+              address: result.address,
+              provider: 'google',
+              providerPlaceId: result.providerPlaceId,
+              coordinates: result.coordinates,
+              locale,
+            },
+          })
+        }
+      />
 
       <Card>
         <View className="gap-2">

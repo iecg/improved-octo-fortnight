@@ -31,13 +31,22 @@ export interface SaveIdeaInput {
   url?: string | null;
   estCostBand?: CostBand | null;
   source: IdeaSource;
+  /** Which provider named this. Null for library, manual, and ai. */
+  sourceDomain?: string | null;
   /** The language the title and summary are written in. */
   locale: Locale;
 }
 
 export interface IdeaRepository {
+  /**
+   * The whole shortlist, in one query.
+   *
+   * Deliberately not per kind. The ideas screen switches kinds with a chip
+   * row and filters this list in memory, which is instant and needs no
+   * refetch — and there is one cache key and one realtime handler for the
+   * list rather than one of each per kind.
+   */
   list(coupleId: string): Promise<PlanIdea[]>;
-  listForKind(coupleId: string, kind: string): Promise<PlanIdea[]>;
   save(input: SaveIdeaInput): Promise<PlanIdea>;
   remove(ideaId: string): Promise<void>;
 }
@@ -57,18 +66,6 @@ export function createIdeaRepository(
         .select('*')
         .eq('couple_id', coupleId)
         .eq('domain', DOMAIN)
-        .order('created_at', { ascending: false });
-      if (error) throw new Error(error.message);
-      return (data ?? []).map((row) => toPlanIdea(row, cipher));
-    },
-
-    async listForKind(coupleId, kind) {
-      const { data, error } = await client
-        .from('plan_ideas')
-        .select('*')
-        .eq('couple_id', coupleId)
-        .eq('domain', DOMAIN)
-        .eq('kind', kind)
         .order('created_at', { ascending: false });
       if (error) throw new Error(error.message);
       return (data ?? []).map((row) => toPlanIdea(row, cipher));
@@ -101,6 +98,7 @@ export function createIdeaRepository(
             { table: 'plan_ideas', coupleId: input.coupleId, id },
           ),
           source: input.source,
+          source_domain: input.sourceDomain ?? null,
         })
         .select()
         .single();

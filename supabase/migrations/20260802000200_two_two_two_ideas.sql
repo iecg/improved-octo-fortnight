@@ -32,6 +32,10 @@ create table public.plan_ideas (
   -- where an idea came from, never what it is, and it is what the `ai_usage`
   -- story reasons about.
   source text not null check (source in ('library', 'ai', 'manual')),
+  -- Which provider named this idea, for the sources that came from one.
+  -- Readable alongside `source` for the same reason: it is provenance rather
+  -- than content — where an idea came from, not what it says.
+  source_domain text,
   saved_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   constraint plan_ideas_payload_format check (payload ~ '^[A-Za-z0-9+/]+={0,2}$'),
@@ -70,8 +74,15 @@ create policy plan_ideas_delete_member on public.plan_ideas
   for delete to authenticated
   using (public.is_couple_member(couple_id));
 
--- Readable so the UI can show what is left today; only the Edge Function's
--- service role increments it, so there is no insert or update policy here.
+-- Readable so the UI can show what is left today; only a service role could
+-- increment it, so there is no insert or update policy here.
+--
+-- Nothing increments it today. Suggestions are BYOK: the key is the user's own
+-- and the request goes from their device straight to the provider, so there is
+-- no server of ours in that path to do the counting. This is the table a
+-- metered path would write from, and it stays empty until there is one. (The
+-- places function is the other case — it holds *our* key, so it really does
+-- write `places_usage` with a service role.)
 create policy ai_usage_select_member on public.ai_usage
   for select to authenticated
   using (public.is_couple_member(couple_id));

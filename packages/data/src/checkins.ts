@@ -18,7 +18,6 @@ export interface RecordCheckinInput {
   /** `YYYY-MM-DD` in the couple's timezone. */
   onDate: string;
   interest: CheckinInterest;
-  energy?: number | null;
   note?: string | null;
 }
 
@@ -75,11 +74,7 @@ export function createCheckinRepository(
             // discards anything the client sent — so an id-bound payload would
             // open on the first tap of the day and fail on the second.
             payload: cipher.seal(
-              {
-                interest: input.interest,
-                energy: input.energy ?? null,
-                note: input.note ?? null,
-              },
+              { interest: input.interest, note: input.note ?? null },
               {
                 table: 'checkins',
                 coupleId: input.coupleId,

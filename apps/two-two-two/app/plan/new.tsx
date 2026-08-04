@@ -6,22 +6,48 @@
  * `scheduled`, because there is no negotiation step here: a getaway either has
  * a date or it does not.
  *
- * Days and times are chosen from chips rather than a native picker. That is
- * not a shortcut for its own sake — the whole screen then needs no native
- * module, works in Expo Go, and matches how the other app already asks the
- * same question. All of the date arithmetic goes through `@couple/cadence`
- * against the couple's timezone; none of it happens here.
+ * Days and times are chosen from chips rather than a native picker, matching
+ * how the other app already asks the same question. All of the date arithmetic
+ * goes through `@couple/cadence` against the couple's timezone; none of it
+ * happens here.
+ *
+ * Choices that clash with something already spoken for are marked, from three
+ * sources that answer progressively more of the question:
+ *
+ *   * This app's own plans, straight out of the query the screen already runs.
+ *     Free, and needs no permission from anyone.
+ *   * The phone's calendar, if access was granted. Catches the couple's whole
+ *     life, not just what these two apps know about.
+ *   * The server's busy view, *if the reader has turned it on* — occupied
+ *     windows across both apps, times and nothing else. Off by default, and
+ *     the only source that can see the other app.
+ *
+ * Every one of them is a hint. Any can be absent and the screen still books a
+ * plan; nothing here is gated on the other app existing, on a permission, or
+ * on a setting. Marks are never a block either — deciding to overlap is the
+ * couple's business.
  */
-import { addInterval, atHourInZone } from '@couple/cadence';
-import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain } from '@couple/core';
+import {
+  addInterval,
+  atHourInZone,
+  busyFromPlans,
+  mergeRanges,
+  overlapsAny,
+  type TimeRange,
+} from '@couple/cadence';
+import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain, type PlaceProvider } from '@couple/core';
+import { hasCalendarAccess, readBusyBlocks } from '@couple/device';
 import { formatDay, formatTime } from '@couple/i18n';
 import { Body, Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
-import { useCreatePlan } from '../../src/queries';
+import { normalizeManualPlace } from '../../src/features/places/label';
+import type { PlaceResult } from '../../src/features/places/maps/types';
+import { PlaceSearch } from '../../src/features/places/PlaceSearch';
+import { useCreatePlan, usePlaces, usePlans, useServerBusy } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 /** How far ahead the day chips run. A trip booked further out can be edited later. */
@@ -42,7 +68,7 @@ const DURATIONS: Record<string, { unit: 'hour' | 'night'; values: number[]; defa
   };
 
 export default function NewPlan() {
-  const { t, i18n } = useTranslation(['app', 'common', 'cadence', 'plans']);
+  const { t, i18n } = useTranslation(['app', 'common', 'cadence', 'plans', 'places']);
   const { profile, couple } = usePairedSession();
   const router = useRouter();
 
@@ -53,7 +79,7 @@ export default function NewPlan() {
   // Arriving from a card on the rhythm screen preselects that commitment. An
   // unrecognised param is ignored rather than trusted — it reaches a `kind`
   // column with a slug constraint on it.
-  const params = useLocalSearchParams<{ kind?: string; title?: string }>();
+  const params = useLocalSearchParams<{ kind?: string; title?: string; ideaId?: string }>();
   const [kind, setKind] = useState<string>(
     params.kind && params.kind in TWO_TWO_TWO_KINDS
       ? params.kind
@@ -61,6 +87,25 @@ export default function NewPlan() {
   );
   // Arriving from the ideas screen prefills the title, still editable.
   const [title, setTitle] = useState(params.title ?? '');
+  // Typed by hand. Nothing on this screen asks whether a mapping provider
+  // exists, which is what keeps the whole screen working without one — a
+  // searched place only ever fills these in for you.
+  const [place, setPlace] = useState('');
+  const [found, setFound] = useState<PlaceResult | null>(null);
+  const [shareAddress, setShareAddress] = useState(false);
+
+  /**
+   * A venue the shortlist already knows about.
+   *
+   * Arriving from an idea that was found on a map, this is where its
+   * coordinates and provider id come back — so booking it keeps the map, the
+   * drive time and the stay search instead of degrading to the name alone.
+   * Undefined for every other route into this screen, which is most of them.
+   */
+  const placesQuery = usePlaces(couple.id);
+  const ideaPlace = params.ideaId
+    ? (placesQuery.data ?? []).find((candidate) => candidate.ideaId === params.ideaId)
+    : undefined;
   const [dayIndex, setDayIndex] = useState(0);
   const [hour, setHour] = useState<number | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
@@ -84,22 +129,117 @@ export default function NewPlan() {
     return out;
   }, [now, timeZone]);
 
-  const startsAt = useMemo(
-    () => atHourInZone(days[dayIndex] ?? now, chosenHour, timeZone),
-    [days, dayIndex, now, chosenHour, timeZone],
+  /**
+   * The span a plan would occupy if it started on `day` at `hourValue`.
+   *
+   * Shared by the chosen range and by the conflict marks, so a chip can never
+   * disagree with what saving would actually book.
+   */
+  const rangeFor = useCallback(
+    (day: Date, hourValue: number): TimeRange => {
+      const start = atHourInZone(day, hourValue, timeZone);
+      const end =
+        shape.unit === 'hour'
+          ? new Date(start.getTime() + chosenDuration * 3_600_000)
+          : // Nights land on the same wall-clock hour N days later, not 24h × N.
+            atHourInZone(addInterval(start, chosenDuration, 'day', timeZone), hourValue, timeZone);
+      return { start, end };
+    },
+    [shape.unit, chosenDuration, timeZone],
   );
 
-  const endsAt = useMemo(() => {
-    if (shape.unit === 'hour') {
-      return new Date(startsAt.getTime() + chosenDuration * 3_600_000);
-    }
-    // Nights land on the same wall-clock hour N days later, not 24h × N.
-    return atHourInZone(
-      addInterval(startsAt, chosenDuration, 'day', timeZone),
-      chosenHour,
-      timeZone,
-    );
-  }, [shape.unit, startsAt, chosenDuration, chosenHour, timeZone]);
+  const { start: startsAt, end: endsAt } = useMemo(
+    () => rangeFor(days[dayIndex] ?? now, chosenHour),
+    [rangeFor, days, dayIndex, now, chosenHour],
+  );
+
+  /**
+   * What a conflict is judged against — the *first day* of a multi-night span,
+   * not the whole thing.
+   *
+   * A 14-night trip overlaps everything in the next fortnight, so checking the
+   * full span marks every chip and the mark stops meaning anything. It is also
+   * not the question being asked: moving the departure day moves the whole
+   * window, so a clash on night six travels with it. The clash you can act on
+   * by picking a different chip is the one on the day you leave.
+   *
+   * Date nights are hours, not nights, so their full span is the first day and
+   * this changes nothing for them.
+   */
+  const conflictRangeFor = useCallback(
+    (day: Date, hourValue: number): TimeRange => {
+      const span = rangeFor(day, hourValue);
+      if (shape.unit === 'hour') return span;
+      const firstDayEnd = atHourInZone(
+        addInterval(span.start, 1, 'day', timeZone),
+        hourValue,
+        timeZone,
+      );
+      return { start: span.start, end: span.end < firstDayEnd ? span.end : firstDayEnd };
+    },
+    [rangeFor, shape.unit, timeZone],
+  );
+
+  /**
+   * Busy blocks from the phone's own calendar.
+   *
+   * `null` means "we do not know" — permission refused, or not yet answered —
+   * and is deliberately distinct from `[]`, an empty fortnight.
+   */
+  const [deviceBusy, setDeviceBusy] = useState<TimeRange[] | null>(null);
+
+  // One day past the last chip, so the last day's first night is covered.
+  const searchTo = useMemo(
+    () => addInterval(now, DAY_CHOICES + 1, 'day', timeZone),
+    [now, timeZone],
+  );
+
+  useEffect(() => {
+    void (async () => {
+      if (!(await hasCalendarAccess())) return;
+      setDeviceBusy(await readBusyBlocks(now, searchTo));
+    })();
+  }, [now, searchTo]);
+
+  const plansQuery = usePlans(couple.id);
+  // Reads nothing unless the reader turned cross-app busy on; the hook owns
+  // that check so no screen can skip it.
+  const serverBusy = useServerBusy(couple.id, now, searchTo);
+
+  /**
+   * Everything the screen knows about, coalesced once.
+   *
+   * `mergeRanges` sorts and joins, so overlapping answers from two sources —
+   * this app's own plan, and the calendar entry it wrote for it — collapse into
+   * one block rather than being counted twice.
+   */
+  const busy = useMemo(
+    () =>
+      mergeRanges([
+        ...busyFromPlans(plansQuery.data ?? []),
+        ...(deviceBusy ?? []),
+        ...(serverBusy.data ?? []),
+      ]),
+    [plansQuery.data, deviceBusy, serverBusy.data],
+  );
+
+  // Each day judged at the currently chosen hour, and each hour on the
+  // currently chosen day — so the marks answer "if I changed just this one
+  // thing", which is the question a chip actually poses.
+  const busyDays = useMemo(
+    () => days.map((day) => overlapsAny(conflictRangeFor(day, chosenHour), busy)),
+    [busy, days, conflictRangeFor, chosenHour],
+  );
+
+  const busyHours = useMemo(
+    () =>
+      HOUR_CHOICES.map((value) =>
+        overlapsAny(conflictRangeFor(days[dayIndex] ?? now, value), busy),
+      ),
+    [busy, days, dayIndex, now, conflictRangeFor],
+  );
+
+  const anyBusy = busyDays.some(Boolean) || busyHours.some(Boolean);
 
   function durationLabel(value: number): string {
     return shape.unit === 'hour'
@@ -107,12 +247,56 @@ export default function NewPlan() {
       : t('app:plan.nights', { count: value });
   }
 
+  /**
+   * The place this booking will carry.
+   *
+   * Typed text wins, because it is what is on screen. With the field empty, an
+   * idea's own place comes along instead — that is what keeps a venue found on
+   * a map from decaying into its name between the shortlist and the booking.
+   * Null when there is neither.
+   *
+   * Derived rather than copied into state on load: the place list arrives
+   * asynchronously, and an effect that seeds a text field from a query is a
+   * race with whoever is already typing into it.
+   */
+  const typedName = normalizeManualPlace(place);
+  // A searched result only counts while the field still holds its name — if the
+  // text was edited afterwards, what is on screen is what gets saved.
+  const searched = found && found.name === typedName ? found : null;
+
+  const chosenPlace = typedName
+    ? {
+        name: typedName,
+        address: searched?.address ?? null,
+        provider: (searched ? 'google' : 'manual') as PlaceProvider,
+        providerPlaceId: searched?.providerPlaceId ?? null,
+        coordinates: searched?.coordinates ?? null,
+      }
+    : ideaPlace
+      ? {
+          name: ideaPlace.name,
+          address: ideaPlace.address,
+          provider: ideaPlace.provider,
+          providerPlaceId: ideaPlace.providerPlaceId,
+          coordinates: ideaPlace.coordinates,
+        }
+      : null;
+
   async function save() {
     await create.mutateAsync({
       kind,
       title: title.trim() || null,
       startsAt,
       endsAt,
+      place: chosenPlace
+        ? {
+            ...chosenPlace,
+            // The language it was typed or returned in, so a partner reading in
+            // the other one is told rather than shown a translation.
+            locale,
+            shareWithCalendar: shareAddress,
+          }
+        : null,
     });
     router.back();
   }
@@ -159,6 +343,46 @@ export default function NewPlan() {
       </Card>
 
       <Card>
+        <View className="gap-2">
+          <Heading>{t('places:label')}</Heading>
+          <TextInput
+            className="min-h-12 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
+            value={place}
+            onChangeText={setPlace}
+            placeholder={t('places:manual.placeholder')}
+            accessibilityLabel={t('places:label')}
+          />
+          <Muted>{t('places:manual.hint')}</Muted>
+          {/* Renders nothing at all when no mapping key is configured, which
+              leaves the text field above as the whole feature. */}
+          <PlaceSearch
+            kind={kind}
+            onPick={(result) => {
+              setFound(result);
+              setPlace(result.name);
+            }}
+          />
+          {/* The address of whatever is actually coming along — a searched
+              result, or the place an idea arrived with. */}
+          {chosenPlace?.address ? <Muted>{chosenPlace.address}</Muted> : null}
+          {/* Came from the shortlist and nothing has been typed over it, so say
+              so rather than leaving an empty field looking like no place. */}
+          {!typedName && ideaPlace ? <Muted>{ideaPlace.name}</Muted> : null}
+          {/* Only worth asking once there is a place to share. */}
+          {chosenPlace ? (
+            <View className="gap-2">
+              <Chip
+                label={t('places:calendar.share')}
+                selected={shareAddress}
+                onPress={() => setShareAddress((on) => !on)}
+              />
+              <Muted>{t('places:calendar.shareHint')}</Muted>
+            </View>
+          ) : null}
+        </View>
+      </Card>
+
+      <Card>
         <View className="gap-3">
           <Heading>{t('app:plan.when')}</Heading>
           <View className="flex-row flex-wrap gap-2">
@@ -167,10 +391,17 @@ export default function NewPlan() {
                 key={day.toISOString()}
                 label={formatDay(day, locale, timeZone)}
                 selected={dayIndex === index}
+                busy={busyDays[index]}
+                accessibilityLabel={
+                  busyDays[index]
+                    ? t('app:plan.busyOption', { option: formatDay(day, locale, timeZone) })
+                    : undefined
+                }
                 onPress={() => setDayIndex(index)}
               />
             ))}
           </View>
+          {anyBusy ? <Muted>{t('app:plan.busyHint')}</Muted> : null}
         </View>
       </Card>
 
@@ -178,14 +409,21 @@ export default function NewPlan() {
         <View className="gap-3">
           <Heading>{t('app:plan.startTime')}</Heading>
           <View className="flex-row gap-2">
-            {HOUR_CHOICES.map((value) => (
-              <Chip
-                key={value}
-                label={formatTime(atHourInZone(startsAt, value, timeZone), locale, timeZone)}
-                selected={chosenHour === value}
-                onPress={() => setHour(value)}
-              />
-            ))}
+            {HOUR_CHOICES.map((value, index) => {
+              const label = formatTime(atHourInZone(startsAt, value, timeZone), locale, timeZone);
+              return (
+                <Chip
+                  key={value}
+                  label={label}
+                  selected={chosenHour === value}
+                  busy={busyHours[index]}
+                  accessibilityLabel={
+                    busyHours[index] ? t('app:plan.busyOption', { option: label }) : undefined
+                  }
+                  onPress={() => setHour(value)}
+                />
+              );
+            })}
           </View>
         </View>
       </Card>

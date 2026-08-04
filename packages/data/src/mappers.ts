@@ -21,15 +21,19 @@ import {
   COST_BANDS,
   LOCALES,
   type AppDomain,
+  type BusyWindow,
   type Cadence,
   type Checkin,
   type CheckinInterest,
+  type Coordinates,
   type CostBand,
   type Couple,
   type IdeaSource,
   type Locale,
+  type PlaceProvider,
   type Plan,
   type PlanIdea,
+  type PlanPlace,
   type PlanProposal,
   type Profile,
 } from '@couple/core';
@@ -38,6 +42,7 @@ import type { FieldCipher, RecordIdentity } from '@couple/crypto';
 import type { Database, Json } from './database.types';
 
 type Tables = Database['public']['Tables'];
+type Views = Database['public']['Views'];
 type Fields = Record<string, unknown> | null;
 
 function open(cipher: FieldCipher, blob: string, identity: RecordIdentity): Fields {
@@ -51,11 +56,6 @@ function open(cipher: FieldCipher, blob: string, identity: RecordIdentity): Fiel
 function text(fields: Fields, key: string): string | null {
   const value = fields?.[key];
   return typeof value === 'string' ? value : null;
-}
-
-function count(fields: Fields, key: string): number | null {
-  const value = fields?.[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 /**
@@ -201,8 +201,60 @@ export function toPlanIdea(row: Tables['plan_ideas']['Row'], cipher: FieldCipher
     url: text(fields, 'url'),
     estCostBand: token<CostBand>(fields, 'estCostBand', COST_BANDS),
     source: row.source as IdeaSource,
+    sourceDomain: row.source_domain,
     locale: token<Locale>(fields, 'locale', LOCALES) ?? 'en',
     savedBy: row.saved_by,
+    createdAt: row.created_at,
+    unreadable: fields === null,
+  };
+}
+
+/**
+ * Coordinates come out of the payload now rather than out of two `numeric`
+ * columns, so they arrive as whatever JSON carried — but the coercion stays.
+ * It cost nothing and it is the only thing standing between a caller and
+ * string arithmetic on `"41.385064"` if a payload was ever written by hand.
+ *
+ * A half-set pair is treated as no coordinate at all. The table used to forbid
+ * it with a `check`; that constraint could not survive the columns moving
+ * inside the blob, so this mapper is now the only thing enforcing it on read.
+ */
+function toCoordinates(latitude: unknown, longitude: unknown): Coordinates | null {
+  if (
+    latitude === null ||
+    longitude === null ||
+    latitude === undefined ||
+    longitude === undefined
+  ) {
+    return null;
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  return { latitude: lat, longitude: lng };
+}
+
+export function toPlanPlace(row: Tables['plan_places']['Row'], cipher: FieldCipher): PlanPlace {
+  const fields = open(cipher, row.payload, {
+    table: 'plan_places',
+    coupleId: row.couple_id,
+    id: row.id,
+  });
+
+  return {
+    id: row.id,
+    coupleId: row.couple_id,
+    domain: row.domain as AppDomain,
+    planId: row.plan_id,
+    ideaId: row.idea_id,
+    name: text(fields, 'name') ?? '',
+    address: text(fields, 'address'),
+    provider: row.provider as PlaceProvider,
+    providerPlaceId: text(fields, 'providerPlaceId'),
+    coordinates: toCoordinates(fields?.latitude, fields?.longitude),
+    locale: token<Locale>(fields, 'locale', LOCALES) ?? 'en',
+    shareWithCalendar: row.share_with_calendar,
+    attachedBy: row.attached_by,
     createdAt: row.created_at,
     unreadable: fields === null,
   };
@@ -225,9 +277,19 @@ export function toCheckin(row: Tables['checkins']['Row'], cipher: FieldCipher): 
     // nobody can read, and inventing one would put words in a partner's mouth
     // — which is the one thing this table must never do.
     interest: token<CheckinInterest>(fields, 'interest', CHECKIN_INTERESTS),
-    energy: count(fields, 'energy'),
     note: text(fields, 'note'),
     createdAt: row.created_at,
     unreadable: fields === null,
   };
+}
+
+/**
+ * The one mapper over a view rather than a table.
+ *
+ * Returns `Date`s rather than the ISO strings every other mapper passes
+ * through, because the only consumer is the cadence engine's range arithmetic
+ * and handing it strings would push the parsing into a screen.
+ */
+export function toBusyWindow(row: Views['plan_busy_times']['Row']): BusyWindow {
+  return { start: new Date(row.starts_at), end: new Date(row.ends_at) };
 }

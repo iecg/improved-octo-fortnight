@@ -1,7 +1,12 @@
 -- Row Level Security.
 --
--- Every policy lives in this one file so the entire access surface can be read
--- top to bottom in a review. The shape repeats deliberately:
+-- Every policy for the tables that existed when this was written lives here, so
+-- the shared access surface reads top to bottom in a review. Tables added later
+-- carry their own policies beside their own `create table` — `plan_ideas` and
+-- `ai_usage` in `20260802000200_two_two_two_ideas.sql`. Do not assume this file
+-- is the whole surface; `tests/rls/policies.test.ts` is what enumerates it.
+--
+-- The shape repeats deliberately:
 --
 --   read/write  -> public.is_couple_member(couple_id)
 --   authorship  -> the acting column must equal auth.uid()
