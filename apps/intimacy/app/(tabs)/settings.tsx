@@ -6,7 +6,7 @@
  * in reverse: they protect this phone, and syncing them would let one partner
  * turn off the other's lock.
  */
-import { DeviceListCard, InvitePanel, RecoveryCodeCard } from '@couple/auth';
+import { DeviceListCard, DisplayNameCard, InvitePanel, RecoveryCodeCard } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
@@ -27,7 +27,7 @@ import { useSession } from '../../src/session';
 
 export default function Settings() {
   const { t } = useTranslation(['app', 'common', 'auth']);
-  const { couple, partner, profile, session, setLocale, signOut } = useSession();
+  const { couple, partner, profile, session, setDisplayName, setLocale, signOut } = useSession();
   const router = useRouter();
 
   const [lockAvailable, setLockAvailable] = useState(false);
@@ -157,6 +157,13 @@ export default function Settings() {
           />
         </View>
       </Card>
+
+      {/* Directly under the card that names your partner, because this is the
+          other half of that sentence. Only once there is a couple: a name is
+          sealed under the couple key and is for exactly one reader. */}
+      {couple ? (
+        <DisplayNameCard displayName={profile?.displayName ?? null} onSave={setDisplayName} />
+      ) : null}
 
       {/*
         The invite code, and the approval that follows it, in the one place you

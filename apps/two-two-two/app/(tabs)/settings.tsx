@@ -1,4 +1,4 @@
-import { DeviceListCard, InvitePanel, RecoveryCodeCard } from '@couple/auth';
+import { DeviceListCard, DisplayNameCard, InvitePanel, RecoveryCodeCard } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import { hasCalendarAccess, requestCalendarAccess } from '@couple/device';
 import { Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
@@ -12,7 +12,7 @@ import { useSession } from '../../src/session';
 
 export default function Settings() {
   const { t } = useTranslation(['app', 'common', 'auth']);
-  const { couple, partner, profile, session, setLocale, signOut } = useSession();
+  const { couple, partner, profile, session, setDisplayName, setLocale, signOut } = useSession();
   const router = useRouter();
   const [calendarOk, setCalendarOk] = useState(false);
 
@@ -80,6 +80,13 @@ export default function Settings() {
           />
         </View>
       </Card>
+
+      {/* Directly under the card that names your partner, because this is the
+          other half of that sentence. Only once there is a couple: a name is
+          sealed under the couple key and is for exactly one reader. */}
+      {couple ? (
+        <DisplayNameCard displayName={profile?.displayName ?? null} onSave={setDisplayName} />
+      ) : null}
 
       {/* The same panel the pairing screen shows — one pairing across both apps
           means one place that explains where it stands. */}

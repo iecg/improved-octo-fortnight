@@ -32,6 +32,15 @@ export interface SessionState {
   keyState: KeyState;
   refresh: () => Promise<void>;
   setLocale: (locale: Locale) => Promise<void>;
+  /**
+   * Set or clear your own display name.
+   *
+   * Alongside `setLocale` rather than left to each screen, because it is the
+   * same shape — write the profile, update the one copy of it every screen
+   * reads — and because the name is sealed under the couple key, so it needs
+   * the repository this module already holds rather than one a screen builds.
+   */
+  setDisplayName: (name: string | null) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -145,6 +154,17 @@ export function createSessionModule(deps: {
       [profile],
     );
 
+    const setDisplayName = useCallback(
+      async (name: string | null) => {
+        if (!profile) return;
+        // `updateProfile` normalises and enforces the length rule; a screen
+        // that checked first is being helpful, not authoritative.
+        const updated = await accounts.updateProfile(profile.id, { displayName: name });
+        setProfile(updated);
+      },
+      [profile],
+    );
+
     const signOut = useCallback(async () => {
       // Memory only. The keychain copy stays, so signing back in on your own
       // phone does not need another approval — but nothing readable survives
@@ -165,9 +185,21 @@ export function createSessionModule(deps: {
         keyState,
         refresh,
         setLocale,
+        setDisplayName,
         signOut,
       }),
-      [loading, session, profile, couple, partner, keyState, refresh, setLocale, signOut],
+      [
+        loading,
+        session,
+        profile,
+        couple,
+        partner,
+        keyState,
+        refresh,
+        setLocale,
+        setDisplayName,
+        signOut,
+      ],
     );
 
     return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

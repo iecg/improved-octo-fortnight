@@ -20,8 +20,8 @@
  *    needs a hardware dev build.
  */
 import { addInterval, calendarActions, computeCadenceStatus } from '@couple/cadence';
-import type { Cadence, Plan } from '@couple/core';
-import { toPlan } from '@couple/data';
+import { DISPLAY_NAME_MAX, displayNameLength, type Cadence, type Plan } from '@couple/core';
+import { toPlan, toProfile } from '@couple/data';
 import { createI18n } from '@couple/i18n';
 import { differenceInCalendarDays } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -913,5 +913,81 @@ describe('8. losing both devices', () => {
         epoch: stored.epoch,
       }),
     ).rejects.toThrow();
+  });
+});
+
+/**
+ * The one rule encryption took off the server.
+ *
+ * `profiles.display_name` used to be a plain column with a 1..80 `CHECK`. What
+ * the server holds now is `name_payload`, and `profiles_name_payload_bounded`
+ * bounds the *ciphertext* at 64..1000 base64 characters — a ceiling to stop the
+ * column becoming blob storage, not a measurement of the name inside it.
+ *
+ * Those two limits were written at different times and never checked against
+ * each other. A name at the client-side maximum has to clear the server-side
+ * one after JSON framing, 64-byte padding and base64, and a one-character name
+ * has to reach the floor. Neither is obvious by inspection, and getting it
+ * wrong means a constraint violation on a name somebody actually typed.
+ */
+describe('9. putting a name to it', () => {
+  function sealName(name: string, profileId: string): string {
+    return cipherWithKey(coupleRoot, world.coupleId, 'shared').seal(
+      { displayName: name },
+      { table: 'profiles', coupleId: world.coupleId, profileId },
+    );
+  }
+
+  it('accepts a name at the client-side maximum, in its longest possible form', async () => {
+    // 80 code points of four UTF-8 bytes each — the worst case the rule admits,
+    // and 320 bytes rather than the 80 an ASCII reading would assume.
+    const longest = '😀'.repeat(DISPLAY_NAME_MAX);
+    expect(displayNameLength(longest)).toBe(DISPLAY_NAME_MAX);
+
+    const payload = sealName(longest, alice);
+    expect(payload.length).toBeGreaterThanOrEqual(64);
+    expect(payload.length).toBeLessThanOrEqual(1000);
+
+    await asUser(pool, alice, (client) =>
+      client.query('update public.profiles set name_payload = $1 where id = $2', [payload, alice]),
+    );
+  });
+
+  it('reaches the floor with a one-character name', async () => {
+    // The other end: 64 is a *minimum*, and a short name padded to one bucket
+    // has to clear it. It does, because the header, nonce and tag alone are 46
+    // bytes before any content.
+    const payload = sealName('A', bob);
+    expect(payload.length).toBeGreaterThanOrEqual(64);
+
+    await asUser(pool, bob, (client) =>
+      client.query('update public.profiles set name_payload = $1 where id = $2', [payload, bob]),
+    );
+  });
+
+  it('shows each partner the other by name, and the server neither', async () => {
+    const seen = await asUser(pool, bob, async (client) => {
+      const { rows } = await client.query('select * from public.profiles order by id');
+      return rows.map((row) =>
+        toProfile(row, cipherWithKey(coupleRoot, world.coupleId, 'shared'), world.coupleId),
+      );
+    });
+
+    const names = new Map(seen.map((profile) => [profile.id, profile.displayName]));
+    expect(names.get(alice)).toBe('😀'.repeat(DISPLAY_NAME_MAX));
+    expect(names.get(bob)).toBe('A');
+    expect(seen.every((profile) => !profile.unreadable)).toBe(true);
+
+    // And as owner, which is what an operator is: base64 and nothing else.
+    // Checked against Alice's name rather than Bob's — 'A' would turn up in
+    // base64 by chance, which would make the assertion a coin toss instead of
+    // a statement.
+    const { rows } = await pool.query('select * from public.profiles where id = $1', [alice]);
+    const asText = JSON.stringify(rows[0]);
+
+    expect(rows[0]!.name_payload).toMatch(/^[A-Za-z0-9+/]+={0,2}$/);
+    expect(asText).not.toContain('😀');
+    // No leftover column to read it out of, either.
+    expect(Object.keys(rows[0]!)).not.toContain('display_name');
   });
 });

@@ -152,7 +152,19 @@ winter runtime supplies `TextDecoder` but not `TextEncoder` and Hermes has no
 
 Per-field length limits are enforced client-side now; the `CHECK` constraints
 bound ciphertext only. That moves an integrity rule off the server, though the
-only party it ever protected against was the couple themselves.
+only party it ever protected against was the couple themselves. The display
+name's 1..80 rule lives in `packages/core/src/name.ts` — in `core` rather than
+beside the seal because the repository and the screen both need the same answer,
+and a rule enforced in one and guessed at in the other is how the two drift. It
+counts **code points**, so an emoji is the one character it looks like.
+
+The two limits were written at different times and are checked against each
+other rather than assumed: `tests/e2e/journey.test.ts` seals a name of 80
+four-byte characters — the longest the rule admits, 320 bytes rather than the 80
+an ASCII reading would suggest — and asserts the result lands inside
+`profiles_name_payload_bounded`'s 64..1000. It comes to ~576 base64 characters,
+so there is room; at 300 it would be 1768 and the insert would fail on a name
+somebody had actually typed.
 
 `tests/guards/no-plaintext-content.test.ts` is what keeps this true: an
 allowlist of every column of every table, cross-checked against every key
