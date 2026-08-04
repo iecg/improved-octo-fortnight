@@ -1,15 +1,19 @@
+import { DeviceListCard, InvitePanel, RecoveryCodeCard } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import { hasCalendarAccess, requestCalendarAccess } from '@couple/device';
 import { Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { keyService } from '../../src/runtime';
 import { useSession } from '../../src/session';
 
 export default function Settings() {
-  const { t } = useTranslation(['app', 'common']);
-  const { profile, partner, setLocale, signOut } = useSession();
+  const { t } = useTranslation(['app', 'common', 'auth']);
+  const { couple, partner, profile, session, setLocale, signOut } = useSession();
+  const router = useRouter();
   const [calendarOk, setCalendarOk] = useState(false);
 
   useEffect(() => {
@@ -65,12 +69,37 @@ export default function Settings() {
               : t('app:settings.notPaired')}
           </Muted>
           <Button
+            label={t('auth:keys.approve.entry')}
+            variant="secondary"
+            onPress={() => router.push('/approve')}
+          />
+          <Button
             label={t('app:settings.signOut')}
             variant="secondary"
             onPress={() => void signOut()}
           />
         </View>
       </Card>
+
+      {/* The same panel the pairing screen shows — one pairing across both apps
+          means one place that explains where it stands. */}
+      {session && couple ? (
+        <InvitePanel
+          keys={keyService}
+          coupleId={couple.id}
+          profileId={session.user.id}
+          code={partner ? null : couple.inviteCode}
+        />
+      ) : null}
+
+      {/* One couple key underneath both apps, so these say the same thing in
+          either — and saving a code in one app saves it for both. */}
+      {session && couple ? (
+        <>
+          <RecoveryCodeCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+          <DeviceListCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+        </>
+      ) : null}
     </Screen>
   );
 }

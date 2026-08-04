@@ -38,11 +38,21 @@ export type ProposalResponse = (typeof PROPOSAL_RESPONSES)[number];
 export const CHECKIN_INTERESTS = ['yes', 'maybe', 'not_tonight'] as const;
 export type CheckinInterest = (typeof CHECKIN_INTERESTS)[number];
 
+/**
+ * The decrypted shape. `displayName` arrives sealed and is opened by the
+ * mapper, so a screen sees the same field it always did.
+ */
 export interface Profile {
   id: string;
   displayName: string | null;
   timezone: string;
   locale: Locale;
+  /**
+   * True when the sealed name could not be opened — a wrong key or tampering.
+   * Never true in normal operation; it exists so the failure is a placeholder
+   * rather than a crash. Same field, same meaning, on Plan/PlanIdea/Checkin.
+   */
+  unreadable: boolean;
 }
 
 export interface Couple {
@@ -85,6 +95,9 @@ export interface Plan {
    */
   calendarEventIds: Record<string, string>;
   createdAt: string;
+  /** Carried so an edit can be written with a precondition; see updatePlan. */
+  updatedAt: string;
+  unreadable: boolean;
 }
 
 export interface PlanProposal {
@@ -134,6 +147,7 @@ export interface PlanIdea {
   /** Null once the person who saved it deletes their account. */
   savedBy: string | null;
   createdAt: string;
+  unreadable: boolean;
 }
 
 export interface Checkin {
@@ -142,8 +156,10 @@ export interface Checkin {
   profileId: string;
   /** Calendar date in the couple's timezone, `YYYY-MM-DD`. */
   onDate: string;
-  interest: CheckinInterest;
+  /** Null exactly when `unreadable`: there is no honest stand-in for an answer nobody can read. */
+  interest: CheckinInterest | null;
   energy: number | null;
   note: string | null;
   createdAt: string;
+  unreadable: boolean;
 }

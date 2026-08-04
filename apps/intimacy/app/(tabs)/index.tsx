@@ -102,12 +102,17 @@ export default function Today() {
             ))}
           </View>
 
-          {theirCheckin ? (
+          {theirCheckin?.interest ? (
             <Muted>
               {t('app:today.partnerAnswer', { name: partnerName })}
               {': '}
               {t(`app:checkin.${theirCheckin.interest}`)}
             </Muted>
+          ) : theirCheckin ? (
+            /* A check-in exists but this device cannot open it. Say so plainly
+               rather than render a missing translation key — and never guess at
+               an answer, which is the one thing this screen must not do. */
+            <Muted>{t('app:today.partnerUnreadable', { name: partnerName })}</Muted>
           ) : (
             <Muted>{t('app:today.partnerNoAnswer', { name: partnerName })}</Muted>
           )}

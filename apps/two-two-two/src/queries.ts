@@ -15,14 +15,14 @@ import { createDomainRepository, createIdeaRepository } from '@couple/data';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { supabase } from './runtime';
+import { contentCipher, supabase } from './runtime';
 
 export const DOMAIN = 'two_two_two' as const;
 
-export const plans = createDomainRepository(supabase, DOMAIN);
+export const plans = createDomainRepository(supabase, DOMAIN, contentCipher);
 
 /** 2-2-2-owned. Its own factory, so the intimacy app has nothing to import. */
-export const ideas = createIdeaRepository(supabase);
+export const ideas = createIdeaRepository(supabase, contentCipher);
 
 const keys = {
   plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,

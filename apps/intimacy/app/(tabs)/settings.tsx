@@ -6,6 +6,7 @@
  * in reverse: they protect this phone, and syncing them would let one partner
  * turn off the other's lock.
  */
+import { DeviceListCard, InvitePanel, RecoveryCodeCard } from '@couple/auth';
 import { LOCALES, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
@@ -16,16 +17,18 @@ import {
   setLockEnabled,
 } from '@couple/device';
 import { Body, Button, Card, Chip, Divider, Heading, Muted, Screen, Title } from '@couple/ui';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Switch, TextInput, View } from 'react-native';
 
-import { getCalendarLabel, setCalendarLabel } from '../../src/runtime';
+import { getCalendarLabel, keyService, setCalendarLabel } from '../../src/runtime';
 import { useSession } from '../../src/session';
 
 export default function Settings() {
-  const { t } = useTranslation(['app', 'common']);
-  const { profile, partner, setLocale, signOut } = useSession();
+  const { t } = useTranslation(['app', 'common', 'auth']);
+  const { couple, partner, profile, session, setLocale, signOut } = useSession();
+  const router = useRouter();
 
   const [lockAvailable, setLockAvailable] = useState(false);
   const [lockOn, setLockOn] = useState(false);
@@ -143,12 +146,48 @@ export default function Settings() {
               : t('app:settings.notPaired')}
           </Muted>
           <Button
+            label={t('auth:keys.approve.entry')}
+            variant="secondary"
+            onPress={() => router.push('/approve')}
+          />
+          <Button
             label={t('app:settings.signOut')}
             variant="secondary"
             onPress={() => void signOut()}
           />
         </View>
       </Card>
+
+      {/*
+        The invite code, and the approval that follows it, in the one place you
+        can always get back to. Before this the code was visible on exactly one
+        screen, the one the router replaces the moment you leave it. `null` once
+        there is a partner: the code cannot be redeemed while both seats are
+        taken, but leaving reopens one, so a code left circulating is a
+        liability rather than a convenience. The panel brings its own card, so
+        it sits beside the account one rather than inside it.
+      */}
+      {session && couple ? (
+        <InvitePanel
+          keys={keyService}
+          coupleId={couple.id}
+          profileId={session.user.id}
+          code={partner ? null : couple.inviteCode}
+        />
+      ) : null}
+
+      {/*
+        Both of these need the couple key — one seals it, the other reports
+        which devices hold it — and this tab is only reachable with it. The
+        router is what makes that true; `usePairedSession` is what makes it
+        loud if it ever stops being.
+      */}
+      {session && couple ? (
+        <>
+          <RecoveryCodeCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+          <DeviceListCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+        </>
+      ) : null}
     </Screen>
   );
 }

@@ -33,6 +33,7 @@ import { bytesToUtf8, concatBytes, fromBase64, toBase64, utf8ToBytes } from './c
 import type { ContentKey, KeyScope } from './keys';
 import { randomBytes, type RandomSource } from './random';
 import type { CoupleKeyStore } from './store';
+import { randomUuid } from './uuid';
 
 export const PAYLOAD_VERSION = 0x01;
 export const SUITE_XCHACHA20_POLY1305 = 0x01;
@@ -216,6 +217,14 @@ export interface FieldCipher {
   readonly scope: KeyScope;
   seal(fields: Record<string, unknown>, identity: RecordIdentity): string;
   open(blob: string, identity: RecordIdentity): Record<string, unknown>;
+  /**
+   * A row id for a table whose AAD binds to one.
+   *
+   * It lives here rather than in the repository because the id has to exist
+   * before the payload can be sealed, and because a cipher already holds the
+   * one random source — two sources would be two things to get right.
+   */
+  newId(): string;
 }
 
 export function createFieldCipher(
@@ -242,6 +251,10 @@ export function createFieldCipher(
 
     open(blob, identity) {
       return openWithKey(keyForEpoch, blob, identity);
+    },
+
+    newId() {
+      return randomUuid(random);
     },
   };
 }
