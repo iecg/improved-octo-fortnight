@@ -246,7 +246,9 @@ partner re-wrap is a different rung and does not touch this row, so there is no
 reason for the other person to hold a second offline-attackable copy of the key.
 The code is generated rather than chosen — 125 bits — which is what makes a pure-JS
 scrypt sufficient, and it is shown exactly once because the envelope cannot be
-turned back into it. `kdf_params` comes back from the server and is fed to a KDF,
+turned back into it. Both halves of it are `async` and use `scryptAsync`: the
+synchronous variant holds the JS thread for the whole derivation, which would
+freeze the very spinner the screen puts up to explain the wait. `kdf_params` comes back from the server and is fed to a KDF,
 so `packages/data` bounds it before use: it is the one value in this schema an
 operator could edit into work rather than into a failed tag.
 

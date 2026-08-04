@@ -808,7 +808,7 @@ describe('8. losing both devices', () => {
   it('seals the couple key under a code Alice writes down', async () => {
     code = generateRecoveryCode(testRandom);
 
-    const envelope = wrapWithRecoveryCode({
+    const envelope = await wrapWithRecoveryCode({
       root: coupleRoot,
       code,
       coupleId: world.coupleId,
@@ -877,7 +877,7 @@ describe('8. losing both devices', () => {
     // all of it, which is the difference between a recovery code and a puzzle.
     const asTyped = code.toLowerCase().replace(/-/g, ' ');
 
-    const root: CoupleRootKey = unwrapWithRecoveryCode({
+    const root: CoupleRootKey = await unwrapWithRecoveryCode({
       envelope: stored.envelope,
       code: asTyped,
       coupleId: world.coupleId,
@@ -905,13 +905,13 @@ describe('8. losing both devices', () => {
     // the Poly1305 tag is the checksum, and it fails closed.
     const wrong = code.slice(0, -1) + (code.endsWith('0') ? '1' : '0');
 
-    expect(() =>
+    await expect(
       unwrapWithRecoveryCode({
         envelope: stored.envelope,
         code: wrong,
         coupleId: world.coupleId,
         epoch: stored.epoch,
       }),
-    ).toThrow();
+    ).rejects.toThrow();
   });
 });
