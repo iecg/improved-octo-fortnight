@@ -6,7 +6,11 @@
  */
 import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, CheckinInterest, Plan, PlanProposal } from '@couple/core';
-import { createBusyRepository, createCheckinRepository, createDomainRepository } from '@couple/data';
+import {
+  createBusyRepository,
+  createCheckinRepository,
+  createDomainRepository,
+} from '@couple/data';
 import { calendarDateIn } from '@couple/i18n';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
@@ -30,6 +34,7 @@ export const busy = createBusyRepository(supabase);
 
 const keys = {
   plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
+  plan: (planId: string) => ['plan', DOMAIN, planId] as const,
   cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
   proposals: (coupleId: string) => ['proposals', DOMAIN, coupleId] as const,
   checkins: (coupleId: string, date: string) => ['checkins', coupleId, date] as const,
@@ -44,6 +49,13 @@ export function usePlans(coupleId: string) {
   return useQuery({
     queryKey: keys.plans(coupleId),
     queryFn: () => plans.listPlans(coupleId),
+  });
+}
+
+export function useGetPlan(planId: string) {
+  return useQuery({
+    queryKey: keys.plan(planId),
+    queryFn: () => plans.getPlan(planId),
   });
 }
 
