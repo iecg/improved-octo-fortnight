@@ -26,6 +26,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Text, TextInput, View } from 'react-native';
 
+import { useKeyWatch } from './invite';
 import type { DeviceSummary, KeyService } from './keys';
 import { CODE_CLASS, INPUT_CLASS } from './style';
 
@@ -342,9 +343,16 @@ export function DeviceListCard({
     }
   }, [keys, coupleId, profileId, alive]);
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  /*
+    Not a bare `useEffect(reload, [])`, which is what this was: the approval that
+    changes `hasKey` happens in `InvitePanel`, a sibling on this same screen, so
+    nothing here ever unmounts to trigger a refetch. The list went on saying a
+    device was "waiting to be let in" after it had been let in and was already
+    reading — the wrong answer at exactly the moment someone is checking the
+    approval worked. `useKeyWatch` runs on mount as well, so it replaces the
+    effect rather than joining it.
+  */
+  useKeyWatch(keys, coupleId, reload);
 
   const withdraw = useCallback(
     async (device: DeviceSummary) => {
