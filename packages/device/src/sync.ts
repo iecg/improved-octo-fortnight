@@ -87,14 +87,24 @@ function signatureOf(
 /**
  * One reconciliation pass. Exported so it can be tested without a renderer.
  *
- * Idempotent by construction: it derives everything from the plans it is
- * handed, so an interrupted pass leaves no state behind and the next one
- * simply picks up whatever is still outstanding. That property is what makes
- * it safe for the hook below to abandon a run whenever the plans change.
+ * Idempotent in the database, and *not* in the calendar — which is what
+ * `written` is for. Writing an entry and recording its id are two awaits with a
+ * network round trip between them: `onCalendarEvent` records the id and
+ * invalidates the plans query, and the refetch that comes back carries whatever
+ * had landed when it was issued. A plan written after that point still arrives
+ * looking unwritten, `calendarActions` says "no recorded id means write one",
+ * and the OS calendar has no key to collide on — so the next pass creates a
+ * second entry. Only one id is ever stored, so the other is orphaned: invisible
+ * to every later pass, never updated, never removed.
+ *
+ * `written` is this device's own memory of what it has created and not yet seen
+ * come back. It is passed in rather than held here so it belongs to the hook
+ * that owns the passes, and so a test can hand over a fresh one.
  */
 export async function reconcileDevice(
   options: DeviceSyncOptions,
   isCancelled: () => boolean,
+  written: Map<string, string> = new Map(),
 ): Promise<void> {
   const {
     plans,
@@ -108,6 +118,12 @@ export async function reconcileDevice(
   if (!profileId) return;
 
   const { toWrite, toUpdate, toRemove } = calendarActions(plans, profileId);
+
+  // Anything the database now knows about is no longer ours to remember. This
+  // also keeps the map from growing for the life of the session.
+  for (const plan of plans) {
+    if (plan.calendarEventIds[profileId]) written.delete(plan.id);
+  }
 
   /** The entry a plan should have right now, wherever it is being written. */
   function eventFor(plan: Plan, startsAt: string) {
@@ -132,8 +148,29 @@ export async function reconcileDevice(
   if (hasWork && (await hasCalendarAccess())) {
     for (const plan of toWrite) {
       if (isCancelled() || !plan.startsAt) break;
+
+      // Already given an entry by an earlier pass, whose id has not come back
+      // through `plans` yet. Correct that entry rather than creating a rival to
+      // it — the plan may have been renamed or moved in the meantime.
+      const ours = written.get(plan.id);
+      if (ours) {
+        try {
+          await updateCalendarEvent(ours, eventFor(plan, plan.startsAt));
+        } catch {
+          // Deleted from the Calendar app. Forget it and let a later pass write
+          // a fresh one, which is the same recovery `toUpdate` relies on.
+          written.delete(plan.id);
+        }
+        continue;
+      }
+
       const eventId = await writeCalendarEvent(eventFor(plan, plan.startsAt));
-      if (eventId) await onCalendarEvent(plan, eventId);
+      // Remembered before the record is attempted, not after: everything
+      // between the two is exactly the window this exists to cover.
+      if (eventId) {
+        written.set(plan.id, eventId);
+        await onCalendarEvent(plan, eventId);
+      }
     }
 
     // Bring existing entries back into line. Nothing records what was written
@@ -153,6 +190,7 @@ export async function reconcileDevice(
     for (const [plan, eventId] of toRemove) {
       if (isCancelled()) break;
       await deleteCalendarEvent(eventId);
+      written.delete(plan.id);
       await onCalendarEvent(plan, null);
     }
   }
@@ -196,11 +234,41 @@ export function useDeviceSync(options: DeviceSyncOptions): void {
     latest.current = options;
   });
 
+  /**
+   * Calendar entries this device has created and not yet seen come back.
+   *
+   * Held here rather than inside the pass because it has to outlive one: the
+   * whole point is what a *later* pass knows about an earlier one's writes.
+   */
+  const written = useRef(new Map<string, string>());
+
+  /**
+   * The pass in flight, so the next one waits for it rather than joining it.
+   *
+   * Cancellation here is cooperative — `reconcileDevice` checks between awaits
+   * — so a teardown does not stop a pass that is parked inside a write. It
+   * finishes that write and then stops. Starting the next pass immediately, as
+   * `void reconcileDevice(...)` did, therefore overlapped two passes: both read
+   * "this plan has no entry", both wrote one, and the couple got two calendar
+   * entries for one plan with only one id recorded, so the spare was invisible
+   * to everything afterwards. Observed on a simulator as three entries for two
+   * plans.
+   *
+   * Chaining keeps the abandon-and-restart behaviour the signature dependency
+   * relies on, and only makes the restart wait for the abandonment to land.
+   */
+  const inFlight = useRef<Promise<void>>(Promise.resolve());
+
   useEffect(() => {
     if (!enabled || !profileId) return;
 
     let cancelled = false;
-    void reconcileDevice(latest.current, () => cancelled);
+    inFlight.current = inFlight.current
+      // A failed pass must not poison the chain; the next one starts anyway.
+      .catch(() => undefined)
+      .then(() =>
+        cancelled ? undefined : reconcileDevice(latest.current, () => cancelled, written.current),
+      );
 
     return () => {
       cancelled = true;
