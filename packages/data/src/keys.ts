@@ -154,6 +154,9 @@ function toDeviceKey(row: {
   };
 }
 
+/** Makes each `watchKeys` channel topic its own — see the comment there. */
+let watchers = 0;
+
 export function createKeyRepository(client: AppSupabaseClient): KeyRepository {
   return {
     async listDeviceKeys() {
@@ -268,7 +271,22 @@ export function createKeyRepository(client: AppSupabaseClient): KeyRepository {
 
     watchKeys(coupleId, onChange) {
       const channel = client
-        .channel(`keys:${coupleId}`)
+        /*
+          The counter is what lets two components watch at once.
+
+          `client.channel(topic)` returns the *existing* channel for a topic it
+          already knows, so a second watcher on a fixed `keys:${coupleId}` does
+          not get its own — it lands on one that has already been subscribed,
+          and adding a handler there throws "cannot add postgres_changes
+          callbacks ... after subscribe()". That stayed hidden while exactly one
+          component watched; Settings now shows the invite panel and the device
+          list side by side, and both need to know when a key arrives.
+
+          A channel each, rather than a shared one with a list of listeners:
+          teardown then belongs to the watcher that created it, and unmounting
+          one cannot take the other's subscription down with it.
+        */
+        .channel(`keys:${coupleId}:${(watchers += 1)}`)
         // `device_keys` carries no couple_id to filter on — it is keyed by
         // profile. RLS is what narrows it, which is the same guarantee the
         // filter would have been asking for.

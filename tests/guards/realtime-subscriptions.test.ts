@@ -19,7 +19,7 @@
  * otherwise only notice on two phones at once.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { extname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -144,5 +144,46 @@ describe('realtime subscriptions', () => {
    */
   it('never publishes the usage counter', () => {
     expect([...publishedTables()]).not.toContain('ai_usage');
+  });
+});
+
+/**
+ * Publishing a table is only half of live. A screen that reads key state once
+ * and is never told to read it again shows stale data forever, which is the
+ * same failure as an unpublished table one layer further up — and it looks
+ * identical to the user.
+ *
+ * `DeviceList` in `recovery-screens.tsx` shipped that way. It fetched on mount
+ * and reloaded only after a withdrawal, while the approval that changes
+ * `hasKey` happens in `InvitePanel`, a sibling on the same screen. Nothing
+ * unmounted, so nothing refetched: the list went on saying a device was
+ * "waiting to be let in" after it had been let in and was demonstrably reading
+ * the couple's rows. It corrected itself on relaunch, which is the tell for
+ * stale state rather than a wrong query — and the wrong answer at exactly the
+ * moment someone is checking that the approval worked.
+ *
+ * The three accessors below are the ones that answer "which devices, and can
+ * they read". Any component asking that question has to keep asking it.
+ */
+const DEVICE_STATE_ACCESSORS = /\bkeys\.(listDevices|pendingDevices|visibleDevices)\s*\(/;
+
+/** Components only — the service that defines these lives in `keys.ts`. */
+function authComponents(): string[] {
+  return filesIn(join(REPO_ROOT, 'packages', 'auth'), (file) => extname(file) === '.tsx');
+}
+
+describe('device state stays live', () => {
+  it('has components to check', () => {
+    expect(authComponents().length).toBeGreaterThan(0);
+  });
+
+  it('watches for key changes wherever it reads which devices hold the key', () => {
+    const offenders = authComponents()
+      .map((file) => ({ file, contents: readFileSync(file, 'utf8') }))
+      .filter(({ contents }) => DEVICE_STATE_ACCESSORS.test(contents))
+      .filter(({ contents }) => !contents.includes('useKeyWatch('))
+      .map(({ file }) => relative(REPO_ROOT, file));
+
+    expect(offenders).toEqual([]);
   });
 });
