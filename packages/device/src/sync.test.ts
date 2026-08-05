@@ -50,6 +50,8 @@ function bookedPlan(id: string, calendarEventIds: Record<string, string> = {}): 
     completedAt: null,
     calendarEventIds,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    unreadable: false,
   };
 }
 
@@ -163,6 +165,53 @@ describe('reconcileDevice', () => {
     expect(writeCalendarEvent).toHaveBeenCalledTimes(1);
     // Reminders come last, so they are the first casualty of a teardown.
     expect(scheduleReminder).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Two passes over the same plans, which is what actually happens.
+   *
+   * Recording an event invalidates the plans query, and the refetch that comes
+   * back carries the ids that had landed by the time it was issued — not the
+   * ones written after. So a pass routinely starts on a snapshot where a plan
+   * this device has *already* given a calendar entry still looks like it has
+   * none. `calendarActions` has one rule, "no recorded id means write one", and
+   * the OS calendar has no key to collide on, so the second write is a second
+   * entry. Only one id is ever stored, so the other is orphaned: no later pass
+   * can see it, update it, or remove it, and it keeps its original title and
+   * location for good.
+   *
+   * Observed on two simulators before it was reproduced here: two plans, three
+   * calendar entries, every run. The memory is what closes the window between
+   * writing an entry and the id coming back through `plans`.
+   */
+  it('does not write a second entry for a plan it already wrote', async () => {
+    const written = new Map<string, string>();
+    const stale = options([bookedPlan('plan-1')]);
+
+    await reconcileDevice(stale, NEVER_CANCELLED, written);
+    // The same snapshot again: the id from the first pass has not come back yet.
+    await reconcileDevice(stale, NEVER_CANCELLED, written);
+
+    expect(writeCalendarEvent).toHaveBeenCalledTimes(1);
+    // Corrected rather than duplicated, so a title that moved still lands.
+    expect(updateCalendarEvent).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(updateCalendarEvent).mock.calls[0]![0]).toBe('event-new');
+  });
+
+  /** Once the id is back in `plans`, the database is authoritative again. */
+  it('forgets a plan whose id has come back through plans', async () => {
+    const written = new Map<string, string>();
+
+    await reconcileDevice(options([bookedPlan('plan-1')]), NEVER_CANCELLED, written);
+    expect(written.has('plan-1')).toBe(true);
+
+    await reconcileDevice(
+      options([bookedPlan('plan-1', { [ME]: 'event-new' })]),
+      NEVER_CANCELLED,
+      written,
+    );
+
+    expect(written.has('plan-1')).toBe(false);
   });
 
   /**

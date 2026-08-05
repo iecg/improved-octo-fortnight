@@ -5,9 +5,11 @@
  */
 import { createSessionModule } from '@couple/auth';
 
-import { i18n, supabase } from './runtime';
+import { i18n, keyService, sharedCipher, supabase } from './runtime';
 
 export const { SessionProvider, useSession, usePairedSession } = createSessionModule({
   supabase,
   i18n,
+  sharedCipher,
+  keys: keyService,
 });

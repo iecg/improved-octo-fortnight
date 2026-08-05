@@ -6,7 +6,15 @@
  * in reverse: they protect this phone, and syncing them would let one partner
  * turn off the other's lock.
  */
-import { AnniversaryCard, ConnectedAppsCard, UnpairCard } from '@couple/auth';
+import {
+  AnniversaryCard,
+  ConnectedAppsCard,
+  DeviceListCard,
+  DisplayNameCard,
+  InvitePanel,
+  RecoveryCodeCard,
+  UnpairCard,
+} from '@couple/auth';
 import { LOCALES, kindLabelKey, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
@@ -17,18 +25,31 @@ import {
   setLockEnabled,
 } from '@couple/device';
 import { Body, Button, Card, Chip, Divider, Heading, Muted, Screen, Title } from '@couple/ui';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Switch, TextInput, View } from 'react-native';
 
 import { useCadences, useSetCadenceEnabled } from '../../src/queries';
-import { getCalendarLabel, setCalendarLabel } from '../../src/runtime';
+import { getCalendarLabel, keyService, setCalendarLabel } from '../../src/runtime';
 import { usePairedSession, useSession } from '../../src/session';
 
 export default function Settings() {
-  const { t } = useTranslation(['app', 'cadence', 'common']);
-  const { profile, partner, setLocale, setAnniversary, signOut, leaveCouple } = useSession();
+  const { t } = useTranslation(['app', 'cadence', 'common', 'auth']);
+  const {
+    profile,
+    partner,
+    session,
+    setDisplayName,
+    setLocale,
+    setAnniversary,
+    signOut,
+    leaveCouple,
+  } = useSession();
+  const router = useRouter();
 
+  // `usePairedSession` asserts the couple *and* the key. This tab is only
+  // reachable with both, and the cards below assume it.
   const { couple } = usePairedSession();
   const cadencesQuery = useCadences(couple.id);
   const setCadenceEnabled = useSetCadenceEnabled(couple.id);
@@ -173,6 +194,11 @@ export default function Settings() {
               : t('app:settings.notPaired')}
           </Muted>
           <Button
+            label={t('auth:keys.approve.entry')}
+            variant="secondary"
+            onPress={() => router.push('/approve')}
+          />
+          <Button
             label={t('app:settings.signOut')}
             variant="secondary"
             onPress={() => void signOut()}
@@ -180,18 +206,56 @@ export default function Settings() {
         </View>
       </Card>
 
-      {/* Couple-level and shared, so the same card serves both apps. */}
+      {/* Directly under the card that names your partner, because this is the
+          other half of that sentence. */}
+      <DisplayNameCard displayName={profile?.displayName ?? null} onSave={setDisplayName} />
+
+      {/* Couple-level and shared, so the same card serves both apps. Beside the
+          display name rather than among the key cards below: both are things
+          the two of you agree on, where those are about this device. */}
       <AnniversaryCard
         anniversaryDate={couple.anniversaryDate}
         timeZone={couple.timezone}
         onSet={setAnniversary}
       />
 
+      {/*
+        The invite code, and the approval that follows it, in the one place you
+        can always get back to. Before this the code was visible on exactly one
+        screen, the one the router replaces the moment you leave it. `null` once
+        there is a partner: the code cannot be redeemed while both seats are
+        taken, but leaving reopens one, so a code left circulating is a
+        liability rather than a convenience. The panel brings its own card, so
+        it sits beside the account one rather than inside it.
+      */}
+      {session ? (
+        <InvitePanel
+          keys={keyService}
+          coupleId={couple.id}
+          profileId={session.user.id}
+          code={partner ? null : couple.inviteCode}
+        />
+      ) : null}
+
+      {/*
+        Both of these need the couple key — one seals it, the other reports
+        which devices hold it — and this tab is only reachable with it. The
+        router is what makes that true; `usePairedSession` is what makes it
+        loud if it ever stops being.
+      */}
+      {session ? (
+        <>
+          <RecoveryCodeCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+          <DeviceListCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+        </>
+      ) : null}
+
       {/* Same component as the other app, so the two can never disagree about
           what is shared. */}
       <ConnectedAppsCard />
 
-      {/* One pairing across both apps, so this is the same act from either. */}
+      {/* One pairing across both apps, so this is the same act from either —
+          and `leaveCouple` now forgets the couple key on the way out. */}
       <UnpairCard onUnpair={leaveCouple} />
     </Screen>
   );

@@ -1,4 +1,12 @@
-import { AnniversaryCard, ConnectedAppsCard, UnpairCard } from '@couple/auth';
+import {
+  AnniversaryCard,
+  ConnectedAppsCard,
+  DeviceListCard,
+  DisplayNameCard,
+  InvitePanel,
+  RecoveryCodeCard,
+  UnpairCard,
+} from '@couple/auth';
 import { LOCALES, kindLabelKey, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
@@ -6,6 +14,7 @@ import {
   requestNotificationPermission,
 } from '@couple/device';
 import { Button, Card, Chip, Divider, Heading, Muted, Screen, Title } from '@couple/ui';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Switch, View } from 'react-native';
@@ -17,11 +26,25 @@ import {
   useSetCadenceEnabled,
   useSetCrossAppBusyEnabled,
 } from '../../src/queries';
+import { keyService } from '../../src/runtime';
 import { usePairedSession, useSession } from '../../src/session';
 
 export default function Settings() {
-  const { t } = useTranslation(['app', 'cadence', 'common']);
-  const { profile, partner, setLocale, setAnniversary, signOut, leaveCouple } = useSession();
+  const { t } = useTranslation(['app', 'cadence', 'common', 'auth']);
+  const {
+    profile,
+    partner,
+    session,
+    setDisplayName,
+    setLocale,
+    setAnniversary,
+    signOut,
+    leaveCouple,
+  } = useSession();
+  const router = useRouter();
+
+  // `usePairedSession` asserts the couple *and* the key; this tab is only
+  // reachable with both.
   const { couple } = usePairedSession();
   const [calendarOk, setCalendarOk] = useState(false);
 
@@ -151,6 +174,11 @@ export default function Settings() {
               : t('app:settings.notPaired')}
           </Muted>
           <Button
+            label={t('auth:keys.approve.entry')}
+            variant="secondary"
+            onPress={() => router.push('/approve')}
+          />
+          <Button
             label={t('app:settings.signOut')}
             variant="secondary"
             onPress={() => void leave()}
@@ -158,18 +186,45 @@ export default function Settings() {
         </View>
       </Card>
 
-      {/* Couple-level and shared, so the same card serves both apps. */}
+      {/* Directly under the card that names your partner, because this is the
+          other half of that sentence. */}
+      <DisplayNameCard displayName={profile?.displayName ?? null} onSave={setDisplayName} />
+
+      {/* Couple-level and shared, so the same card serves both apps. Beside the
+          display name rather than among the key cards below: both are things
+          the two of you agree on, where those are about this device. */}
       <AnniversaryCard
         anniversaryDate={couple.anniversaryDate}
         timeZone={couple.timezone}
         onSet={setAnniversary}
       />
 
+      {/* The same panel the pairing screen shows — one pairing across both apps
+          means one place that explains where it stands. */}
+      {session ? (
+        <InvitePanel
+          keys={keyService}
+          coupleId={couple.id}
+          profileId={session.user.id}
+          code={partner ? null : couple.inviteCode}
+        />
+      ) : null}
+
+      {/* One couple key underneath both apps, so these say the same thing in
+          either — and saving a code in one app saves it for both. */}
+      {session ? (
+        <>
+          <RecoveryCodeCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+          <DeviceListCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+        </>
+      ) : null}
+
       {/* Same component as the other app, so the two can never disagree about
           what is shared. */}
       <ConnectedAppsCard />
 
-      {/* One pairing across both apps, so this is the same act from either. */}
+      {/* One pairing across both apps, so this is the same act from either —
+          and `leaveCouple` now forgets the couple key on the way out. */}
       <UnpairCard onUnpair={leaveCouple} />
     </Screen>
   );

@@ -4,7 +4,16 @@
  * Pairing happens once and serves all of them: installing the second app never
  * asks the couple to link up again.
  */
-import type { Couple, Locale, Profile } from '@couple/core';
+import {
+  displayNameLength,
+  DisplayNameTooLongError,
+  isDisplayNameValid,
+  normalizeDisplayName,
+  type Couple,
+  type Locale,
+  type Profile,
+} from '@couple/core';
+import type { FieldCipher } from '@couple/crypto';
 
 import type { AppSupabaseClient } from './client';
 import { toCouple, toProfile } from './mappers';
@@ -59,7 +68,22 @@ export interface AccountRepository {
   leaveCouple(profileId: string): Promise<void>;
 }
 
-export function createAccountRepository(client: AppSupabaseClient): AccountRepository {
+export function createAccountRepository(
+  client: AppSupabaseClient,
+  cipher: FieldCipher,
+): AccountRepository {
+  if (cipher.scope !== 'shared') {
+    throw new Error(`profiles are read by both apps and need a shared cipher; got ${cipher.scope}`);
+  }
+
+  /**
+   * The couple a name is sealed against. Held here rather than passed per call
+   * because it is the same for every profile this client will ever see, and
+   * because RLS already guarantees it: the only profiles readable are the
+   * caller's and their partner's.
+   */
+  let coupleId: string | null = null;
+
   return {
     async getCurrentUserId() {
       const { data } = await client.auth.getUser();
@@ -69,27 +93,54 @@ export function createAccountRepository(client: AppSupabaseClient): AccountRepos
     async getProfile(id) {
       const { data, error } = await client.from('profiles').select('*').eq('id', id).maybeSingle();
       if (error) throw new Error(error.message);
-      return data ? toProfile(data) : null;
+      return data ? toProfile(data, cipher, coupleId) : null;
     },
 
     async getVisibleProfiles() {
       const { data, error } = await client.from('profiles').select('*');
       if (error) throw new Error(error.message);
-      return (data ?? []).map(toProfile);
+      return (data ?? []).map((row) => toProfile(row, cipher, coupleId));
     },
 
     async updateProfile(id, patch) {
+      // A name can only be sealed once there is a couple key to seal it with,
+      // and only once there is a partner it is for.
+      if (patch.displayName !== undefined && coupleId === null) {
+        throw new Error('a display name cannot be set before pairing');
+      }
+
+      // The length rule, enforced here because this is where the name stops
+      // being readable. `profiles_name_payload_bounded` bounds the ciphertext
+      // and cannot bound the name — the database has no way to measure a string
+      // it cannot open. A screen checks this too, so the person is told before
+      // they tap; this is what stops a caller that forgot.
+      const name =
+        patch.displayName === undefined ? undefined : normalizeDisplayName(patch.displayName);
+      if (name !== undefined && !isDisplayNameValid(name)) {
+        throw new DisplayNameTooLongError(displayNameLength(name ?? ''));
+      }
+
       const { data, error } = await client
         .from('profiles')
         .update({
-          ...(patch.displayName !== undefined ? { display_name: patch.displayName } : {}),
+          ...(name !== undefined && coupleId !== null
+            ? {
+                name_payload:
+                  name === null
+                    ? null
+                    : cipher.seal(
+                        { displayName: name },
+                        { table: 'profiles', coupleId, profileId: id },
+                      ),
+              }
+            : {}),
           ...(patch.locale !== undefined ? { locale: patch.locale } : {}),
           ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
         })
         .eq('id', id)
         .select()
         .single();
-      return toProfile(unwrap(data, error));
+      return toProfile(unwrap(data, error), cipher, coupleId);
     },
 
     async getCouple() {
@@ -97,12 +148,17 @@ export function createAccountRepository(client: AppSupabaseClient): AccountRepos
       // and none could be trusted anyway.
       const { data, error } = await client.from('couples').select('*').maybeSingle();
       if (error) throw new Error(error.message);
-      return data ? toCouple(data) : null;
+
+      const couple = data ? toCouple(data) : null;
+      coupleId = couple?.id ?? null;
+      return couple;
     },
 
     async createCouple(timezone) {
       const { data, error } = await client.rpc('create_couple', { p_timezone: timezone });
-      return toCouple(unwrap(data, error));
+      const couple = toCouple(unwrap(data, error));
+      coupleId = couple.id;
+      return couple;
     },
 
     async updateCouple(id, patch) {
@@ -133,6 +189,7 @@ export function createAccountRepository(client: AppSupabaseClient): AccountRepos
         p_code: inviteCode.trim().toUpperCase(),
       });
       const result = unwrap(data, error);
+      if (result.ok) coupleId = result.couple_id;
       return result.ok
         ? { ok: true as const, coupleId: result.couple_id }
         : { ok: false as const, reason: toJoinFailure(result.reason) };
@@ -141,6 +198,7 @@ export function createAccountRepository(client: AppSupabaseClient): AccountRepos
     async leaveCouple(profileId) {
       const { error } = await client.from('couple_members').delete().eq('profile_id', profileId);
       if (error) throw new Error(error.message);
+      coupleId = null;
     },
   };
 }

@@ -30,17 +30,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import { placeLabel } from './features/places/label';
-import { DEFAULT_CADENCES, supabase } from './runtime';
+import { contentCipher, DEFAULT_CADENCES, supabase } from './runtime';
 
 export const DOMAIN = 'two_two_two' as const;
 
-export const plans = createDomainRepository(supabase, DOMAIN);
+export const plans = createDomainRepository(supabase, DOMAIN, contentCipher);
 
 /** 2-2-2-owned. Its own factory, so the intimacy app has nothing to import. */
-export const ideas = createIdeaRepository(supabase);
+export const ideas = createIdeaRepository(supabase, contentCipher);
 
 /** Also 2-2-2-owned, and also without a domain parameter. */
-export const places = createPlaceRepository(supabase);
+export const places = createPlaceRepository(supabase, contentCipher);
 
 /**
  * Times the couple is occupied, across both apps — and only times.
@@ -282,11 +282,14 @@ export function usePlaces(coupleId: string) {
 export function useAttachPlace(coupleId: string, profileId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { planId: string; place: AttachPlaceDraft }) => {
+    // Takes the plan rather than its id, because the label it writes is a
+    // sealed field now: `updatePlanContent` has to open the existing payload,
+    // merge, and re-seal, so the caller must be holding the row.
+    mutationFn: async (input: { plan: Plan; place: AttachPlaceDraft }) => {
       const attached = await places.attach({
         coupleId,
         attachedBy: profileId,
-        planId: input.planId,
+        planId: input.plan.id,
         name: input.place.name,
         address: input.place.address ?? null,
         provider: input.place.provider,
@@ -295,7 +298,7 @@ export function useAttachPlace(coupleId: string, profileId: string) {
         locale: input.place.locale,
         shareWithCalendar: input.place.shareWithCalendar ?? false,
       });
-      await plans.updatePlan(input.planId, {
+      await plans.updatePlanContent(input.plan, {
         location: placeLabel(input.place.name, input.place.address),
       });
       return attached;
@@ -310,10 +313,10 @@ export function useAttachPlace(coupleId: string, profileId: string) {
 export function useDetachPlace(coupleId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { placeId: string; planId: string | null }) => {
+    mutationFn: async (input: { placeId: string; plan: Plan | null }) => {
       await places.detach(input.placeId);
       // Leaving the label behind would keep a removed place in the calendar.
-      if (input.planId) await plans.updatePlan(input.planId, { location: null });
+      if (input.plan) await plans.updatePlanContent(input.plan, { location: null });
     },
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.places(coupleId) });

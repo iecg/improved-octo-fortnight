@@ -14,13 +14,14 @@ import type { AccountRepository, AppSupabaseClient } from '@couple/data';
 import { Body, Button, Card, Heading, Muted, Screen, Title } from '@couple/ui';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Text, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
+
+import { InvitePanel } from './invite';
+import type { KeyService } from './keys';
+import { INPUT_CLASS } from './style';
 
 /** Must match `generate_invite_code()` in the pairing-hardening migration. */
 export const INVITE_CODE_LENGTH = 8;
-
-const INPUT_CLASS =
-  'rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark';
 
 export function SignInScreen({
   client,
@@ -132,12 +133,21 @@ export function SignInScreen({
 
 export function PairScreen({
   accounts,
+  keys,
+  profileId,
   timeZone,
   initialCode,
   onPaired,
   seedCadences,
 }: {
   accounts: AccountRepository;
+  /**
+   * Pairing is also where key material begins: the founder mints the couple
+   * key, and the joiner publishes the device key their partner will wrap to.
+   * Neither can happen before there is a couple to bind them to.
+   */
+  keys: KeyService;
+  profileId: string;
   timeZone: string;
   /** Present when arriving from an invite link. */
   initialCode?: string;
@@ -157,6 +167,9 @@ export function PairScreen({
   );
   const [code, setCode] = useState(initialCode ?? '');
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+  // Held from `createCouple` rather than read back from the session, because
+  // the session deliberately is not refreshed while this screen is up.
+  const [coupleId, setCoupleId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // A translation key, never a server string: Postgres speaks English and one
   // of these two partners does not.
@@ -168,15 +181,23 @@ export function PairScreen({
     try {
       const created = await accounts.createCouple(timeZone);
       await seedCadences(created.id);
+      // The couple key is minted here and nowhere else. Exactly one device ever
+      // runs this, which is what makes "one key per couple" a fact rather than
+      // a convention — every other device receives it wrapped.
+      await keys.createCoupleKey(created.id, profileId);
+      setCoupleId(created.id);
       setInviteCode(created.inviteCode);
       setMode('created');
-      await onPaired();
+      // Deliberately *not* `onPaired()` here. It refreshes the session, which
+      // sets `couple` and `keyState: 'ready'` together, and the router would
+      // replace this screen before the invite code below could be read. The
+      // Continue button calls it instead.
     } catch {
       setErrorKey('auth:pair.error.unknown');
     } finally {
       setBusy(false);
     }
-  }, [accounts, onPaired, seedCadences, timeZone]);
+  }, [accounts, keys, profileId, seedCadences, timeZone]);
 
   const joinCouple = useCallback(async () => {
     setBusy(true);
@@ -188,13 +209,17 @@ export function PairScreen({
         return;
       }
       await seedCadences(result.coupleId);
+      // Publish this device's public key on the way in, so the partner's
+      // approval screen has something to show the moment they look at it. The
+      // key itself arrives later, on `/unlock`.
+      await keys.ensureDeviceKey(profileId);
       await onPaired();
     } catch {
       setErrorKey('auth:pair.error.unknown');
     } finally {
       setBusy(false);
     }
-  }, [accounts, code, onPaired, seedCadences]);
+  }, [accounts, code, keys, onPaired, profileId, seedCadences]);
 
   return (
     <Screen>
@@ -219,20 +244,27 @@ export function PairScreen({
           </View>
         ) : null}
 
-        {mode === 'created' && inviteCode ? (
-          <Card>
-            <View className="gap-3">
-              <Heading>{t('auth:pair.yourCodeLabel')}</Heading>
-              <Text
-                selectable
-                className="text-center text-3xl font-semibold tracking-[6px] text-ink dark:text-ink-dark"
-              >
-                {inviteCode}
-              </Text>
-              <Muted>{t('auth:pair.shareHint')}</Muted>
-              <Muted>{t('auth:pair.waiting')}</Muted>
-            </View>
-          </Card>
+        {mode === 'created' && coupleId && inviteCode ? (
+          <>
+            {/*
+              The panel keeps watching: when the partner redeems the code their
+              device appears here and the safety number takes the code's place,
+              without anyone navigating anywhere. Pairing and approval are one
+              act to the two people doing it, and this is where that stops being
+              two screens.
+            */}
+            <InvitePanel keys={keys} coupleId={coupleId} profileId={profileId} code={inviteCode} />
+            {/*
+              Unconditional, and not only because the founder needs an escape
+              hatch from a screen that is otherwise waiting on someone else.
+              Without a button here the founder never sees their own invite code
+              at all: `startCouple` used to call `onPaired()` itself, which set
+              `couple` and let the router replace this screen on the same tick,
+              so the card above rendered and was gone. Whatever is left
+              unapproved is waiting in Settings.
+            */}
+            <Button label={t('common:action.next')} onPress={() => void onPaired()} />
+          </>
         ) : null}
 
         {mode === 'joining' ? (

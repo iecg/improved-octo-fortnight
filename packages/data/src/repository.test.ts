@@ -14,17 +14,23 @@
 import { describe, expect, it } from 'vitest';
 
 import { createBusyRepository } from './busy';
+import { toPlan } from './mappers';
 import { createDomainRepository } from './repository';
+import { fakeCipher } from './testing/fake-cipher';
 import { fakeClient, filtersOn, payloadOf, tablesTouched } from './testing/fake-client';
+
+const intimacyCipher = fakeCipher('intimacy');
+
+function sealedPlan(fields: Record<string, unknown>, coupleId: string, id: string): string {
+  return intimacyCipher.seal(fields, { table: 'plans', coupleId, id });
+}
 
 const PLAN_ROW = {
   id: 'plan-1',
   couple_id: 'couple-1',
   domain: 'intimacy',
   kind: 'intimacy',
-  title: null,
-  notes: null,
-  location: null,
+  payload: sealedPlan({ title: null, notes: null, location: null }, 'couple-1', 'plan-1'),
   starts_at: null,
   ends_at: null,
   status: 'idea',
@@ -47,10 +53,13 @@ const CADENCE_ROW = {
   updated_at: '2026-01-01T00:00:00.000Z',
 };
 
+/** The domain object the repository hands back, for the methods that take one. */
+const PLAN = toPlan(PLAN_ROW as Parameters<typeof toPlan>[0], intimacyCipher);
+
 describe('every read is scoped to the repository domain', () => {
   it('filters plans', async () => {
     const { client, calls } = fakeClient([PLAN_ROW]);
-    await createDomainRepository(client, 'intimacy').listPlans('couple-1');
+    await createDomainRepository(client, 'intimacy', intimacyCipher).listPlans('couple-1');
 
     expect(filtersOn(calls, 'domain', 'intimacy')).toBe(true);
     expect(filtersOn(calls, 'couple_id', 'couple-1')).toBe(true);
@@ -58,21 +67,25 @@ describe('every read is scoped to the repository domain', () => {
 
   it('filters a single plan lookup, so an id from elsewhere resolves to nothing', async () => {
     const { client, calls } = fakeClient(PLAN_ROW);
-    await createDomainRepository(client, 'two_two_two').getPlan('plan-1');
+    await createDomainRepository(client, 'two_two_two', fakeCipher('two_two_two')).getPlan(
+      'plan-1',
+    );
 
     expect(filtersOn(calls, 'domain', 'two_two_two')).toBe(true);
   });
 
   it('filters cadences', async () => {
     const { client, calls } = fakeClient([CADENCE_ROW]);
-    await createDomainRepository(client, 'intimacy').listCadences('couple-1');
+    await createDomainRepository(client, 'intimacy', intimacyCipher).listCadences('couple-1');
 
     expect(filtersOn(calls, 'domain', 'intimacy')).toBe(true);
   });
 
   it('filters proposals through the joined plan', async () => {
     const { client, calls } = fakeClient([]);
-    await createDomainRepository(client, 'intimacy').listPendingProposals('couple-1');
+    await createDomainRepository(client, 'intimacy', intimacyCipher).listPendingProposals(
+      'couple-1',
+    );
 
     // plan_proposals has no domain column of its own; the constraint rides on
     // an inner join to plans.
@@ -83,7 +96,7 @@ describe('every read is scoped to the repository domain', () => {
 describe('every write is stamped with the repository domain', () => {
   it('stamps a created plan', async () => {
     const { client, calls } = fakeClient(PLAN_ROW);
-    await createDomainRepository(client, 'intimacy').createPlan({
+    await createDomainRepository(client, 'intimacy', intimacyCipher).createPlan({
       coupleId: 'couple-1',
       kind: 'intimacy',
       createdBy: 'profile-1',
@@ -94,7 +107,7 @@ describe('every write is stamped with the repository domain', () => {
 
   it('stamps an upserted cadence', async () => {
     const { client, calls } = fakeClient(CADENCE_ROW);
-    await createDomainRepository(client, 'two_two_two').upsertCadence({
+    await createDomainRepository(client, 'two_two_two', fakeCipher('two_two_two')).upsertCadence({
       coupleId: 'couple-1',
       kind: 'date_night',
       intervalValue: 2,
@@ -106,9 +119,9 @@ describe('every write is stamped with the repository domain', () => {
 
   it.each([
     [
-      'updatePlan',
+      'updatePlanContent',
       (repo: ReturnType<typeof createDomainRepository>) =>
-        repo.updatePlan('plan-1', { title: 'x' }),
+        repo.updatePlanContent(PLAN, { title: 'x' }),
     ],
     [
       'setPlanStatus',
@@ -123,14 +136,14 @@ describe('every write is stamped with the repository domain', () => {
     ],
   ])('scopes %s to the domain', async (_name, run) => {
     const { client, calls } = fakeClient(PLAN_ROW);
-    await run(createDomainRepository(client, 'intimacy'));
+    await run(createDomainRepository(client, 'intimacy', intimacyCipher));
 
     expect(filtersOn(calls, 'domain', 'intimacy')).toBe(true);
   });
 
   it('merges calendar event ids rather than replacing the map', async () => {
     const { client, calls } = fakeClient(PLAN_ROW);
-    const repo = createDomainRepository(client, 'intimacy');
+    const repo = createDomainRepository(client, 'intimacy', intimacyCipher);
 
     await repo.recordCalendarEvent(
       { ...PLAN_ROW, calendarEventIds: { 'profile-1': 'event-a' } } as never,
@@ -148,7 +161,7 @@ describe('every write is stamped with the repository domain', () => {
 
   it("removes only the departing partner's calendar id", async () => {
     const { client, calls } = fakeClient(PLAN_ROW);
-    const repo = createDomainRepository(client, 'intimacy');
+    const repo = createDomainRepository(client, 'intimacy', intimacyCipher);
 
     await repo.recordCalendarEvent(
       {
@@ -164,7 +177,10 @@ describe('every write is stamped with the repository domain', () => {
 
   it('clears the completion timestamp when a plan stops being complete', async () => {
     const { client, calls } = fakeClient(PLAN_ROW);
-    await createDomainRepository(client, 'intimacy').setPlanStatus('plan-1', 'skipped');
+    await createDomainRepository(client, 'intimacy', intimacyCipher).setPlanStatus(
+      'plan-1',
+      'skipped',
+    );
 
     // A stale completed_at would keep anchoring the cadence to something that
     // did not happen.
@@ -177,8 +193,12 @@ describe('the two apps cannot see each other', () => {
     const intimacy = fakeClient([PLAN_ROW]);
     const twoTwoTwo = fakeClient([PLAN_ROW]);
 
-    await createDomainRepository(intimacy.client, 'intimacy').listPlans('couple-1');
-    await createDomainRepository(twoTwoTwo.client, 'two_two_two').listPlans('couple-1');
+    await createDomainRepository(intimacy.client, 'intimacy', intimacyCipher).listPlans('couple-1');
+    await createDomainRepository(
+      twoTwoTwo.client,
+      'two_two_two',
+      fakeCipher('two_two_two'),
+    ).listPlans('couple-1');
 
     expect(filtersOn(intimacy.calls, 'domain', 'intimacy')).toBe(true);
     expect(filtersOn(intimacy.calls, 'domain', 'two_two_two')).toBe(false);
@@ -188,7 +208,7 @@ describe('the two apps cannot see each other', () => {
 
   it('never touches checkins from the shared repository', async () => {
     const { client, calls } = fakeClient([PLAN_ROW]);
-    const repo = createDomainRepository(client, 'two_two_two');
+    const repo = createDomainRepository(client, 'two_two_two', fakeCipher('two_two_two'));
 
     await repo.listPlans('couple-1');
     await repo.listCadences('couple-1');

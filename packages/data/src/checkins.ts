@@ -7,6 +7,7 @@
  * an app that turns it into a broken chain makes the problem worse.
  */
 import type { Checkin, CheckinInterest } from '@couple/core';
+import type { FieldCipher } from '@couple/crypto';
 
 import type { AppSupabaseClient } from './client';
 import { toCheckin } from './mappers';
@@ -28,7 +29,14 @@ export interface CheckinRepository {
   clear(profileId: string, onDate: string): Promise<void>;
 }
 
-export function createCheckinRepository(client: AppSupabaseClient): CheckinRepository {
+export function createCheckinRepository(
+  client: AppSupabaseClient,
+  cipher: FieldCipher,
+): CheckinRepository {
+  if (cipher.scope !== 'intimacy') {
+    throw new Error(`check-ins are intimacy-owned; got a ${cipher.scope} cipher`);
+  }
+
   return {
     async listForDate(coupleId, onDate) {
       const { data, error } = await client
@@ -37,7 +45,7 @@ export function createCheckinRepository(client: AppSupabaseClient): CheckinRepos
         .eq('couple_id', coupleId)
         .eq('on_date', onDate);
       if (error) throw new Error(error.message);
-      return (data ?? []).map(toCheckin);
+      return (data ?? []).map((row) => toCheckin(row, cipher));
     },
 
     async listRecent(coupleId, sinceDate) {
@@ -48,7 +56,7 @@ export function createCheckinRepository(client: AppSupabaseClient): CheckinRepos
         .gte('on_date', sinceDate)
         .order('on_date', { ascending: false });
       if (error) throw new Error(error.message);
-      return (data ?? []).map(toCheckin);
+      return (data ?? []).map((row) => toCheckin(row, cipher));
     },
 
     async record(input) {
@@ -61,15 +69,26 @@ export function createCheckinRepository(client: AppSupabaseClient): CheckinRepos
             couple_id: input.coupleId,
             profile_id: input.profileId,
             on_date: input.onDate,
-            interest: input.interest,
-            note: input.note ?? null,
+            // Bound to (couple, profile, date) rather than to the row id,
+            // because on conflict Postgres keeps the id already there and
+            // discards anything the client sent — so an id-bound payload would
+            // open on the first tap of the day and fail on the second.
+            payload: cipher.seal(
+              { interest: input.interest, note: input.note ?? null },
+              {
+                table: 'checkins',
+                coupleId: input.coupleId,
+                profileId: input.profileId,
+                onDate: input.onDate,
+              },
+            ),
           },
           { onConflict: 'profile_id,on_date' },
         )
         .select()
         .single();
       if (error) throw new Error(error.message);
-      return toCheckin(data);
+      return toCheckin(data, cipher);
     },
 
     async clear(profileId, onDate) {

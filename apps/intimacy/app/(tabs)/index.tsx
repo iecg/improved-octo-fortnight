@@ -125,8 +125,10 @@ export default function Today() {
             onChangeText={setEdited}
             onBlur={() => {
               // Only worth a write if there is already an answer to attach it
-              // to; otherwise it waits for the chip.
-              if (myCheckin)
+              // to; otherwise it waits for the chip. `interest` is null when
+              // the payload would not open, and re-sending a guess there would
+              // put an answer in someone's mouth.
+              if (myCheckin?.interest)
                 recordCheckin.mutate({
                   interest: myCheckin.interest,
                   note: note.trim() || null,
@@ -138,12 +140,17 @@ export default function Today() {
             multiline
           />
 
-          {theirCheckin ? (
+          {theirCheckin?.interest ? (
             <Muted>
               {t('app:today.partnerAnswer', { name: partnerName })}
               {': '}
               {t(`app:checkin.${theirCheckin.interest}`)}
             </Muted>
+          ) : theirCheckin ? (
+            /* A check-in exists but this device cannot open it. Say so plainly
+               rather than render a missing translation key — and never guess at
+               an answer, which is the one thing this screen must not do. */
+            <Muted>{t('app:today.partnerUnreadable', { name: partnerName })}</Muted>
           ) : (
             <Muted>{t('app:today.partnerNoAnswer', { name: partnerName })}</Muted>
           )}

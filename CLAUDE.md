@@ -41,6 +41,13 @@ a test, listed with them.
    app does not, because what it discloses in that direction is that a date
    night is booked. (`tests/guards/standalone.test.ts`, `tests/rls/`)
 
+   Since encryption, this is also arithmetic: each domain gets its own content
+   key derived from the couple root, so the 2-2-2 app's cipher **cannot open**
+   an intimacy payload even if a bug hands it the row. That is a defence
+   against the code, not against the person — both partners hold the root key
+   and can derive either scope. The convention above still stands; it now has a
+   second lock behind it.
+
 3. **Discretion.** Nothing intimate reaches a lock screen, a notification
    payload, or a calendar entry. Calendar events carry a user-chosen neutral
    label only. Reminders are _local_, composed on the recipient's own device —
@@ -144,6 +151,216 @@ turn. Run it before a release and after any change to `packages/device`, the
 propose or plan screens, or the busy-times view. It needs a Mac: neither app
 runs in Expo Go, so a dev build is not optional.
 
+## Encryption
+
+Everything a partner writes is sealed on the device that wrote it. RLS answers
+"can another couple read this"; it cannot answer "can the operator read this,"
+because policies apply to the `authenticated` role and the operator connects as
+owner or `service_role`. Only client-side encryption answers that.
+
+**Sealed** into one `payload` per row: `plans.title/notes/location`,
+`checkins.note` **and `checkins.interest`**, `plan_ideas`' title, summary, url,
+cost band and locale, `plan_places`' venue name, address, provider handle,
+coordinates and locale, and `profiles.name_payload`. The interest level is in
+there because `yes` / `maybe` / `not_tonight` is the most revealing value in the
+schema — as an enum column it was published in the clear for every check-in ever
+made. `plan_places` is in there because it is the most precise location data in
+the schema: where these two people are going, to six decimal places.
+
+`checkins.energy` is neither sealed nor readable — it is gone. Encryption would
+have hidden a 1-5 self-rating; invariant 4 says it should not exist, and a
+number attached to how someone felt about a night is the exact shape of a score.
+
+**Readable**, because RLS, foreign keys and the authorship triggers need them:
+ids, `couple_id`, `created_by`/`proposed_by`/`saved_by`/`attached_by`, `domain`,
+`kind`, every date, `status`, `response`, `plan_ideas.source`/`source_domain`,
+and `plan_places.provider`/`share_with_calendar`. The last two are provenance
+and a switch this app acts on; neither says where anybody is going.
+
+One blob per row rather than a ciphertext per column, and not for efficiency:
+with a column each, `notes is null` would tell anyone reading the table whether
+a note exists on every plan in it. The AAD binds table, couple and row key, so
+ciphertext cannot be moved between rows, couples or tables — and check-ins bind
+to `(couple_id, profile_id, on_date)`, not to `id`, because `record()` upserts
+on that natural key and Postgres keeps the existing row's id on conflict.
+
+`packages/crypto` is pure the way `packages/cadence` is pure: no React, no I/O,
+no native modules, and **no ambient globals**. Randomness is injected as a
+`RandomSource`, and UTF-8 and base64 are hand-written, because Expo SDK 57's
+winter runtime supplies `TextDecoder` but not `TextEncoder` and Hermes has no
+`btoa` — importing them would work under Node and fail on device.
+
+Per-field length limits are enforced client-side now; the `CHECK` constraints
+bound ciphertext only. That moves an integrity rule off the server, though the
+only party it ever protected against was the couple themselves. The display
+name's 1..80 rule lives in `packages/core/src/name.ts` — in `core` rather than
+beside the seal because the repository and the screen both need the same answer,
+and a rule enforced in one and guessed at in the other is how the two drift. It
+counts **code points**, so an emoji is the one character it looks like.
+
+The two limits were written at different times and are checked against each
+other rather than assumed: `tests/e2e/journey.test.ts` seals a name of 80
+four-byte characters — the longest the rule admits, 320 bytes rather than the 80
+an ASCII reading would suggest — and asserts the result lands inside
+`profiles_name_payload_bounded`'s 64..1000. It comes to ~576 base64 characters,
+so there is room; at 300 it would be 1768 and the insert would fail on a name
+somebody had actually typed.
+
+`tests/guards/no-plaintext-content.test.ts` is what keeps this true: an
+allowlist of every column of every table, cross-checked against every key
+`packages/data` sends to PostgREST.
+
+### How the key reaches a device
+
+Every install mints an X25519 keypair, keeps the secret in the keychain and
+publishes the public half to `device_keys`. A device that already holds the
+couple key wraps it to a published public key; the two people compare a
+twelve-character **safety number** first, which is what stops the server
+substituting a key of its own. The wrap is static-static ECDH, not a sealed
+box — with a sealed box anyone holding the recipient's public key could forge a
+plausible wrap, so the tag would prove nothing about who sent it.
+
+**There is a fourth app state now: paired but keyless.** `SessionState.keyState`
+carries it and `routeIntent` in `packages/auth/src/route.ts` decides on it —
+one pure function, because the expression was duplicated character-for-character
+in both `_layout.tsx` files and a fourth state was not something to copy again.
+A keyless session routes to `/unlock`, never to the tabs. `usePairedSession()`
+asserts the same thing, so a screen that slips past the router fails loudly
+instead of meeting `MissingCoupleKeyError` inside a mapper.
+
+`/approve` is deliberately exempt from that redirect for a session that _has_
+the key: gating the approver behind an approval is the deadlock the screen
+exists to break.
+
+**Approving your own device is a normal path, not a workaround.** SecureStore is
+scoped per app bundle, so installing the second app on one phone produces a
+paired, keyless device belonging to _you_. `pendingDevices` therefore returns
+devices of either member with an `isMine` flag. Without that, "installing the
+second app finds the couple already connected" would have stopped being true the
+moment encryption shipped.
+
+Two keychain items with two different accessibility levels, and the difference
+is deliberate: the **device secret** is `WHEN_UNLOCKED_THIS_DEVICE_ONLY`, so a
+restored backup does not produce two phones answering to one `device_keys` row;
+the **couple key** is `AFTER_FIRST_UNLOCK`, so it rides an encrypted backup to a
+new phone. Neither uses `requireAuthentication` — such keys are invalidated when
+biometrics change, which would make every row unreadable with no recovery, and
+the flag does not combine with `keychainService`. A lock screen belongs at the
+app layer, where `AppLockGate` already puts it.
+
+Note one asymmetry worth remembering: a wrap row is the **only** evidence any
+other device can see that a device holds the key. That is why the founding
+device wraps the key to itself — not for recovery (a reinstall mints a new
+keypair and could not open it), but so its own second install does not offer to
+re-approve it.
+
+**When the numbers don't match, the two sides do different things, and the split
+is not arbitrary.** Nothing has been written at that moment — the wrap only
+happens on approve — so the approver has nothing to undo and their action is to
+_dismiss_ and write nothing. It cannot be to revoke: `device_keys_delete_own`
+scopes deletion to your own rows, and a partner's row is their claim about their
+own phone (`tests/rls/policies.test.ts`). The remedy is `resetDeviceKey`, on the
+waiting device, which mints a fresh keypair and withdraws the old row.
+Republishing would achieve nothing — the safety number is a function of the
+keypair, so the same keypair reads out the same twelve characters however often
+it is announced. A _new_ keypair gives a new number, and that is what separates
+"we misread it" from "something is between these two phones": after a rotation
+the numbers should agree, and if they still don't, that is a signal.
+
+**`InvitePanel` is the invite code and the approval in one card**, on the pairing
+screen and in both apps' Settings. It shows the code until a device appears and
+then shows the safety number in its place — which is also what keeps a _stale_
+code off the screen, since `join_couple` rotates the code the instant it is
+redeemed and never tells this device. The distinction it turns on is `isMine`:
+your own second install publishes a device key without redeeming anything, so it
+must not retire a code that is still good.
+
+The two waiting screens poll every five seconds on top of their realtime
+subscription. `npm run db:test` runs SQL over a socket and never touches
+Realtime, so nothing in the suite proves a `postgres_changes` subscription is
+delivered under RLS over a websocket — and these are the only screens where a
+missed update is a dead end, with no pull-to-refresh and no way to tell "nobody
+has joined" from "the socket is dead".
+
+### The three ways back in
+
+`/unlock` is one of them, and for a long time it was the only one: a partner
+approves you. That covers everything except both phones losing the key at once,
+where `/unlock` waits for a partner who is also waiting. `/recovery` — reachable
+from "I can't get in", keyless-only, grouped with `/unlock` in `routeIntent` —
+presents all three in ascending destructiveness, and the order on screen is the
+order to try them in.
+
+**The recovery code is one person's, not the couple's.**
+`couple_key_recovery.profile_id` is the primary key and `couple_key_recovery_all_own`
+is the only policy in this schema that hides a row from the _partner_. It has to:
+partner re-wrap is a different rung and does not touch this row, so there is no
+reason for the other person to hold a second offline-attackable copy of the key.
+The code is generated rather than chosen — 125 bits — which is what makes a pure-JS
+scrypt sufficient, and it is shown exactly once because the envelope cannot be
+turned back into it. Both halves of it are `async` and use `scryptAsync`: the
+synchronous variant holds the JS thread for the whole derivation, which would
+freeze the very spinner the screen puts up to explain the wait. `kdf_params` comes back from the server and is fed to a KDF,
+so `packages/data` bounds it before use: it is the one value in this schema an
+operator could edit into work rather than into a failed tag.
+
+**Starting over is unpairing, not a key rotation, and the reason is arithmetic
+rather than taste.** A rotation would mint a new root at `epoch + 1` and leave
+every existing row sealed under a key nobody holds — and the client _cannot_
+clear them, because `checkins_delete_own` and `plan_proposals_delete_own` scope
+deletion to your own rows, so one partner's check-ins would outlive whatever the
+other did. They would render as `unreadable` placeholders on every list, forever.
+Leaving the couple deletes it through `handle_member_departure` and a cascade
+instead, which reaches every table regardless of who is asking
+(`tests/rls/policies.test.ts` asserts it for content and for key material both).
+
+It takes both people, and the screen says so: leaving reopens the seat, and the
+couple dies only when the second person leaves. If the partner can still open the
+app, the right rung is the first one.
+
+So **the `epoch` columns stay unused on purpose.** They are for a rotation that
+re-seals every row — a real feature, needing a cipher that holds two keys at once
+and a migration that survives being interrupted. `createFieldCipher` refusing to
+cross an epoch is that feature's first line, not an oversight to "use up".
+
+**There is no revoke, and Settings' device list says so.** `device_keys_delete_own`
+means you can withdraw your own rows and never your partner's, and withdrawing
+takes back nothing — the key is in that device's keychain, not in this table. The
+card lists every device, whether each holds the key, and the safety number to
+compare, and states both limits rather than implying a control it does not have.
+
+### What this does not protect
+
+The first item is the deliberate limit of the whole design, not a gap in it.
+
+1. **A malicious app build.** Whoever ships the binary can ship one that
+   uploads the keys. End-to-end encryption makes the _server alone_ incapable of
+   reading the data — not the developer permanently incapable. The mitigations
+   are process: open source, reproducible builds, published hashes.
+2. **Metadata.** That these two accounts are a couple, when they paired, how
+   many rows exist, the exact date and time of every plan, which days each
+   partner checked in, every status, and `domain`/`kind`. An operator can see
+   that this couple has an `intimacy/intimacy` plan on Friday at 19:00. Not a
+   word of what it says, and not whether the answer was yes.
+3. **Length, approximately.** Payloads pad to 64-byte buckets, which blunts it;
+   a very long note is still visibly long.
+4. **Rollback and withholding.** The AAD stops relocation. It does not stop
+   restoring an older ciphertext for the same row, deleting rows, or serving one
+   partner a stale view. Integrity is per row, not per database.
+5. **The device.** An unlocked phone, a compromised OS, a screenshot. Note the
+   trade: the couple key is stored _without_ `THIS_DEVICE_ONLY` so an encrypted
+   backup can restore it — a recovery feature and an exposure at once.
+6. **Your partner.** By design.
+7. **Availability.** Lose both devices and the recovery code and the history is
+   gone. Nobody, including the developer, can reset it. That is what "the server
+   cannot read it" means, spelled out.
+8. **The mailbox.** Sign-in is email OTP, so whoever controls it can sign in and
+   ask the partner to approve a new device. The only barrier is the human step —
+   real, and thin.
+9. **Search, forever.** No server-side search, filter or sort over content is
+   possible any more. A consequence rather than a gap, but the one that will be
+   forgotten and then proposed as a feature.
+
 ## Data model notes
 
 - `cadences` and `plans` are keyed by **`(domain, kind)`**, both `slug` text
@@ -158,6 +375,12 @@ runs in Expo Go, so a dev build is not optional.
   cannot be enumerated through the table API. The code rotates once redeemed —
   and again whenever the couple loses a member, because leaving reopens the
   seat and would otherwise make a circulated code live again.
+- **`PairScreen` must not refresh the session while it is showing the invite
+  code.** Refreshing sets `couple`, the router replaces the screen, and the
+  founder's only sight of their own code is the render it is unmounted on. The
+  Continue button is what advances instead. This was a real bug before
+  encryption and would have been permanent after it, since minting the couple
+  key makes `keyState` ready on the same tick.
 - **A couple with no members left is deleted, not kept.** Nothing can reach an
   empty couple's rows through any policy, so retaining them serves nobody and
   leaves intimate history sitting behind a redeemable code.

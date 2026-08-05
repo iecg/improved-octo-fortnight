@@ -95,12 +95,10 @@ export default function Plans() {
                 locale={locale}
                 timeZone={timeZone}
                 busy={attach.isPending || detach.isPending}
-                onAttach={(draft) =>
-                  attach.mutate({ planId: plan.id, place: { ...draft, locale } })
-                }
+                onAttach={(draft) => attach.mutate({ plan, place: { ...draft, locale } })}
                 onRemove={() => {
                   const place = placeByPlan.get(plan.id);
-                  if (place) detach.mutate({ placeId: place.id, planId: plan.id });
+                  if (place) detach.mutate({ placeId: place.id, plan });
                 }}
                 onShareWithCalendar={(next) => {
                   const place = placeByPlan.get(plan.id);

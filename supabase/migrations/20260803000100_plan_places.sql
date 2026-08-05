@@ -35,27 +35,22 @@ create table public.plan_places (
   plan_id uuid,
   idea_id uuid,
 
-  -- Shown verbatim. Either a partner's typing or a provider's own record;
-  -- never machine-translated, exactly like an idea's title.
-  name text not null check (length(name) between 1 and 200),
-  address text check (address is null or length(address) <= 300),
+  -- Sealed into one blob: the venue name, the address, the provider's opaque
+  -- handle, the coordinates, and the language the address is written in.
+  --
+  -- This is the most precise location data in the schema — where these two
+  -- people are going, to six decimal places — so it is the last thing that
+  -- should have stayed readable. One payload rather than a column each for the
+  -- reason every other table here has one: with separate ciphertext,
+  -- `address is null` would tell a reader of this table which places were
+  -- typed by hand and which were searched for, on every row.
+  payload text not null,
 
   -- 'manual' is a partner typing a name. It is the only provider that exists
   -- with nothing configured, and it stays a first-class case everywhere.
+  -- Readable, like `plan_ideas.source`: provenance rather than content — which
+  -- kind of record this is, not what it says.
   provider text not null check (provider in ('manual', 'google')),
-  -- The provider's opaque handle. Nothing is derived from it locally; it is
-  -- what a later lookup would use to refresh a stale address.
-  provider_place_id text check (provider_place_id is null or length(provider_place_id) <= 255),
-
-  -- Null whenever the place was typed rather than searched, which is the
-  -- normal case.
-  latitude numeric(9, 6) check (latitude is null or latitude between -90 and 90),
-  longitude numeric(9, 6) check (longitude is null or longitude between -180 and 180),
-
-  -- The language the address is written in. Labelled, not translated — the
-  -- same rule as plan_ideas.locale. A venue's NAME is a proper noun and is
-  -- never labelled; only the address line is.
-  locale public.locale not null,
 
   -- Off by default. A calendar entry is visible to anyone holding an unlocked
   -- phone and syncs to a shared desktop, so an address goes there only because
@@ -68,11 +63,13 @@ create table public.plan_places (
 
   constraint plan_places_one_target
     check ((plan_id is null) <> (idea_id is null)),
-  -- Half a coordinate is not a location.
-  constraint plan_places_coords_paired
-    check ((latitude is null) = (longitude is null)),
-  constraint plan_places_google_has_id
-    check (provider <> 'google' or provider_place_id is not null),
+  -- The paired-coordinates and google-has-an-id rules used to live here. They
+  -- are client-side now, in `packages/data/src/places.ts`, because the columns
+  -- they constrained are inside the payload and Postgres cannot read it. The
+  -- same trade the display name makes, and the same note applies: the only
+  -- party these ever protected against was the couple themselves.
+  constraint plan_places_payload_format check (payload ~ '^[A-Za-z0-9+/]+={0,2}$'),
+  constraint plan_places_payload_bounded check (length(payload) between 64 and 4000),
   constraint plan_places_plan_fk
     foreign key (plan_id, couple_id)
     references public.plans (id, couple_id) on delete cascade,

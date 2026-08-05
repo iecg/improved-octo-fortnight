@@ -15,12 +15,12 @@ import { calendarDateIn } from '@couple/i18n';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { DEFAULT_INTIMACY_CADENCES, supabase } from './runtime';
+import { contentCipher, DEFAULT_INTIMACY_CADENCES, supabase } from './runtime';
 
 export const DOMAIN = 'intimacy' as const;
 
-export const plans = createDomainRepository(supabase, DOMAIN);
-export const checkins = createCheckinRepository(supabase);
+export const plans = createDomainRepository(supabase, DOMAIN, contentCipher);
+export const checkins = createCheckinRepository(supabase, contentCipher);
 
 /**
  * Times the couple is occupied, across both apps — and only times.
@@ -241,7 +241,7 @@ export function useRespondToProposal(coupleId: string) {
       // touched that column, and the two are pinned to each other by a check
       // constraint.
       if (input.response === 'accepted') {
-        await plans.updatePlan(input.proposal.planId, {
+        await plans.setPlanSchedule(input.proposal.planId, {
           startsAt: input.proposal.startsAt,
           endsAt: input.proposal.endsAt,
         });

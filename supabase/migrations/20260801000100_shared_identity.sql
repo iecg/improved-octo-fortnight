@@ -23,14 +23,32 @@ $$;
 
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  display_name text check (display_name is null or length(trim(display_name)) between 1 and 80),
+  -- The display name, sealed on the device that set it under the couple's
+  -- `shared` content key. Null until pairing, and not because of an ordering
+  -- accident: before there is a couple there is no key to seal it with, and no
+  -- partner to address either. A name shown only to yourself is a device
+  -- preference, not a row.
+  --
+  -- The length rule that used to live here (1..80 characters) is now enforced
+  -- client-side before sealing. That moves an integrity check off the server,
+  -- and it is worth being plain about — though the only party it ever protected
+  -- against was the couple themselves, since RLS already confines writes to
+  -- their own rows.
+  name_payload text,
   timezone text not null default 'UTC',
   -- Locale is per person, not per couple: partners read the same rows in
   -- different languages.
   locale public.locale not null default 'en',
   expo_push_token text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint profiles_name_payload_format
+    check (name_payload is null or name_payload ~ '^[A-Za-z0-9+/]+={0,2}$'),
+  -- A ceiling rather than a measurement: it stops the column being used as
+  -- general blob storage. What actually validates a payload is its Poly1305
+  -- tag, and only a device holding the key can check that.
+  constraint profiles_name_payload_bounded
+    check (name_payload is null or length(name_payload) between 64 and 1000)
 );
 
 create trigger profiles_touch_updated_at
@@ -39,6 +57,12 @@ create trigger profiles_touch_updated_at
 
 -- A profile row for every auth user, created server-side so the client never
 -- has to remember to.
+--
+-- The row is empty apart from its id. An earlier version copied a display name
+-- out of `raw_user_meta_data`, which was leakage rather than convenience: the
+-- server already holds that metadata in `auth.users`, and copying it into a
+-- table meant to be end-to-end encrypted would have made it the one plaintext
+-- hole in it. The name arrives later, sealed, once there is a couple key.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -46,9 +70,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  insert into public.profiles (id, display_name)
-  values (new.id, nullif(trim(new.raw_user_meta_data ->> 'display_name'), ''))
-  on conflict (id) do nothing;
+  insert into public.profiles (id) values (new.id) on conflict (id) do nothing;
   return new;
 end;
 $$;

@@ -10,6 +10,7 @@
   "dependencies": {
     "@couple/cadence": "*",
     "@couple/core": "*",
+    "@couple/crypto": "*",
     "@couple/data": "*",
     "@couple/i18n": "*",
     "@couple/ui": "*"

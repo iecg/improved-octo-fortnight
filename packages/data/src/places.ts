@@ -17,6 +17,7 @@
  * explicit second call the caller makes, not a side effect hidden in here.
  */
 import type { Coordinates, Locale, PlaceProvider, PlanPlace } from '@couple/core';
+import type { FieldCipher } from '@couple/crypto';
 
 import type { AppSupabaseClient } from './client';
 import { toPlanPlace } from './mappers';
@@ -49,7 +50,25 @@ export interface PlaceRepository {
   detach(placeId: string): Promise<void>;
 }
 
-export function createPlaceRepository(client: AppSupabaseClient): PlaceRepository {
+/**
+ * Two rules the table used to hold and cannot any more.
+ *
+ * `plan_places_coords_paired` and `plan_places_google_has_id` were `check`
+ * constraints until the columns they policed moved inside the payload. Postgres
+ * cannot read a sealed blob, so they live here — the same move the display
+ * name's length rule made, and worth the same note: the only party they ever
+ * protected against was the couple themselves.
+ */
+export class InvalidPlaceError extends Error {}
+
+export function createPlaceRepository(
+  client: AppSupabaseClient,
+  cipher: FieldCipher,
+): PlaceRepository {
+  if (cipher.scope !== DOMAIN) {
+    throw new Error(`places are ${DOMAIN}-owned; got a ${cipher.scope} cipher`);
+  }
+
   return {
     async listForCouple(coupleId) {
       const { data, error } = await client
@@ -59,7 +78,7 @@ export function createPlaceRepository(client: AppSupabaseClient): PlaceRepositor
         .eq('domain', DOMAIN)
         .order('created_at', { ascending: false });
       if (error) throw new Error(error.message);
-      return (data ?? []).map(toPlanPlace);
+      return (data ?? []).map((row) => toPlanPlace(row, cipher));
     },
 
     async getForPlan(planId) {
@@ -70,31 +89,55 @@ export function createPlaceRepository(client: AppSupabaseClient): PlaceRepositor
         .eq('domain', DOMAIN)
         .maybeSingle();
       if (error) throw new Error(error.message);
-      return data ? toPlanPlace(data) : null;
+      return data ? toPlanPlace(data, cipher) : null;
     },
 
     async attach(input) {
+      // Half a coordinate is not a location, and a searched place with no
+      // handle cannot be looked up again. Both used to be the table's job.
+      if (
+        input.coordinates &&
+        (input.coordinates.latitude === null || input.coordinates.longitude === null)
+      ) {
+        throw new InvalidPlaceError('a coordinate needs both a latitude and a longitude');
+      }
+      if (input.provider === 'google' && !input.providerPlaceId) {
+        throw new InvalidPlaceError('a searched place needs the provider handle it was found by');
+      }
+
+      // Minted here because the payload's AAD binds to it.
+      const id = cipher.newId();
+
       const { data, error } = await client
         .from('plan_places')
         .insert({
+          id,
           couple_id: input.coupleId,
           domain: DOMAIN,
           plan_id: input.planId ?? null,
           idea_id: input.ideaId ?? null,
           attached_by: input.attachedBy,
-          name: input.name,
-          address: input.address ?? null,
+          // `provider` and `share_with_calendar` stay outside: one is
+          // provenance, the other is a switch this app acts on. Everything
+          // that says *where* goes in.
+          payload: cipher.seal(
+            {
+              name: input.name,
+              address: input.address ?? null,
+              providerPlaceId: input.providerPlaceId ?? null,
+              latitude: input.coordinates?.latitude ?? null,
+              longitude: input.coordinates?.longitude ?? null,
+              locale: input.locale,
+            },
+            { table: 'plan_places', coupleId: input.coupleId, id },
+          ),
           provider: input.provider,
-          provider_place_id: input.providerPlaceId ?? null,
-          latitude: input.coordinates?.latitude ?? null,
-          longitude: input.coordinates?.longitude ?? null,
-          locale: input.locale,
           share_with_calendar: input.shareWithCalendar ?? false,
         })
         .select()
         .single();
       if (error) throw new Error(error.message);
-      return toPlanPlace(data);
+      return toPlanPlace(data, cipher);
     },
 
     async setShareWithCalendar(placeId, share) {
@@ -106,7 +149,7 @@ export function createPlaceRepository(client: AppSupabaseClient): PlaceRepositor
         .select()
         .single();
       if (error) throw new Error(error.message);
-      return toPlanPlace(data);
+      return toPlanPlace(data, cipher);
     },
 
     async detach(placeId) {

@@ -196,7 +196,7 @@ alter table public.profiles drop column expo_push_token;
 -- reason is the same: a table-wide grant silently widens to whatever columns
 -- get added later.
 revoke update on public.profiles from authenticated;
-grant update (display_name, locale, timezone) on public.profiles to authenticated;
+grant update (locale, name_payload, timezone) on public.profiles to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Housekeeping: `revoke all ... from anon` in the RLS migration was a

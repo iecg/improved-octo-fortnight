@@ -10,7 +10,9 @@
   "dependencies": {
     "@couple/cadence": "*",
     "@couple/core": "*",
-    "@couple/i18n": "*"
+    "@couple/i18n": "*",
+    "expo-crypto": "~57.0.1",
+    "@couple/crypto": "*"
   },
   "peerDependencies": {
     "expo-calendar": "*",

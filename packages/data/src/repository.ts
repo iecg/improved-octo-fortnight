@@ -20,16 +20,36 @@ import type {
   PlanStatus,
 } from '@couple/core';
 
+import type { FieldCipher } from '@couple/crypto';
+
 import type { AppSupabaseClient } from './client';
 import { toCadence, toPlan, toPlanProposal } from './mappers';
 
-export interface CreatePlanInput {
-  coupleId: string;
-  kind: string;
-  createdBy: string;
+/** The fields of a plan that are sealed. Everything else is structural. */
+export interface PlanContent {
   title?: string | null;
   notes?: string | null;
   location?: string | null;
+}
+
+/**
+ * Raised when an edit lost a race.
+ *
+ * A consequence of one payload per row: a partial edit has to decrypt, merge
+ * and re-seal, so two devices editing the same plan can no longer each write
+ * their own column. The `updated_at` precondition turns a silent lost update
+ * into this.
+ */
+export class StaleWriteError extends Error {
+  constructor() {
+    super('the plan changed on another device; reload and try again');
+  }
+}
+
+export interface CreatePlanInput extends PlanContent {
+  coupleId: string;
+  kind: string;
+  createdBy: string;
   startsAt?: string | null;
   endsAt?: string | null;
   status?: PlanStatus;
@@ -62,19 +82,31 @@ export interface DomainRepository {
   getPlan(planId: string): Promise<Plan | null>;
   createPlan(input: CreatePlanInput): Promise<Plan>;
   /**
-   * Edit a plan's own fields. Deliberately not its status.
+   * Edit the sealed fields.
    *
-   * `plans` carries `check ((status = 'completed') = (completed_at is not
-   * null))`, and this method never touched `completed_at` — so a patch of
-   * `{ status: 'completed' }` raised a constraint violation, and moving a
-   * completed plan to any other status raised the same one from the other
-   * side. It typechecked, because `Partial<CreatePlanInput>` includes
-   * `status`, and it was one caller away from being a live bug.
+   * Takes the plan rather than its id, and that is the visible cost of one
+   * payload per row: the blob has to be decrypted, merged and re-sealed, so the
+   * caller must be holding the row it is editing. Shaped like
+   * `recordCalendarEvent`, which already works this way.
    *
-   * `setPlanStatus` is the only door to a transition, and it maintains both
-   * columns together.
+   * It replaces `updatePlan`, which took a patch of arbitrary columns. That
+   * shape cannot survive encryption — the sealed fields are one column now, so
+   * "patch some of them" means read, merge, re-seal.
    */
-  updatePlan(planId: string, patch: Omit<Partial<CreatePlanInput>, 'status'>): Promise<Plan>;
+  updatePlanContent(plan: Plan, patch: PlanContent): Promise<Plan>;
+  /**
+   * Move a plan in time.
+   *
+   * Structural only — it touches no sealed field, so it stays keyed by id and
+   * needs no precondition. Status is deliberately not here: `plans` carries
+   * `check ((status = 'completed') = (completed_at is not null))`, so a
+   * transition has to write both columns together, and `setPlanStatus` is the
+   * only door to one.
+   */
+  setPlanSchedule(
+    planId: string,
+    patch: { startsAt?: string | null; endsAt?: string | null },
+  ): Promise<Plan>;
   setPlanStatus(planId: string, status: PlanStatus, completedAt?: string | null): Promise<Plan>;
   recordCalendarEvent(plan: Plan, profileId: string, eventId: string | null): Promise<Plan>;
   deletePlan(planId: string): Promise<void>;
@@ -88,7 +120,14 @@ export interface DomainRepository {
 export function createDomainRepository(
   client: AppSupabaseClient,
   domain: AppDomain,
+  cipher: FieldCipher,
 ): DomainRepository {
+  // Caught at construction rather than at the first decrypt failure, which
+  // would surface as an unreadable row somewhere far from the wiring mistake.
+  if (cipher.scope !== domain) {
+    throw new Error(`a ${domain} repository needs a ${domain} cipher, got ${cipher.scope}`);
+  }
+
   return {
     domain,
 
@@ -140,7 +179,7 @@ export function createDomainRepository(
         .eq('domain', domain)
         .order('starts_at', { ascending: false, nullsFirst: false });
       if (error) throw new Error(error.message);
-      return (data ?? []).map(toPlan);
+      return (data ?? []).map((row) => toPlan(row, cipher));
     },
 
     async getPlan(planId) {
@@ -151,20 +190,30 @@ export function createDomainRepository(
         .eq('domain', domain)
         .maybeSingle();
       if (error) throw new Error(error.message);
-      return data ? toPlan(data) : null;
+      return data ? toPlan(data, cipher) : null;
     },
 
     async createPlan(input) {
+      // The id is minted here, not by gen_random_uuid(): the payload's AAD
+      // binds to it, so it has to exist before the row is sealed.
+      const id = cipher.newId();
+
       const { data, error } = await client
         .from('plans')
         .insert({
+          id,
           couple_id: input.coupleId,
           domain,
           kind: input.kind,
           created_by: input.createdBy,
-          title: input.title ?? null,
-          notes: input.notes ?? null,
-          location: input.location ?? null,
+          payload: cipher.seal(
+            {
+              title: input.title ?? null,
+              notes: input.notes ?? null,
+              location: input.location ?? null,
+            },
+            { table: 'plans', coupleId: input.coupleId, id },
+          ),
           starts_at: input.startsAt ?? null,
           ends_at: input.endsAt ?? null,
           status: input.status ?? 'idea',
@@ -172,16 +221,47 @@ export function createDomainRepository(
         .select()
         .single();
       if (error) throw new Error(error.message);
-      return toPlan(data);
+      return toPlan(data, cipher);
     },
 
-    async updatePlan(planId, patch) {
+    async updatePlanContent(plan, patch) {
+      // Refuse to re-seal from a row that never opened: merging into empty
+      // fields would quietly erase a title nobody could read, rather than
+      // leaving it alone.
+      if (plan.unreadable) {
+        throw new Error('cannot edit a plan whose contents could not be read');
+      }
+
       const { data, error } = await client
         .from('plans')
         .update({
-          ...(patch.title !== undefined ? { title: patch.title } : {}),
-          ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
-          ...(patch.location !== undefined ? { location: patch.location } : {}),
+          payload: cipher.seal(
+            {
+              title: patch.title !== undefined ? patch.title : plan.title,
+              notes: patch.notes !== undefined ? patch.notes : plan.notes,
+              location: patch.location !== undefined ? patch.location : plan.location,
+            },
+            { table: 'plans', coupleId: plan.coupleId, id: plan.id },
+          ),
+        })
+        .eq('id', plan.id)
+        .eq('domain', domain)
+        // The lost-update guard, and the reason Plan carries updatedAt.
+        // touch_updated_at keeps it honest; RLS already refuses another
+        // couple's row, so a miss here means the plan moved under us rather
+        // than that it was never ours.
+        .eq('updated_at', plan.updatedAt)
+        .select()
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (data === null) throw new StaleWriteError();
+      return toPlan(data, cipher);
+    },
+
+    async setPlanSchedule(planId, patch) {
+      const { data, error } = await client
+        .from('plans')
+        .update({
           ...(patch.startsAt !== undefined ? { starts_at: patch.startsAt } : {}),
           ...(patch.endsAt !== undefined ? { ends_at: patch.endsAt } : {}),
         })
@@ -190,7 +270,7 @@ export function createDomainRepository(
         .select()
         .single();
       if (error) throw new Error(error.message);
-      return toPlan(data);
+      return toPlan(data, cipher);
     },
 
     async setPlanStatus(planId, status, completedAt) {
@@ -207,7 +287,7 @@ export function createDomainRepository(
         .select()
         .single();
       if (error) throw new Error(error.message);
-      return toPlan(data);
+      return toPlan(data, cipher);
     },
 
     async recordCalendarEvent(plan, profileId, eventId) {
@@ -225,7 +305,7 @@ export function createDomainRepository(
         .select()
         .single();
       if (error) throw new Error(error.message);
-      return toPlan(data);
+      return toPlan(data, cipher);
     },
 
     async deletePlan(planId) {

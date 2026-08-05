@@ -8,7 +8,12 @@
 -- restart, because an app that turns "not tonight" into a broken chain is an
 -- app that makes the problem worse.
 
-create type public.checkin_interest as enum ('yes', 'maybe', 'not_tonight');
+-- There is no `checkin_interest` enum here any more, and its absence is the
+-- point. `yes` / `maybe` / `not_tonight` is the single most revealing value in
+-- this schema, and an enum column would have published it in the clear for
+-- every check-in ever made. It is a machine token inside the payload now,
+-- rendered through a translation key exactly as before — the rule about never
+-- storing a display string is unchanged, it simply applies inside the blob.
 
 create table public.checkins (
   id uuid primary key default gen_random_uuid(),
@@ -17,14 +22,27 @@ create table public.checkins (
   -- The calendar date as the couple reads it, in their timezone. Stored as a
   -- date rather than a timestamp so "today" means the same thing to both
   -- partners regardless of who is awake.
+  --
+  -- Left readable, deliberately: the one-per-person-per-day rule below is a
+  -- unique constraint on it, and the couple's own screens filter by it. So a
+  -- reader of this table learns which days each partner checked in, and
+  -- nothing whatsoever about what they said.
   on_date date not null,
-  interest public.checkin_interest not null,
-  energy smallint check (energy is null or energy between 1 and 5),
-  -- Partner-authored, shown verbatim.
-  note text check (note is null or length(note) <= 500),
+  -- The interest and the note.
+  --
+  -- There was an `energy` column here too — a 1-5 self-rating — and it is gone
+  -- rather than sealed. Encryption would have hidden it; invariant 4 says it
+  -- should not exist. A number between 1 and 5 attached to how someone felt
+  -- about a night is the exact shape of a score: the kind of value that
+  -- acquires an average, then a trend line, then a reason to feel bad about a
+  -- Tuesday. `interest` stays, being three neutral tokens with "not tonight"
+  -- styled identically to "yes".
+  payload text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (profile_id, on_date)
+  unique (profile_id, on_date),
+  constraint checkins_payload_format check (payload ~ '^[A-Za-z0-9+/]+={0,2}$'),
+  constraint checkins_payload_bounded check (length(payload) between 64 and 4000)
 );
 
 create trigger checkins_touch_updated_at
