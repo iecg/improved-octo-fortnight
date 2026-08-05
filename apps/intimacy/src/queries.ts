@@ -34,6 +34,7 @@ export const busy = createBusyRepository(supabase);
 
 const keys = {
   plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
+  plan: (planId: string) => ['plan', DOMAIN, planId] as const,
   cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
   proposals: (coupleId: string) => ['proposals', DOMAIN, coupleId] as const,
   checkins: (coupleId: string, date: string) => ['checkins', coupleId, date] as const,
@@ -48,6 +49,13 @@ export function usePlans(coupleId: string) {
   return useQuery({
     queryKey: keys.plans(coupleId),
     queryFn: () => plans.listPlans(coupleId),
+  });
+}
+
+export function useGetPlan(planId: string) {
+  return useQuery({
+    queryKey: keys.plan(planId),
+    queryFn: () => plans.getPlan(planId),
   });
 }
 
