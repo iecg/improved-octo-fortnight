@@ -13,7 +13,8 @@
     "nothingBooked": "No hay nada reservado.",
     "rituals": "Su ritmo",
     "propose": "Proponer una hora",
-    "planIt": "Proponer una hora para esto"
+    "planIt": "Proponer una hora para esto",
+    "upcoming": "Próximas: {{dates}}"
   },
   "checkin": {
     "yes": "Sí",
@@ -22,7 +23,11 @@
     "noteLabel": "Algo que quieras decir",
     "notePlaceholder": "Opcional",
     "change": "Cambiar mi respuesta",
-    "noPressure": "No hay respuesta incorrecta, ni racha que mantener."
+    "noPressure": "No hay respuesta incorrecta, ni racha que mantener.",
+    "clear": "Borrar mi respuesta",
+    "logTitle": "Check-ins recientes",
+    "logMine": "Tú: {{answer}}",
+    "logTheirs": "{{name}}: {{answer}}"
   },
   "propose": {
     "title": "Proponer una hora",

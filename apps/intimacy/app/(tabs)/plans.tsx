@@ -9,7 +9,7 @@ import { Body, Button, Card, Divider, Heading, Loading, Muted, Screen, Title } f
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { formatWindowParts } from '../../src/format';
 import {
@@ -124,9 +124,13 @@ export default function Plans() {
   function PlanRow({ plan, actionable }: { plan: Plan; actionable: boolean }) {
     return (
       <View className="gap-2 py-2">
-        <Body>
-          {plan.startsAt ? windowLabel(plan.startsAt, plan.endsAt) : t('common:state.empty')}
-        </Body>
+        {/* The row's time opens the full plan; the action buttons below stay
+            their own targets. */}
+        <Pressable onPress={() => router.push(`/plan/${plan.id}`)}>
+          <Body>
+            {plan.startsAt ? windowLabel(plan.startsAt, plan.endsAt) : t('common:state.empty')}
+          </Body>
+        </Pressable>
         {/* Shown exactly as written, in whatever language it was written. */}
         {plan.notes ? <Muted>{plan.notes}</Muted> : null}
         {actionable ? (

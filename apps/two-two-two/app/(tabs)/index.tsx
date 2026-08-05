@@ -8,7 +8,7 @@
  * Every countdown comes from the shared cadence engine, the same pure code the
  * intimacy app runs. Only the intervals differ.
  */
-import { healthLabelKey } from '@couple/cadence';
+import { healthLabelKey, nextOccurrences } from '@couple/cadence';
 import { kindDescriptionKey, kindLabelKey, type AppDomain } from '@couple/core';
 import { dueTranslation, formatDay, intervalTranslation } from '@couple/i18n';
 import { Body, Button, CadenceBar, Card, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
@@ -65,6 +65,13 @@ export default function Rhythm() {
         const interval = cadence
           ? intervalTranslation(cadence.intervalValue, cadence.intervalUnit)
           : null;
+        // The rhythm ahead — the same derivation the intimacy app shows, from
+        // the anchor the bar already uses. Past dates drop off.
+        const upcoming = cadence
+          ? nextOccurrences(cadence, status.anchorAt, 12, timeZone)
+              .filter((date) => date > now)
+              .slice(0, 3)
+          : [];
 
         return (
           <Card key={`${status.domain}.${status.kind}`}>
@@ -98,6 +105,14 @@ export default function Rhythm() {
               </Muted>
 
               {interval ? <Muted>{t(interval.key, { count: interval.count })}</Muted> : null}
+
+              {upcoming.length > 0 ? (
+                <Muted>
+                  {t('app:home.upcoming', {
+                    dates: upcoming.map((date) => formatDay(date, locale, timeZone)).join(' · '),
+                  })}
+                </Muted>
+              ) : null}
 
               {/* The only thing that ever resets this clock. */}
               <Button

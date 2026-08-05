@@ -1154,6 +1154,26 @@ describe('column privileges', () => {
     expect(count).toBe(1);
   });
 
+  it('lets a member set the couple anniversary, and the partner reads the same date', async () => {
+    await asUser(pool, alice, (client) =>
+      client.query("update public.couples set anniversary_date = '2020-02-14' where id = $1", [
+        coupleA,
+      ]),
+    );
+
+    // It lives on `couples` rather than a profile precisely so both partners
+    // read the one shared date off the one shared row.
+    const seen = await asUser(pool, bob, async (client) => {
+      const result = await client.query(
+        'select anniversary_date::text as anniversary_date from public.couples where id = $1',
+        [coupleA],
+      );
+      return result.rows[0]!.anniversary_date;
+    });
+
+    expect(seen).toBe('2020-02-14');
+  });
+
   it('will not let a member choose their own invite code', async () => {
     const error = await expectRejected(
       asUser(pool, alice, (client) =>
@@ -1281,7 +1301,15 @@ describe('the busy-times view', () => {
          values ($1, $2, 'intimacy', $3, $4, $5, $6, $7)`,
         // `completed` and `completed_at` are a biconditional in the schema:
         // one without the other is rejected, in either direction.
-        [coupleId, domain, status, userId, startsAt, endsAt, status === 'completed' ? endsAt : null],
+        [
+          coupleId,
+          domain,
+          status,
+          userId,
+          startsAt,
+          endsAt,
+          status === 'completed' ? endsAt : null,
+        ],
       ),
     );
   }

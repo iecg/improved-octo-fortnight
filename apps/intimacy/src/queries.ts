@@ -34,12 +34,17 @@ export const busy = createBusyRepository(supabase);
 
 const keys = {
   plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
+  plan: (planId: string) => ['plan', DOMAIN, planId] as const,
   cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
   proposals: (coupleId: string) => ['proposals', DOMAIN, coupleId] as const,
   // Under the same prefix, so respond/counter and the realtime handler refresh
   // the pending list and the history together.
   proposalHistory: (coupleId: string) => ['proposals', DOMAIN, coupleId, 'all'] as const,
   checkins: (coupleId: string, date: string) => ['checkins', coupleId, date] as const,
+  // Prefix of every check-in key, so record/clear and the realtime handler
+  // refresh the day's card and the log together.
+  checkinsAll: (coupleId: string) => ['checkins', coupleId] as const,
+  checkinLog: (coupleId: string, since: string) => ['checkins', coupleId, 'log', since] as const,
   // Not domain-keyed: this list is the same one either app would read.
   busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
   // Every bounds pair for a couple. The bounds are part of the key, so
@@ -51,6 +56,13 @@ export function usePlans(coupleId: string) {
   return useQuery({
     queryKey: keys.plans(coupleId),
     queryFn: () => plans.listPlans(coupleId),
+  });
+}
+
+export function useGetPlan(planId: string) {
+  return useQuery({
+    queryKey: keys.plan(planId),
+    queryFn: () => plans.getPlan(planId),
   });
 }
 
@@ -181,10 +193,39 @@ export function useRecordCheckin(coupleId: string, profileId: string, timeZone: 
         interest: input.interest,
         note: input.note ?? null,
       }),
-    onSuccess: (_result, input) => {
-      void client.invalidateQueries({
-        queryKey: keys.checkins(coupleId, calendarDateIn(input.now, timeZone)),
-      });
+    onSuccess: () => {
+      // The prefix, so the day's card and the recent log both refresh.
+      void client.invalidateQueries({ queryKey: keys.checkinsAll(coupleId) });
+    },
+  });
+}
+
+/** How far back the check-in log reaches. A window, deliberately not a tally. */
+const CHECKIN_LOG_DAYS = 14;
+
+export function useCheckinLog(coupleId: string, timeZone: string, now: Date) {
+  const since = calendarDateIn(new Date(now.getTime() - CHECKIN_LOG_DAYS * 86_400_000), timeZone);
+  return useQuery({
+    queryKey: keys.checkinLog(coupleId, since),
+    queryFn: () => checkins.listRecent(coupleId, since),
+  });
+}
+
+/**
+ * Undo today's answer, back to no answer at all.
+ *
+ * Re-tapping a chip only overwrites; this removes the row so the day reads as
+ * unanswered again. A hard delete, which is why `checkins` carries
+ * `replica identity full` — otherwise the delete would not reach the partner's
+ * device through the couple-filtered subscription.
+ */
+export function useClearCheckin(coupleId: string, profileId: string, timeZone: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { now: Date }) =>
+      checkins.clear(profileId, calendarDateIn(input.now, timeZone)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.checkinsAll(coupleId) });
     },
   });
 }

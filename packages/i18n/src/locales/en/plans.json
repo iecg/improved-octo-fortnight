@@ -31,7 +31,12 @@
   },
   "detail": {
     "markDone": "Mark as done",
-    "markSkipped": "Didn't happen"
+    "markSkipped": "Didn't happen",
+    "when": "When",
+    "where": "Where",
+    "notes": "Notes",
+    "back": "Back",
+    "notFound": "This plan isn't here anymore."
   },
   "proposalLog": {
     "title": "Past suggestions",

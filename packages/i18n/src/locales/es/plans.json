@@ -31,7 +31,12 @@
   },
   "detail": {
     "markDone": "Marcar como hecho",
-    "markSkipped": "No ocurrió"
+    "markSkipped": "No ocurrió",
+    "when": "Cuándo",
+    "where": "Dónde",
+    "notes": "Notas",
+    "back": "Atrás",
+    "notFound": "Este plan ya no está aquí."
   },
   "proposalLog": {
     "title": "Sugerencias anteriores",
