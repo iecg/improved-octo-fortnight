@@ -30,7 +30,8 @@
     "lastTime": "La última vez fue el {{date}}",
     "neverYet": "Aún no hay nada registrado",
     "planIt": "Planearlo",
-    "bookedFor": "Reservado para el {{date}}"
+    "bookedFor": "Reservado para el {{date}}",
+    "upcoming": "Próximas: {{dates}}"
   },
   "plan": {
     "title": "Planear algo",

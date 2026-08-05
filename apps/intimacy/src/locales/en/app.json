@@ -13,7 +13,8 @@
     "nothingBooked": "Nothing booked.",
     "rituals": "Your rhythm",
     "propose": "Suggest a time",
-    "planIt": "Suggest a time for this"
+    "planIt": "Suggest a time for this",
+    "upcoming": "Next: {{dates}}"
   },
   "checkin": {
     "yes": "Yes",
