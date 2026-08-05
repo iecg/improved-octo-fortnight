@@ -6,7 +6,7 @@
  * in reverse: they protect this phone, and syncing them would let one partner
  * turn off the other's lock.
  */
-import { ConnectedAppsCard, UnpairCard } from '@couple/auth';
+import { AnniversaryCard, ConnectedAppsCard, UnpairCard } from '@couple/auth';
 import { LOCALES, kindLabelKey, type Locale } from '@couple/core';
 import {
   hasCalendarAccess,
@@ -27,7 +27,7 @@ import { usePairedSession, useSession } from '../../src/session';
 
 export default function Settings() {
   const { t } = useTranslation(['app', 'cadence', 'common']);
-  const { profile, partner, setLocale, signOut, leaveCouple } = useSession();
+  const { profile, partner, setLocale, setAnniversary, signOut, leaveCouple } = useSession();
 
   const { couple } = usePairedSession();
   const cadencesQuery = useCadences(couple.id);
@@ -179,6 +179,13 @@ export default function Settings() {
           />
         </View>
       </Card>
+
+      {/* Couple-level and shared, so the same card serves both apps. */}
+      <AnniversaryCard
+        anniversaryDate={couple.anniversaryDate}
+        timeZone={couple.timezone}
+        onSet={setAnniversary}
+      />
 
       {/* Same component as the other app, so the two can never disagree about
           what is shared. */}
