@@ -23,7 +23,11 @@
     "noteLabel": "Anything to say about it",
     "notePlaceholder": "Optional",
     "change": "Change my answer",
-    "noPressure": "There's no wrong answer, and no streak to keep."
+    "noPressure": "There's no wrong answer, and no streak to keep.",
+    "clear": "Clear my answer",
+    "logTitle": "Recent check-ins",
+    "logMine": "You: {{answer}}",
+    "logTheirs": "{{name}}: {{answer}}"
   },
   "propose": {
     "title": "Suggest a time",

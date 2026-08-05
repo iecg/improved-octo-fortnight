@@ -32,7 +32,9 @@ import { TextInput, View } from 'react-native';
 import {
   cadenceStatuses,
   useCadences,
+  useCheckinLog,
   useCheckins,
+  useClearCheckin,
   usePlans,
   useRecordCheckin,
 } from '../../src/queries';
@@ -52,7 +54,9 @@ export default function Today() {
   const plansQuery = usePlans(couple.id);
   const cadencesQuery = useCadences(couple.id);
   const checkinsQuery = useCheckins(couple.id, timeZone, now);
+  const checkinLog = useCheckinLog(couple.id, timeZone, now);
   const recordCheckin = useRecordCheckin(couple.id, profile.id, timeZone);
+  const clearCheckin = useClearCheckin(couple.id, profile.id, timeZone);
 
   const partnerName = partner?.displayName ?? t('common:partner.unnamed');
 
@@ -149,6 +153,16 @@ export default function Today() {
           {theirCheckin?.note ? <Body>{theirCheckin.note}</Body> : null}
 
           <Muted>{t('app:checkin.noPressure')}</Muted>
+
+          {/* Undo, back to no answer at all — re-tapping a chip only ever
+              overwrites. Ghost-styled so it never competes with answering. */}
+          {myCheckin ? (
+            <Button
+              label={t('app:checkin.clear')}
+              variant="ghost"
+              onPress={() => clearCheckin.mutate({ now })}
+            />
+          ) : null}
         </View>
       </Card>
 
@@ -216,6 +230,29 @@ export default function Today() {
           })}
         </View>
       </Card>
+
+      {(checkinLog.data ?? []).length > 0 ? (
+        <Card>
+          <View className="gap-2">
+            <Heading>{t('app:checkin.logTitle')}</Heading>
+            {/* A plain record of recent answers, newest first — no count and no
+                streak, the same neutrality as the chips above. */}
+            {(checkinLog.data ?? []).map((entry) => (
+              <View key={entry.id} className="gap-1 py-1">
+                <Muted>{formatDay(new Date(`${entry.onDate}T12:00:00Z`), locale, 'UTC')}</Muted>
+                <Body>
+                  {entry.profileId === profile.id
+                    ? t('app:checkin.logMine', { answer: t(`app:checkin.${entry.interest}`) })
+                    : t('app:checkin.logTheirs', {
+                        name: partnerName,
+                        answer: t(`app:checkin.${entry.interest}`),
+                      })}
+                </Body>
+              </View>
+            ))}
+          </View>
+        </Card>
+      ) : null}
     </Screen>
   );
 }
