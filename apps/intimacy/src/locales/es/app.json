@@ -13,7 +13,8 @@
     "nothingBooked": "No hay nada reservado.",
     "rituals": "Su ritmo",
     "propose": "Proponer una hora",
-    "planIt": "Proponer una hora para esto"
+    "planIt": "Proponer una hora para esto",
+    "upcoming": "Próximas: {{dates}}"
   },
   "checkin": {
     "yes": "Sí",

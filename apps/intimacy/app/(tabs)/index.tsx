@@ -8,8 +8,9 @@
  * styled exactly like "yes" — an app that turns a no into a broken chain makes
  * the problem it is meant to solve worse.
  */
-import { healthLabelKey } from '@couple/cadence';
+import { healthLabelKey, nextOccurrences } from '@couple/cadence';
 import { CHECKIN_INTERESTS, type CheckinInterest } from '@couple/core';
+import { formatDay } from '@couple/i18n';
 import { dueTranslation, formatWeekday, formatTime, kindLabelKeyFor } from '../../src/format';
 import {
   Body,
@@ -172,6 +173,18 @@ export default function Today() {
           <Heading>{t('app:today.rituals')}</Heading>
           {statuses.map((status) => {
             const due = dueTranslation(status.daysUntilDue);
+            // The rhythm ahead, so the countdown is a horizon rather than a
+            // single number. Derived on read from the same anchor the bar uses;
+            // dates already behind us are dropped, so a badly overdue ritual
+            // simply shows fewer.
+            const cadence = (cadencesQuery.data ?? []).find(
+              (entry) => entry.domain === status.domain && entry.kind === status.kind,
+            );
+            const upcoming = cadence
+              ? nextOccurrences(cadence, status.anchorAt, 12, timeZone)
+                  .filter((date) => date > now)
+                  .slice(0, 3)
+              : [];
             return (
               <View key={`${status.domain}.${status.kind}`} className="gap-2">
                 <Body>{t(kindLabelKeyFor(status.domain, status.kind))}</Body>
@@ -181,6 +194,13 @@ export default function Today() {
                   label={t(due.key, { count: due.count })}
                   healthLabel={t(healthLabelKey(status.health))}
                 />
+                {upcoming.length > 0 ? (
+                  <Muted>
+                    {t('app:today.upcoming', {
+                      dates: upcoming.map((date) => formatDay(date, locale, timeZone)).join(' · '),
+                    })}
+                  </Muted>
+                ) : null}
                 {/* The only thing that ever resets this particular clock: a
                     plan of this kind. Without it the bar is a countdown with
                     no way to answer it. */}
