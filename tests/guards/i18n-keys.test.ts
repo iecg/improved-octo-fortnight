@@ -59,7 +59,10 @@ import { JOIN_FAILURES } from '../../packages/data/src/accounts';
 // scope, and this suite runs under plain Node.
 import { dueTranslation, intervalTranslation } from '../../packages/i18n/src/format';
 import { ideaSummaryKey, libraryFor } from '../../apps/two-two-two/src/ideas';
-import { AI_PROVIDER_IDS, providerLabelKey } from '../../apps/two-two-two/src/features/date-planner/ai/providers';
+import {
+  AI_PROVIDER_IDS,
+  providerLabelKey,
+} from '../../apps/two-two-two/src/features/date-planner/ai/providers';
 import { driveTimeLabel } from '../../apps/two-two-two/src/features/places/travel';
 
 import { REPO_ROOT, scannedFiles } from './sources';
@@ -179,7 +182,10 @@ describe('translation keys referenced in code', () => {
     // `app`, `ideas`, `places` and `ai` are registered per app at runtime, so a
     // shared package reaching for one would resolve to nothing in the other app.
     const offenders = references
-      .filter(({ namespace }) => namespace === 'app' || NAMESPACE_DIRS[namespace] === TWO22 || namespace === 'ai')
+      .filter(
+        ({ namespace }) =>
+          namespace === 'app' || NAMESPACE_DIRS[namespace] === TWO22 || namespace === 'ai',
+      )
       .filter(({ relPath }) => !relPath.startsWith(`apps${sep}`))
       .map(({ relPath, line, namespace, path }) => `${relPath}:${line} ${namespace}:${path}`);
 
@@ -252,9 +258,7 @@ const BUILT: Array<{ label: string; keys: string[] }> = [
   {
     label: 'idea summaries',
     // Keyed by 2-2-2 kinds; `libraryFor` yields nothing for anything else.
-    keys: two22Kinds.flatMap((kind) =>
-      libraryFor(kind).map((id) => ideaSummaryKey(kind, id)),
-    ),
+    keys: two22Kinds.flatMap((kind) => libraryFor(kind).map((id) => ideaSummaryKey(kind, id))),
   },
   { label: 'plan statuses', keys: PLAN_STATUSES.map((s) => `plans:status.${s}`) },
   { label: 'languages', keys: LOCALES.map((l) => `common:language.${l}`) },
