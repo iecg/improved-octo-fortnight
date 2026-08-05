@@ -55,7 +55,7 @@ permissions anyway, so `packages/device` would be inert in it.
    ```
 
    If `pod install` dies with `Unicode Normalization not appropriate for
-   ASCII-8BIT`, that is CocoaPods on Ruby 4 in a non-UTF-8 shell, and its error
+ASCII-8BIT`, that is CocoaPods on Ruby 4 in a non-UTF-8 shell, and its error
    reporter crashes while formatting the real error. Prefix with
    `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8`.
 
@@ -102,7 +102,7 @@ exercised the actual auth service.
 ## 2. The second install
 
 This is the one that shipped broken and was fixed in #10. It only reproduces
-when an app is installed against an *already paired* account.
+when an app is installed against an _already paired_ account.
 
 - [ ] **No second pairing.** The 2-2-2 app, signed in with an account already
       paired via the intimacy app, goes straight to the tabs. It never asks for
@@ -181,12 +181,12 @@ the screen still works.
       access shows "Avoid times you are busy elsewhere" switched **off**.
 - [ ] **Turning it on marks the chip.** Enable it, reopen the plan screen. The
       clashing chip carries a dot, and `axe describe-ui` reports its label as
-      `<time> — already booked`. Confirm the label names a *time* and never what
+      `<time> — already booked`. Confirm the label names a _time_ and never what
       fills it.
 - [ ] **A mark is never a block.** Tap the marked chip. It selects normally and
       saves. Overlapping deliberately is allowed.
 - [ ] **Trips mark only their departure day.** Book something mid-week, then
-      choose a 14-night trip. Only chips whose *first* day clashes are marked —
+      choose a 14-night trip. Only chips whose _first_ day clashes are marked —
       not all fourteen. Switch to a 2-hour date night over the same booking and
       that chip still marks.
 

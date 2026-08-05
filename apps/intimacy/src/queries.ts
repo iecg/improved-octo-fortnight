@@ -6,7 +6,11 @@
  */
 import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, CheckinInterest, Plan, PlanProposal } from '@couple/core';
-import { createBusyRepository, createCheckinRepository, createDomainRepository } from '@couple/data';
+import {
+  createBusyRepository,
+  createCheckinRepository,
+  createDomainRepository,
+} from '@couple/data';
 import { calendarDateIn } from '@couple/i18n';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';

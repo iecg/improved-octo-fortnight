@@ -235,8 +235,10 @@ describe('cross-app conveniences degrade to nothing', () => {
    */
   it('never lets a permission decide whether free/busy works at all', () => {
     const screens = allAppFiles.filter((file) => file.endsWith(join('plan', 'new.tsx')));
-    expect(screens.length, 'the two plan screens moved — this guard is looking in the wrong place')
-      .toBe(2);
+    expect(
+      screens.length,
+      'the two plan screens moved — this guard is looking in the wrong place',
+    ).toBe(2);
 
     const offenders = screens
       .filter((file) => !read(file).includes('busyFromPlans'))
@@ -277,7 +279,9 @@ describe('the cross-app busy feed is asked for, never assumed', () => {
    * would just leave the propose screen worse informed for no privacy gained.
    */
   it('does not gate the intimacy side', () => {
-    const owners = filesByApp.intimacy.filter((file) => read(file).includes('createBusyRepository'));
+    const owners = filesByApp.intimacy.filter((file) =>
+      read(file).includes('createBusyRepository'),
+    );
     expect(owners.length).toBe(1);
 
     expect(read(owners[0]!)).not.toContain('isCrossAppBusyEnabled');
@@ -285,10 +289,7 @@ describe('the cross-app busy feed is asked for, never assumed', () => {
 
   /** Default off is the whole point; a default of `true` would be the bug. */
   it('defaults the preference to off', () => {
-    const preferences = readFileSync(
-      join(REPO_ROOT, 'packages/device/src/preferences.ts'),
-      'utf8',
-    );
+    const preferences = readFileSync(join(REPO_ROOT, 'packages/device/src/preferences.ts'), 'utf8');
 
     // Stored as the string 'true' only when explicitly enabled, so an unset
     // key — a fresh install — reads as false.

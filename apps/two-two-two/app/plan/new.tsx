@@ -35,12 +35,7 @@ import {
   overlapsAny,
   type TimeRange,
 } from '@couple/cadence';
-import {
-  TWO_TWO_TWO_KINDS,
-  kindLabelKey,
-  type AppDomain,
-  type PlaceProvider,
-} from '@couple/core';
+import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain, type PlaceProvider } from '@couple/core';
 import { hasCalendarAccess, readBusyBlocks } from '@couple/device';
 import { formatDay, formatTime } from '@couple/i18n';
 import { Body, Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
