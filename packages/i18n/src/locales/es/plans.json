@@ -32,5 +32,11 @@
   "detail": {
     "markDone": "Marcar como hecho",
     "markSkipped": "No ocurrió"
+  },
+  "proposalLog": {
+    "title": "Sugerencias anteriores",
+    "accepted": "Aceptada",
+    "declined": "Rechazada",
+    "countered": "Respondida con otra hora"
   }
 }

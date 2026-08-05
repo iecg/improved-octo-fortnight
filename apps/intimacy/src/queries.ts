@@ -6,7 +6,11 @@
  */
 import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
 import type { Cadence, CheckinInterest, Plan, PlanProposal } from '@couple/core';
-import { createBusyRepository, createCheckinRepository, createDomainRepository } from '@couple/data';
+import {
+  createBusyRepository,
+  createCheckinRepository,
+  createDomainRepository,
+} from '@couple/data';
 import { calendarDateIn } from '@couple/i18n';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
@@ -32,6 +36,9 @@ const keys = {
   plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
   cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
   proposals: (coupleId: string) => ['proposals', DOMAIN, coupleId] as const,
+  // Under the same prefix, so respond/counter and the realtime handler refresh
+  // the pending list and the history together.
+  proposalHistory: (coupleId: string) => ['proposals', DOMAIN, coupleId, 'all'] as const,
   checkins: (coupleId: string, date: string) => ['checkins', coupleId, date] as const,
   // Not domain-keyed: this list is the same one either app would read.
   busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
@@ -138,6 +145,20 @@ export function usePendingProposals(coupleId: string) {
   return useQuery({
     queryKey: keys.proposals(coupleId),
     queryFn: () => plans.listPendingProposals(coupleId),
+  });
+}
+
+/**
+ * Every proposal, resolved ones included — the negotiation as it actually went.
+ *
+ * A plain record for the history section, kept distinct from the pending list
+ * that drives the top of the screen. Not a scoreboard: the screen renders it
+ * chronologically and counts nothing.
+ */
+export function useProposalHistory(coupleId: string) {
+  return useQuery({
+    queryKey: keys.proposalHistory(coupleId),
+    queryFn: () => plans.listProposals(coupleId),
   });
 }
 
