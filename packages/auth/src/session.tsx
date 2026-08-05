@@ -41,6 +41,8 @@ export interface SessionState {
    * the repository this module already holds rather than one a screen builds.
    */
   setDisplayName: (name: string | null) => Promise<void>;
+  /** Set (or clear) the couple's shared anniversary date, `YYYY-MM-DD`. */
+  setAnniversary: (date: string | null) => Promise<void>;
   signOut: () => Promise<void>;
   /**
    * Give up the seat in this couple, from either app.
@@ -175,6 +177,15 @@ export function createSessionModule(deps: {
       [profile],
     );
 
+    const setAnniversary = useCallback(
+      async (date: string | null) => {
+        if (!couple) return;
+        const updated = await accounts.updateCouple(couple.id, { anniversaryDate: date });
+        setCouple(updated);
+      },
+      [couple],
+    );
+
     const signOut = useCallback(async () => {
       // Memory only. The keychain copy stays, so signing back in on your own
       // phone does not need another approval — but nothing readable survives
@@ -213,6 +224,7 @@ export function createSessionModule(deps: {
         refresh,
         setLocale,
         setDisplayName,
+        setAnniversary,
         signOut,
         leaveCouple,
       }),
@@ -226,6 +238,7 @@ export function createSessionModule(deps: {
         refresh,
         setLocale,
         setDisplayName,
+        setAnniversary,
         signOut,
         leaveCouple,
       ],

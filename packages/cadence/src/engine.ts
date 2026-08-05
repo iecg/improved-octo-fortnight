@@ -12,7 +12,14 @@
  * an instant rather than by adding milliseconds.
  */
 import type { Cadence, IntervalUnit, Plan } from '@couple/core';
-import { addDays, addMonths, addWeeks, addYears, differenceInCalendarDays } from 'date-fns';
+import {
+  addDays,
+  addMonths,
+  addWeeks,
+  addYears,
+  differenceInCalendarDays,
+  startOfDay,
+} from 'date-fns';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
 export type CadenceHealth = 'on_track' | 'due_soon' | 'overdue';
@@ -85,6 +92,25 @@ export function addInterval(
 /** Calendar-day difference as the couple would count it on a wall calendar. */
 export function calendarDaysBetween(from: Date, to: Date, timeZone: string): number {
   return differenceInCalendarDays(toZonedTime(to, timeZone), toZonedTime(from, timeZone));
+}
+
+/**
+ * Days until the couple's next anniversary, counted on their wall calendar.
+ *
+ * The anniversary is a calendar date (`YYYY-MM-DD`); only its month and day
+ * matter for the recurrence. Returns the count to its next occurrence at or
+ * after the couple's today — `0` on the day itself. Pure: `now` and the
+ * timezone are arguments, never a clock read. A Feb-29 anniversary falls on
+ * Mar 1 in common years, following `Date`'s own rollover.
+ */
+export function nextAnniversaryDays(anniversaryDate: string, now: Date, timeZone: string): number {
+  const [, month = 1, day = 1] = anniversaryDate.split('-').map(Number);
+  const today = startOfDay(toZonedTime(now, timeZone));
+  let occurrence = startOfDay(new Date(today.getFullYear(), month - 1, day));
+  if (occurrence < today) {
+    occurrence = startOfDay(new Date(today.getFullYear() + 1, month - 1, day));
+  }
+  return differenceInCalendarDays(occurrence, today);
 }
 
 /**

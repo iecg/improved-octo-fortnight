@@ -7,6 +7,7 @@
  * turn off the other's lock.
  */
 import {
+  AnniversaryCard,
   ConnectedAppsCard,
   DeviceListCard,
   DisplayNameCard,
@@ -35,8 +36,16 @@ import { usePairedSession, useSession } from '../../src/session';
 
 export default function Settings() {
   const { t } = useTranslation(['app', 'cadence', 'common', 'auth']);
-  const { profile, partner, session, setDisplayName, setLocale, signOut, leaveCouple } =
-    useSession();
+  const {
+    profile,
+    partner,
+    session,
+    setDisplayName,
+    setLocale,
+    setAnniversary,
+    signOut,
+    leaveCouple,
+  } = useSession();
   const router = useRouter();
 
   // `usePairedSession` asserts the couple *and* the key. This tab is only
@@ -200,6 +209,15 @@ export default function Settings() {
       {/* Directly under the card that names your partner, because this is the
           other half of that sentence. */}
       <DisplayNameCard displayName={profile?.displayName ?? null} onSave={setDisplayName} />
+
+      {/* Couple-level and shared, so the same card serves both apps. Beside the
+          display name rather than among the key cards below: both are things
+          the two of you agree on, where those are about this device. */}
+      <AnniversaryCard
+        anniversaryDate={couple.anniversaryDate}
+        timeZone={couple.timezone}
+        onSet={setAnniversary}
+      />
 
       {/*
         The invite code, and the approval that follows it, in the one place you

@@ -8,8 +8,9 @@
  * styled exactly like "yes" — an app that turns a no into a broken chain makes
  * the problem it is meant to solve worse.
  */
-import { healthLabelKey } from '@couple/cadence';
+import { healthLabelKey, nextOccurrences } from '@couple/cadence';
 import { CHECKIN_INTERESTS, type CheckinInterest } from '@couple/core';
+import { formatDay } from '@couple/i18n';
 import { dueTranslation, formatWeekday, formatTime, kindLabelKeyFor } from '../../src/format';
 import {
   Body,
@@ -31,7 +32,9 @@ import { TextInput, View } from 'react-native';
 import {
   cadenceStatuses,
   useCadences,
+  useCheckinLog,
   useCheckins,
+  useClearCheckin,
   usePlans,
   useRecordCheckin,
 } from '../../src/queries';
@@ -51,7 +54,9 @@ export default function Today() {
   const plansQuery = usePlans(couple.id);
   const cadencesQuery = useCadences(couple.id);
   const checkinsQuery = useCheckins(couple.id, timeZone, now);
+  const checkinLog = useCheckinLog(couple.id, timeZone, now);
   const recordCheckin = useRecordCheckin(couple.id, profile.id, timeZone);
+  const clearCheckin = useClearCheckin(couple.id, profile.id, timeZone);
 
   const partnerName = partner?.displayName ?? t('common:partner.unnamed');
 
@@ -155,6 +160,16 @@ export default function Today() {
           {theirCheckin?.note ? <Body>{theirCheckin.note}</Body> : null}
 
           <Muted>{t('app:checkin.noPressure')}</Muted>
+
+          {/* Undo, back to no answer at all — re-tapping a chip only ever
+              overwrites. Ghost-styled so it never competes with answering. */}
+          {myCheckin ? (
+            <Button
+              label={t('app:checkin.clear')}
+              variant="ghost"
+              onPress={() => clearCheckin.mutate({ now })}
+            />
+          ) : null}
         </View>
       </Card>
 
@@ -179,6 +194,18 @@ export default function Today() {
           <Heading>{t('app:today.rituals')}</Heading>
           {statuses.map((status) => {
             const due = dueTranslation(status.daysUntilDue);
+            // The rhythm ahead, so the countdown is a horizon rather than a
+            // single number. Derived on read from the same anchor the bar uses;
+            // dates already behind us are dropped, so a badly overdue ritual
+            // simply shows fewer.
+            const cadence = (cadencesQuery.data ?? []).find(
+              (entry) => entry.domain === status.domain && entry.kind === status.kind,
+            );
+            const upcoming = cadence
+              ? nextOccurrences(cadence, status.anchorAt, 12, timeZone)
+                  .filter((date) => date > now)
+                  .slice(0, 3)
+              : [];
             return (
               <View key={`${status.domain}.${status.kind}`} className="gap-2">
                 <Body>{t(kindLabelKeyFor(status.domain, status.kind))}</Body>
@@ -188,6 +215,13 @@ export default function Today() {
                   label={t(due.key, { count: due.count })}
                   healthLabel={t(healthLabelKey(status.health))}
                 />
+                {upcoming.length > 0 ? (
+                  <Muted>
+                    {t('app:today.upcoming', {
+                      dates: upcoming.map((date) => formatDay(date, locale, timeZone)).join(' · '),
+                    })}
+                  </Muted>
+                ) : null}
                 {/* The only thing that ever resets this particular clock: a
                     plan of this kind. Without it the bar is a countdown with
                     no way to answer it. */}
@@ -203,6 +237,29 @@ export default function Today() {
           })}
         </View>
       </Card>
+
+      {(checkinLog.data ?? []).length > 0 ? (
+        <Card>
+          <View className="gap-2">
+            <Heading>{t('app:checkin.logTitle')}</Heading>
+            {/* A plain record of recent answers, newest first — no count and no
+                streak, the same neutrality as the chips above. */}
+            {(checkinLog.data ?? []).map((entry) => (
+              <View key={entry.id} className="gap-1 py-1">
+                <Muted>{formatDay(new Date(`${entry.onDate}T12:00:00Z`), locale, 'UTC')}</Muted>
+                <Body>
+                  {entry.profileId === profile.id
+                    ? t('app:checkin.logMine', { answer: t(`app:checkin.${entry.interest}`) })
+                    : t('app:checkin.logTheirs', {
+                        name: partnerName,
+                        answer: t(`app:checkin.${entry.interest}`),
+                      })}
+                </Body>
+              </View>
+            ))}
+          </View>
+        </Card>
+      ) : null}
     </Screen>
   );
 }

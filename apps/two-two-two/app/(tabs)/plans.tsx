@@ -7,9 +7,10 @@
 import type { Plan, PlanPlace } from '@couple/core';
 import { formatDay, formatWindowParts } from '@couple/i18n';
 import { Body, Button, Card, Divider, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
+import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { PlanPlaceCard } from '../../src/features/places/PlanPlace';
 import {
@@ -25,6 +26,7 @@ import { usePairedSession } from '../../src/session';
 export default function Plans() {
   const { t, i18n } = useTranslation(['app', 'common', 'plans', 'places']);
   const { profile, couple } = usePairedSession();
+  const router = useRouter();
 
   const now = useMemo(() => new Date(), []);
   const locale = i18n.language === 'es' ? 'es' : 'en';
@@ -80,9 +82,13 @@ export default function Plans() {
           {upcoming.map((plan, index) => (
             <View key={plan.id} className="gap-2 py-2">
               {index > 0 ? <Divider /> : null}
-              {/* Written by a partner, shown exactly as written. */}
-              {plan.title ? <Body>{plan.title}</Body> : null}
-              <Muted>{label(plan)}</Muted>
+              {/* Tapping the plan opens it in full; the place and action
+                  controls below stay their own targets. Written by a partner,
+                  shown exactly as written. */}
+              <Pressable className="gap-2" onPress={() => router.push(`/plan/${plan.id}`)}>
+                {plan.title ? <Body>{plan.title}</Body> : null}
+                <Muted>{label(plan)}</Muted>
+              </Pressable>
               <PlanPlaceCard
                 plan={plan}
                 place={placeByPlan.get(plan.id) ?? null}
@@ -127,8 +133,10 @@ export default function Plans() {
           {history.map((plan, index) => (
             <View key={plan.id} className="gap-1 py-2">
               {index > 0 ? <Divider /> : null}
-              {plan.title ? <Body>{plan.title}</Body> : null}
-              <Muted>{label(plan)}</Muted>
+              <Pressable className="gap-1" onPress={() => router.push(`/plan/${plan.id}`)}>
+                {plan.title ? <Body>{plan.title}</Body> : null}
+                <Muted>{label(plan)}</Muted>
+              </Pressable>
               <Muted>{t(`plans:status.${plan.status}`)}</Muted>
             </View>
           ))}

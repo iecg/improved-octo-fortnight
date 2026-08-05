@@ -1,3 +1,4 @@
+export * from './anniversary';
 export * from './connected';
 export * from './invite';
 export * from './key-screens';

@@ -29,9 +29,15 @@ import { formatWindowParts } from '../../src/format';
 import { useCounterProposal, usePlans, useProposeTime, useServerBusy } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
-/** Evening hours in the couple's timezone. */
+/**
+ * Evening hours in the couple's timezone. The band must stay wider than the
+ * largest `DURATION_CHOICES` entry — otherwise the longest date only fits an
+ * almost-empty evening, and any conflict drops that day to zero suggestions.
+ * So the band ends at midnight, not 11pm. `latestHour: 24` reads as the
+ * following midnight in `suggestWindows`.
+ */
 const EARLIEST_HOUR = 20;
-const LATEST_HOUR = 23;
+const LATEST_HOUR = 24;
 const DURATION_CHOICES = [45, 90, 150];
 const SEARCH_DAYS = 10;
 

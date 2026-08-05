@@ -9,13 +9,14 @@ import { Body, Button, Card, Divider, Heading, Loading, Muted, Screen, Title } f
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { formatWindowParts } from '../../src/format';
 import {
   useCompletePlan,
   usePendingProposals,
   usePlans,
+  useProposalHistory,
   useRespondToProposal,
 } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
@@ -31,6 +32,7 @@ export default function Plans() {
 
   const plansQuery = usePlans(couple.id);
   const proposalsQuery = usePendingProposals(couple.id);
+  const proposalHistoryQuery = useProposalHistory(couple.id);
   const respond = useRespondToProposal(couple.id);
   const complete = useCompletePlan(couple.id);
 
@@ -53,6 +55,13 @@ export default function Plans() {
       history: all.filter((p) => p.status === 'completed' || p.status === 'skipped').slice(0, 20),
     };
   }, [plansQuery.data, now]);
+
+  // The resolved proposals only — the pending ones already drive the top of
+  // the screen. Newest first, exactly as `listProposals` returns them.
+  const pastProposals = useMemo(
+    () => (proposalHistoryQuery.data ?? []).filter((p) => p.response !== 'pending'),
+    [proposalHistoryQuery.data],
+  );
 
   function windowLabel(startsAt: string, endsAt: string | null): string {
     const parts = formatWindowParts(
@@ -115,9 +124,13 @@ export default function Plans() {
   function PlanRow({ plan, actionable }: { plan: Plan; actionable: boolean }) {
     return (
       <View className="gap-2 py-2">
-        <Body>
-          {plan.startsAt ? windowLabel(plan.startsAt, plan.endsAt) : t('common:state.empty')}
-        </Body>
+        {/* The row's time opens the full plan; the action buttons below stay
+            their own targets. */}
+        <Pressable onPress={() => router.push(`/plan/${plan.id}`)}>
+          <Body>
+            {plan.startsAt ? windowLabel(plan.startsAt, plan.endsAt) : t('common:state.empty')}
+          </Body>
+        </Pressable>
         {/* Shown exactly as written, in whatever language it was written. */}
         {plan.notes ? <Muted>{plan.notes}</Muted> : null}
         {actionable ? (
@@ -188,6 +201,24 @@ export default function Plans() {
           ))}
         </View>
       </Card>
+
+      {pastProposals.length > 0 ? (
+        <Card>
+          <View className="gap-2">
+            <Heading>{t('plans:proposalLog.title')}</Heading>
+            {/* The negotiation as it went — accepted, declined and countered
+                times, newest first. A record, not a tally. */}
+            {pastProposals.map((proposal, index) => (
+              <View key={proposal.id} className="gap-1 py-2">
+                {index > 0 ? <Divider /> : null}
+                <Body>{windowLabel(proposal.startsAt, proposal.endsAt)}</Body>
+                <Muted>{t(`plans:proposalLog.${proposal.response}`)}</Muted>
+                {proposal.counteredFrom ? <Muted>{t('plans:proposal.counteredNote')}</Muted> : null}
+              </View>
+            ))}
+          </View>
+        </Card>
+      ) : null}
     </Screen>
   );
 }

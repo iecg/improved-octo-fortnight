@@ -62,6 +62,8 @@ export interface AccountRepository {
   ): Promise<Profile>;
   getCouple(): Promise<Couple | null>;
   createCouple(timezone: string): Promise<Couple>;
+  /** Edit the couple's shared fields. Only the grantable columns are writable. */
+  updateCouple(id: string, patch: { anniversaryDate?: string | null }): Promise<Couple>;
   joinCouple(inviteCode: string): Promise<JoinCoupleResult>;
   leaveCouple(profileId: string): Promise<void>;
 }
@@ -157,6 +159,23 @@ export function createAccountRepository(
       const couple = toCouple(unwrap(data, error));
       coupleId = couple.id;
       return couple;
+    },
+
+    async updateCouple(id, patch) {
+      // Only `anniversary_date` is column-granted to members (alongside
+      // `timezone`); a table-wide grant would let a client overwrite the invite
+      // code, so the write stays this narrow.
+      const { data, error } = await client
+        .from('couples')
+        .update({
+          ...(patch.anniversaryDate !== undefined
+            ? { anniversary_date: patch.anniversaryDate }
+            : {}),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      return toCouple(unwrap(data, error));
     },
 
     async joinCouple(inviteCode) {
