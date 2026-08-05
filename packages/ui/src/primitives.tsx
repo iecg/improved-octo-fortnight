@@ -157,7 +157,9 @@ export function Chip({
       >
         {label}
       </Text>
-      {busy ? <View className="mt-1 h-1.5 w-1.5 rounded-full bg-duesoon dark:bg-duesoon-dark" /> : null}
+      {busy ? (
+        <View className="mt-1 h-1.5 w-1.5 rounded-full bg-duesoon dark:bg-duesoon-dark" />
+      ) : null}
     </Pressable>
   );
 }

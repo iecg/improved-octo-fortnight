@@ -1281,7 +1281,15 @@ describe('the busy-times view', () => {
          values ($1, $2, 'intimacy', $3, $4, $5, $6, $7)`,
         // `completed` and `completed_at` are a biconditional in the schema:
         // one without the other is rejected, in either direction.
-        [coupleId, domain, status, userId, startsAt, endsAt, status === 'completed' ? endsAt : null],
+        [
+          coupleId,
+          domain,
+          status,
+          userId,
+          startsAt,
+          endsAt,
+          status === 'completed' ? endsAt : null,
+        ],
       ),
     );
   }
