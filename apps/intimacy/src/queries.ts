@@ -37,6 +37,9 @@ const keys = {
   plan: (planId: string) => ['plan', DOMAIN, planId] as const,
   cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
   proposals: (coupleId: string) => ['proposals', DOMAIN, coupleId] as const,
+  // Under the same prefix, so respond/counter and the realtime handler refresh
+  // the pending list and the history together.
+  proposalHistory: (coupleId: string) => ['proposals', DOMAIN, coupleId, 'all'] as const,
   checkins: (coupleId: string, date: string) => ['checkins', coupleId, date] as const,
   // Prefix of every check-in key, so record/clear and the realtime handler
   // refresh the day's card and the log together.
@@ -154,6 +157,20 @@ export function usePendingProposals(coupleId: string) {
   return useQuery({
     queryKey: keys.proposals(coupleId),
     queryFn: () => plans.listPendingProposals(coupleId),
+  });
+}
+
+/**
+ * Every proposal, resolved ones included — the negotiation as it actually went.
+ *
+ * A plain record for the history section, kept distinct from the pending list
+ * that drives the top of the screen. Not a scoreboard: the screen renders it
+ * chronologically and counts nothing.
+ */
+export function useProposalHistory(coupleId: string) {
+  return useQuery({
+    queryKey: keys.proposalHistory(coupleId),
+    queryFn: () => plans.listProposals(coupleId),
   });
 }
 

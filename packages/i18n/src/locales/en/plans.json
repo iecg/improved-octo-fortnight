@@ -37,5 +37,11 @@
     "notes": "Notes",
     "back": "Back",
     "notFound": "This plan isn't here anymore."
+  },
+  "proposalLog": {
+    "title": "Past suggestions",
+    "accepted": "Accepted",
+    "declined": "Declined",
+    "countered": "Answered with another time"
   }
 }
