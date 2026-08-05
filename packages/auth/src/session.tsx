@@ -21,6 +21,8 @@ export interface SessionState {
   partner: Profile | null;
   refresh: () => Promise<void>;
   setLocale: (locale: Locale) => Promise<void>;
+  /** Set (or clear) the couple's shared anniversary date, `YYYY-MM-DD`. */
+  setAnniversary: (date: string | null) => Promise<void>;
   signOut: () => Promise<void>;
   /**
    * Give up the seat in this couple, from either app.
@@ -121,6 +123,15 @@ export function createSessionModule(deps: {
       [profile],
     );
 
+    const setAnniversary = useCallback(
+      async (date: string | null) => {
+        if (!couple) return;
+        const updated = await accounts.updateCouple(couple.id, { anniversaryDate: date });
+        setCouple(updated);
+      },
+      [couple],
+    );
+
     const signOut = useCallback(async () => {
       await supabase.auth.signOut();
     }, []);
@@ -145,10 +156,22 @@ export function createSessionModule(deps: {
         partner,
         refresh,
         setLocale,
+        setAnniversary,
         signOut,
         leaveCouple,
       }),
-      [loading, session, profile, couple, partner, refresh, setLocale, signOut, leaveCouple],
+      [
+        loading,
+        session,
+        profile,
+        couple,
+        partner,
+        refresh,
+        setLocale,
+        setAnniversary,
+        signOut,
+        leaveCouple,
+      ],
     );
 
     return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

@@ -27,7 +27,10 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "web": { "favicon": "./assets/favicon.png", "bundler": "metro" },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
     "plugins": [
       "expo-router",
       "expo-secure-store",
@@ -37,12 +40,24 @@
           "calendarPermission": "Add the times you plan together to your calendar, and find windows when you are both free."
         }
       ],
-      ["expo-local-authentication", { "faceIDPermission": "Unlock the app with Face ID." }],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock the app with Face ID."
+        }
+      ],
       [
         "expo-splash-screen",
-        { "backgroundColor": "#E8E2DD", "image": "./assets/splash-icon.png", "imageWidth": 160 }
-      ]
+        {
+          "backgroundColor": "#E8E2DD",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ],
-    "experiments": { "typedRoutes": true }
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

@@ -8,11 +8,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@couple/cadence": "*",
     "@couple/core": "*",
     "@couple/data": "*",
+    "@couple/i18n": "*",
     "@couple/ui": "*"
   },
   "peerDependencies": {
+    "@react-native-community/datetimepicker": "*",
     "react": "*",
     "react-native": "*",
     "react-i18next": "*"
