@@ -8,7 +8,7 @@
  * styled exactly like "yes" — an app that turns a no into a broken chain makes
  * the problem it is meant to solve worse.
  */
-import { healthLabelKey } from '@couple/cadence';
+import { healthLabelKey, plannerTurn } from '@couple/cadence';
 import { CHECKIN_INTERESTS, type CheckinInterest } from '@couple/core';
 import { formatDay } from '@couple/i18n';
 import { dueTranslation, formatWeekday, formatTime, kindLabelKeyFor } from '../../src/format';
@@ -220,6 +220,27 @@ export default function Today() {
           {statuses.map((status) => {
             const due = dueTranslation(status.daysUntilDue);
             const label = t(kindLabelKeyFor(status.domain, status.kind));
+
+            /*
+              Whose turn it is to suggest — *suggest*, not book, because that is
+              what this app does: one of them proposes a time and the other
+              answers. The 2-2-2 app books outright, so it says book.
+
+              The softer verb is not only accuracy. This screen's whole posture
+              is that there is no wrong answer and no streak to keep, and one of
+              these three rituals is the most personal thing in either app.
+              "Your turn" has to read as whose move it is, never as something
+              owed.
+            */
+            const turn = plannerTurn(status, profile.id);
+            const turnLabel =
+              turn === 'you'
+                ? t('app:today.turnYours')
+                : turn === 'them'
+                  ? t('app:today.turnTheirs', { name: partnerName })
+                  : null;
+            const showTurn = !status.nextScheduledAt && turnLabel !== null;
+
             return (
               <Pressable
                 key={`${status.domain}.${status.kind}`}
@@ -230,9 +251,13 @@ export default function Today() {
                   reaches a screen reader. The countdown therefore has to be in
                   here, the same way `CadenceBar` composes its own label — and
                   the ritual's name has to come first, or all three rows
-                  announce identically and the list is unusable.
+                  announce identically and the list is unusable. The turn joins
+                  it for the same reason: rendered as a child it would be
+                  swallowed and never spoken.
                 */
-                accessibilityLabel={`${label} — ${t(due.key, { count: due.count })}`}
+                accessibilityLabel={[label, t(due.key, { count: due.count })]
+                  .concat(showTurn ? [turnLabel] : [])
+                  .join(' — ')}
                 accessibilityHint={t('app:today.planIt')}
                 className="min-h-12 gap-2"
                 onPress={() =>
@@ -253,6 +278,10 @@ export default function Today() {
                   label={t(due.key, { count: due.count })}
                   healthLabel={t(healthLabelKey(status.health))}
                 />
+                {/* Nothing at all when there is no turn to name, and nothing
+                    once a time is already proposed — the rotation answers who
+                    goes next, and a proposal has answered it. */}
+                {showTurn ? <Muted>{turnLabel}</Muted> : null}
               </Pressable>
             );
           })}

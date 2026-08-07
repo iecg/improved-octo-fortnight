@@ -8,7 +8,7 @@
  * Every countdown comes from the shared cadence engine, the same pure code the
  * intimacy app runs. Only the intervals differ.
  */
-import { healthLabelKey } from '@couple/cadence';
+import { healthLabelKey, plannerTurn } from '@couple/cadence';
 import { kindDescriptionKey, kindLabelKey, type AppDomain } from '@couple/core';
 import { dueTranslation, formatDay } from '@couple/i18n';
 import {
@@ -32,7 +32,7 @@ import { usePairedSession } from '../../src/session';
 
 export default function Rhythm() {
   const { t, i18n } = useTranslation(['app', 'common', 'cadence']);
-  const { couple } = usePairedSession();
+  const { profile, couple, partner } = usePairedSession();
   const router = useRouter();
 
   // One clock for the whole render, so no two countdowns disagree mid-paint.
@@ -42,6 +42,8 @@ export default function Rhythm() {
 
   const plansQuery = usePlans(couple.id);
   const cadencesQuery = useCadences(couple.id);
+
+  const partnerName = partner?.displayName ?? t('common:partner.unnamed');
 
   const statuses = useMemo(
     () =>
@@ -75,6 +77,7 @@ export default function Rhythm() {
       {statuses.map((status) => {
         const due = dueTranslation(status.daysUntilDue);
         const label = t(kindLabelKey(status.domain as AppDomain, status.kind));
+        const turn = plannerTurn(status, profile.id);
 
         return (
           <Card key={`${status.domain}.${status.kind}`}>
@@ -128,6 +131,28 @@ export default function Rhythm() {
                     : t('app:home.neverYet')}
                 </Muted>
               )}
+
+              {/*
+                Whose turn, and only when there is a turn to name — `either`
+                renders nothing rather than inventing who goes first.
+
+                Suppressed once something is booked, too: the rotation exists to
+                answer "who does the next one", and a plan already on the
+                calendar has answered it. Leaving it up would nag about a job
+                somebody has just done.
+
+                A suggestion, never an assignment. Either of them can book any
+                of these at any time, and nothing counts or remembers a turn
+                that went the other way — a rotation that keeps score is the
+                scoreboard invariant 4 exists to prevent.
+              */}
+              {!status.nextScheduledAt && turn !== 'either' ? (
+                <Muted>
+                  {turn === 'you'
+                    ? t('app:home.turnYours')
+                    : t('app:home.turnTheirs', { name: partnerName })}
+                </Muted>
+              ) : null}
             </Pressable>
           </Card>
         );

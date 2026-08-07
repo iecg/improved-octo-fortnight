@@ -15,7 +15,9 @@
     "propose": "Suggest a time",
     "dateNight": "Next date night",
     "partnerUnreadable": "{{name}}'s answer can't be read on this device",
-    "planIt": "Suggest a time for this"
+    "planIt": "Suggest a time for this",
+    "turnYours": "Your turn to suggest something",
+    "turnTheirs": "{{name}}'s turn to suggest something"
   },
   "checkin": {
     "yes": "Yes",

@@ -15,7 +15,9 @@
     "propose": "Proponer una hora",
     "dateNight": "Próxima cita",
     "partnerUnreadable": "La respuesta de {{name}} no se puede leer en este dispositivo",
-    "planIt": "Proponer una hora para esto"
+    "planIt": "Proponer una hora para esto",
+    "turnYours": "Te toca proponer algo",
+    "turnTheirs": "Le toca proponer algo a {{name}}"
   },
   "checkin": {
     "yes": "Sí",

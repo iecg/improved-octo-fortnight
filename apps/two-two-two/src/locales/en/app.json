@@ -30,6 +30,8 @@
     "lastTime": "Last time {{date}}",
     "neverYet": "Nothing logged yet",
     "planIt": "Plan it",
+    "turnYours": "Your turn to book this one",
+    "turnTheirs": "{{name}}'s turn to book this one",
     "bookedFor": "Booked for {{date}}"
   },
   "plan": {

@@ -30,6 +30,8 @@
     "lastTime": "La última vez fue el {{date}}",
     "neverYet": "Aún no hay nada registrado",
     "planIt": "Planearlo",
+    "turnYours": "Te toca reservar este",
+    "turnTheirs": "Le toca a {{name}} reservar este",
     "bookedFor": "Reservado para el {{date}}"
   },
   "plan": {

@@ -6,6 +6,7 @@ import {
   computeCadenceStatus,
   nextOccurrences,
   nextWeekdayInZone,
+  plannerTurn,
 } from './engine';
 
 const NY = 'America/New_York';
@@ -382,5 +383,72 @@ describe('nextWeekdayInZone', () => {
     expect(nextWeekdayInZone(fridayNightInMadrid, saturday, 'Pacific/Auckland')).toBe(
       fridayNightInMadrid,
     );
+  });
+});
+
+describe('plannerTurn', () => {
+  const me = 'me';
+  const them = 'them';
+
+  function statusWith(overrides: Partial<Plan>[] = []) {
+    return computeCadenceStatus({
+      cadence: makeCadence(),
+      plans: overrides.map((o, i) => makePlan({ id: `p${i}`, ...o })),
+      now: new Date('2026-02-01T00:00:00.000Z'),
+      coupleCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      timeZone: 'UTC',
+    });
+  }
+
+  it("is nobody's turn before anything has happened", () => {
+    expect(plannerTurn(statusWith([]), me)).toBe('either');
+  });
+
+  it('passes to the other person after you booked the last one', () => {
+    const status = statusWith([
+      { status: 'completed', createdBy: me, startsAt: '2026-01-20T18:00:00.000Z' },
+    ]);
+    expect(status.lastCompletedBy).toBe(me);
+    expect(plannerTurn(status, me)).toBe('them');
+  });
+
+  it('comes to you after they booked the last one', () => {
+    const status = statusWith([
+      { status: 'completed', createdBy: them, startsAt: '2026-01-20T18:00:00.000Z' },
+    ]);
+    expect(plannerTurn(status, me)).toBe('you');
+  });
+
+  /**
+   * The rotation follows the *latest* completed plan, not the newest row — the
+   * anchor and the turn have to come from the same one or they can disagree.
+   */
+  it('reads the most recent completion, whatever order the rows arrive in', () => {
+    const status = statusWith([
+      { status: 'completed', createdBy: them, startsAt: '2026-01-05T18:00:00.000Z' },
+      { status: 'completed', createdBy: me, startsAt: '2026-01-25T18:00:00.000Z' },
+      { status: 'completed', createdBy: them, startsAt: '2026-01-15T18:00:00.000Z' },
+    ]);
+    expect(status.lastCompletedAt?.toISOString()).toBe('2026-01-25T18:00:00.000Z');
+    expect(plannerTurn(status, me)).toBe('them');
+  });
+
+  it('ignores plans that were only booked, or skipped', () => {
+    const status = statusWith([
+      { status: 'scheduled', createdBy: me, startsAt: '2026-02-20T18:00:00.000Z' },
+      { status: 'skipped', createdBy: me, startsAt: '2026-01-20T18:00:00.000Z' },
+    ]);
+    expect(plannerTurn(status, me)).toBe('either');
+  });
+
+  /**
+   * `created_by` is `on delete set null`, so a departed partner's plans outlive
+   * them with no author. There is nobody to take a turn after that.
+   */
+  it("is nobody's turn when the person who booked it has left", () => {
+    const status = statusWith([
+      { status: 'completed', createdBy: null, startsAt: '2026-01-20T18:00:00.000Z' },
+    ]);
+    expect(plannerTurn(status, me)).toBe('either');
   });
 });

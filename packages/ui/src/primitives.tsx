@@ -285,16 +285,20 @@ export function CadenceBar({
   const clamped = Math.min(1, Math.max(0, progress));
   const exact = Math.round(clamped * 100);
   /*
-   * A floor, so "barely started" never renders as an empty track.
+   * A floor, so a clock at the start of its interval never renders as an empty
+   * track — an empty bar reads as broken or still loading rather than as a
+   * clock that has only just been wound.
    *
-   * Two days into a two-year interval is 0.27%, which rounds to zero, and a bar
-   * with no fill at all reads as broken or still loading rather than as a clock
-   * that has only just been wound. Tested against `clamped` rather than the
-   * rounded percent, because rounding is exactly what hides this case. Genuine
-   * zero stays empty, and the value a screen reader hears stays exact — the
-   * floor is about the pixel, not the number.
+   * Unconditional, including at exactly zero. Exempting true zero was the first
+   * attempt and it looked worse than the bug: a ritual completed today sat at
+   * 0% with a blank bar, directly above two that had a visible sliver because
+   * two days of a two-year interval still rounds above nothing. The one that
+   * had just been done looked like the broken one.
+   *
+   * The value a screen reader hears stays exact — the floor is about the pixel,
+   * not the number.
    */
-  const percent = clamped > 0 ? Math.max(exact, 2) : 0;
+  const percent = Math.max(exact, 2);
 
   return (
     <View className="gap-1.5">
