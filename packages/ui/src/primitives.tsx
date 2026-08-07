@@ -63,7 +63,10 @@ export function Screen({
     >
       {scroll ? (
         <ScrollView
-          contentContainerClassName="grow"
+          /* The extra bottom padding is for the footer's sake: without it the
+             last card ends flush against the footer's top border, which reads
+             as content sliced off rather than content that has finished. */
+          contentContainerClassName={footer ? 'grow pb-4' : 'grow'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -121,6 +124,20 @@ const BUTTON_STYLES: Record<ButtonVariant, { container: string; label: string }>
   ghost: { container: '', label: 'text-muted dark:text-muted-dark' },
 };
 
+/**
+ * What a button that cannot be pressed looks like — and it is deliberately not
+ * "the same button, fainter".
+ *
+ * A primary at 50% opacity is still a filled, coloured, button-shaped thing;
+ * tapping it and getting nothing is the single clearest way to look broken. A
+ * disabled control should read as an outline waiting to be filled in, so it
+ * drops the fill entirely and keeps only the shape.
+ */
+const BUTTON_DISABLED = {
+  container: 'border border-line bg-transparent dark:border-line-dark',
+  label: 'text-muted dark:text-muted-dark',
+};
+
 export function Button({
   label,
   variant = 'primary',
@@ -132,8 +149,9 @@ export function Button({
   variant?: ButtonVariant;
   loading?: boolean;
 } & PressableProps) {
-  const styles = BUTTON_STYLES[variant];
   const inactive = disabled || loading;
+  // Loading keeps its own look: it is mid-press, not unavailable.
+  const styles = disabled && !loading ? BUTTON_DISABLED : BUTTON_STYLES[variant];
 
   return (
     <Pressable
@@ -141,7 +159,7 @@ export function Button({
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       className={`min-h-12 items-center justify-center rounded-xl px-4 py-3 ${styles.container} ${
-        inactive ? 'opacity-50' : ''
+        loading ? 'opacity-50' : ''
       }`}
       {...pressable}
     >
@@ -205,7 +223,15 @@ export function Chip({
       accessibilityState={{ selected }}
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
-      className={`items-center rounded-xl border px-3 py-3 ${
+      /*
+        `justify-center` is not decoration. Flex rows stretch their children to
+        the tallest, so one option wrapping to two lines makes every sibling
+        that tall — and without this their labels stay pinned to the top of a
+        box twice the height of the text. "Unhurried time" wrapping was enough
+        to misalign the whole row, and Spanish runs ~20% longer, so the wrapping
+        case is the common one rather than the exception.
+      */
+      className={`items-center justify-center rounded-xl border px-3 py-3 ${
         fill ? 'grow basis-0' : 'shrink-0'
       } ${border}`}
     >
@@ -256,13 +282,25 @@ export function CadenceBar({
    */
   healthLabel: string;
 }) {
-  const percent = Math.round(Math.min(1, Math.max(0, progress)) * 100);
+  const clamped = Math.min(1, Math.max(0, progress));
+  const exact = Math.round(clamped * 100);
+  /*
+   * A floor, so "barely started" never renders as an empty track.
+   *
+   * Two days into a two-year interval is 0.27%, which rounds to zero, and a bar
+   * with no fill at all reads as broken or still loading rather than as a clock
+   * that has only just been wound. Tested against `clamped` rather than the
+   * rounded percent, because rounding is exactly what hides this case. Genuine
+   * zero stays empty, and the value a screen reader hears stays exact — the
+   * floor is about the pixel, not the number.
+   */
+  const percent = clamped > 0 ? Math.max(exact, 2) : 0;
 
   return (
     <View className="gap-1.5">
       <View
         accessibilityRole="progressbar"
-        accessibilityValue={{ min: 0, max: 100, now: percent }}
+        accessibilityValue={{ min: 0, max: 100, now: exact }}
         accessibilityLabel={`${label} — ${healthLabel}`}
         className="h-2 overflow-hidden rounded-full bg-line dark:bg-line-dark"
       >
@@ -273,6 +311,26 @@ export function CadenceBar({
       </View>
       <Muted>{label}</Muted>
     </View>
+  );
+}
+
+/**
+ * The "there is more this way" mark.
+ *
+ * Two rotated borders rather than an icon, because this file may hold no
+ * strings and the repo ships no icon set. Decorative by construction: every
+ * caller is a control that already carries its own label, and a screen reader
+ * announcing "chevron" after it would be noise.
+ */
+export function Chevron({ direction = 'right' }: { direction?: 'right' | 'down' }) {
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+      className={`h-2.5 w-2.5 border-b-2 border-r-2 border-muted dark:border-muted-dark ${
+        direction === 'down' ? 'rotate-45' : '-rotate-45'
+      }`}
+    />
   );
 }
 
@@ -304,19 +362,22 @@ export function Disclosure({
 
   return (
     <View className="gap-3">
+      {/*
+        Carries `Card`'s own surface, and that is the point rather than polish.
+        These headings sit between cards — on Settings they *are* the screen —
+        and as bare text on the canvas they read as weaker than the content they
+        contain, which inverts the hierarchy: the navigation looked like a
+        caption and the caption looked like a control.
+      */}
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         accessibilityLabel={label}
         onPress={() => setOpen((was) => !was)}
-        className="min-h-12 flex-row items-center justify-between gap-3 px-1"
+        className="min-h-12 flex-row items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-4 dark:border-line-dark dark:bg-surface-dark"
       >
         <Heading>{label}</Heading>
-        <View
-          className={`h-2.5 w-2.5 border-b-2 border-r-2 border-muted dark:border-muted-dark ${
-            open ? 'rotate-45' : '-rotate-45'
-          }`}
-        />
+        <Chevron direction={open ? 'down' : 'right'} />
       </Pressable>
       {open ? children : null}
     </View>

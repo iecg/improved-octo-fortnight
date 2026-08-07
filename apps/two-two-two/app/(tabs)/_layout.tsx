@@ -108,10 +108,17 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: '#9C5B4E',
-        // Same as the other app: without this, `BottomTabBar` substitutes
-        // `MissingIcon` for every tab that gives no `tabBarIcon`, and four
-        // placeholder triangles sit above the labels.
+        // Same three options as the other app, for the same reasons — see the
+        // comment there. Hiding the slot alone leaves the label pinned to the
+        // top of the bar; `beside-icon` is what centres it.
+        tabBarLabelPosition: 'beside-icon',
         tabBarIconStyle: { display: 'none' },
+        // 15pt, not 13. The bar is already the iOS standard height —
+        // `TABBAR_HEIGHT_UIKIT` 49 plus the 34pt home-indicator inset — so
+        // there is nothing to reclaim there without pushing the tab below the
+        // 44pt tap-target minimum. What made it look empty was a 13pt label
+        // alone in a 49pt row, with no icon to fill it.
+        tabBarLabelStyle: { fontSize: 15, marginStart: 0 },
       }}
     >
       <Tabs.Screen name="index" options={{ title: t('app:tabs.today') }} />

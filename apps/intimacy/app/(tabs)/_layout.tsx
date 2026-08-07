@@ -93,15 +93,26 @@ export default function TabsLayout() {
           No icons: labels alone keep the tab bar unremarkable in a screenshot
           or over someone's shoulder.
 
-          Omitting `tabBarIcon` does not achieve that, which is what this
-          comment claimed for as long as it has existed. `BottomTabBar` falls
-          back to `MissingIcon` when none is given, so every tab has been
-          carrying a filled placeholder triangle tinted in the accent colour —
-          three meaningless glyphs above the labels, on every screen. Hiding
-          the icon slot is what actually removes them.
+          Three options working together, and none of them is optional.
+          Omitting `tabBarIcon` does not hide the icon — `BottomTabBar` falls
+          back to `MissingIcon`, so every tab carried a filled placeholder
+          triangle in the accent colour. Hiding the slot removes those, but the
+          label keeps its below-the-icon position and hugs the top of the bar,
+          because `tabVerticalUiKit` is `justifyContent: 'flex-start'` and
+          `tabBarItemStyle` cannot reach it — `BottomTabItem` reads only `flex`
+          off it. Forcing `beside-icon` switches the item to
+          `tabHorizontalUiKit`, which centres on both axes; with no icon beside
+          it, the label is simply centred. `marginStart` undoes the gap that
+          layout leaves for the icon that is not there.
         */
+        tabBarLabelPosition: 'beside-icon',
         tabBarIconStyle: { display: 'none' },
-        tabBarLabelStyle: { fontSize: 13 },
+        // 15pt, not 13. The bar is already the iOS standard height —
+        // `TABBAR_HEIGHT_UIKIT` 49 plus the 34pt home-indicator inset — so
+        // there is nothing to reclaim there without pushing the tab below the
+        // 44pt tap-target minimum. What made it look empty was a 13pt label
+        // alone in a 49pt row, with no icon to fill it.
+        tabBarLabelStyle: { fontSize: 15, marginStart: 0 },
       }}
     >
       <Tabs.Screen name="index" options={{ title: t('tabs.today') }} />

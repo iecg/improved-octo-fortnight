@@ -11,7 +11,17 @@
 import { healthLabelKey } from '@couple/cadence';
 import { kindDescriptionKey, kindLabelKey, type AppDomain } from '@couple/core';
 import { dueTranslation, formatDay } from '@couple/i18n';
-import { Body, CadenceBar, Card, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
+import {
+  Body,
+  CadenceBar,
+  Card,
+  Chevron,
+  Heading,
+  Loading,
+  Muted,
+  Screen,
+  Title,
+} from '@couple/ui';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -83,9 +93,17 @@ export default function Rhythm() {
               className="gap-3"
               onPress={() => router.push({ pathname: '/plan/new', params: { kind: status.kind } })}
             >
-              <View className="gap-1">
-                <Heading>{label}</Heading>
-                <Muted>{t(kindDescriptionKey(status.domain as AppDomain, status.kind))}</Muted>
+              {/* Same reasoning as the other app: the card became the button
+                  when its "Plan it" went, and without this it reads as a status
+                  card you cannot do anything with. */}
+              <View className="flex-row items-start justify-between gap-3">
+                <View className="shrink gap-1">
+                  <Heading>{label}</Heading>
+                  <Muted>{t(kindDescriptionKey(status.domain as AppDomain, status.kind))}</Muted>
+                </View>
+                <View className="pt-2">
+                  <Chevron />
+                </View>
               </View>
 
               <CadenceBar

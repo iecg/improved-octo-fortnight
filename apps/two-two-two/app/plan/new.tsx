@@ -8,10 +8,10 @@
  *
  * Every answer on this screen already has one, so booking can be a single tap
  * on the pinned button. Three named days cover most of what anyone picks —
- * today, tomorrow, this weekend — with the system date picker beside them for
- * everything else; times and lengths are chips. All of the date arithmetic goes
- * through `@couple/cadence` against the couple's timezone; none of it happens
- * here.
+ * today, tomorrow, this weekend — with a fourth chip opening a sheet for
+ * anything else; times and lengths are chips too. All of the date arithmetic
+ * goes through `@couple/cadence` against the couple's timezone; none of it
+ * happens here.
  *
  * The title and the place are behind a disclosure, closed. Neither is needed to
  * book anything, and the screen this replaced put seven cards between opening
@@ -50,7 +50,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { TextInput, View } from 'react-native';
+import { Modal, Pressable, TextInput, View } from 'react-native';
 
 import { normalizeManualPlace } from '../../src/features/places/label';
 import type { PlaceResult } from '../../src/features/places/maps/types';
@@ -131,6 +131,7 @@ export default function NewPlan() {
    * and the better screen — nobody scans fourteen dates to find tomorrow.
    */
   const [day, setDay] = useState<Date>(now);
+  const [picking, setPicking] = useState(false);
   const [hour, setHour] = useState<number | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
 
@@ -405,53 +406,80 @@ export default function NewPlan() {
                 />
               ))}
               {/*
-                Anything the three named days do not cover.
+                Anything the three named days do not cover — and our own `Chip`,
+                not the native control.
 
-                Always mounted, rather than a chip that reveals a picker.
-                `RNDateTimePicker` on iOS is an inline native view — there is no
-                modal variant — so mounting one on demand inside a flex row
-                lays it out at 0×0: invisible, absent from the accessibility
-                tree, and indistinguishable from a dead button. Compact style
-                renders the date as a pill that opens the system calendar on
-                tap, which is one tap rather than two and shows the chosen day
-                without being asked.
+                Compact `RNDateTimePicker` renders a UIKit grey pill with the
+                system tint, which sat in this row of flat outlined chips as
+                obviously foreign: two visual languages in one control group.
+                The chip is the trigger now and the picker lives in the sheet
+                below, where looking like the platform is exactly right.
               */}
-              <View
-                className={`justify-center rounded-xl border ${
+              <Chip
+                label={customDay ? formatDay(day, locale, timeZone) : t('app:plan.dayPick')}
+                fill={false}
+                selected={customDay}
+                busy={busyCustom}
+                /*
+                  Announces whatever it is showing. Hard-coding "another day"
+                  here meant a screen reader kept offering to pick a date long
+                  after one had been picked, while the chip beside it plainly
+                  read `Aug 20, 2026`.
+                */
+                accessibilityLabel={
                   customDay
-                    ? 'border-accent bg-accent/10 dark:border-accent-dark'
-                    : 'border-line bg-surface dark:border-line-dark dark:bg-surface-dark'
-                }`}
-                style={{ height: 46 }}
-              >
-                <DateTimePicker
-                  value={day}
-                  mode="date"
-                  display="compact"
-                  minimumDate={now}
-                  accessibilityLabel={t('app:plan.dayPick')}
-                  /*
-                   * Sized explicitly, and it has to be. The native view reports
-                   * no intrinsic content size to Yoga, so in a flex row it lays
-                   * out at zero width — a one-pixel sliver against the edge of
-                   * the card. Wide enough for a Spanish `5 ago 2026` as well as
-                   * an English one; the control centres its own label.
-                   */
-                  style={{ width: 128, height: 40 }}
-                  // The picker answers with a wall-clock local date; only the
-                  // calendar day it names is used, because `rangeFor` reapplies
-                  // the chosen hour in the couple's timezone.
-                  onValueChange={(_event, picked) => setDay(picked)}
-                />
-              </View>
+                    ? busyCustom
+                      ? t('app:plan.busyOption', { option: formatDay(day, locale, timeZone) })
+                      : formatDay(day, locale, timeZone)
+                    : t('app:plan.dayPick')
+                }
+                onPress={() => setPicking(true)}
+              />
             </View>
-            {/* Marked as busy the same way a chip would be, since the picker
-                cannot carry the dot itself. */}
-            {busyCustom ? (
-              <Muted>
-                {t('app:plan.busyOption', { option: formatDay(day, locale, timeZone) })}
-              </Muted>
-            ) : null}
+
+            {/*
+              A sheet of our own, because iOS has no modal date picker: the
+              native control is an inline view, and mounting one on demand in a
+              flex row lays it out at 0x0 — invisible, absent from the
+              accessibility tree, and indistinguishable from a dead button.
+              Inside a container we size, `inline` is the full calendar and
+              behaves.
+            */}
+            <Modal
+              visible={picking}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setPicking(false)}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('common:action.cancel')}
+                className="flex-1 justify-end bg-black/40"
+                onPress={() => setPicking(false)}
+              >
+                {/* Swallows the press so tapping the sheet does not dismiss it. */}
+                <Pressable
+                  className="gap-3 rounded-t-2xl bg-canvas px-5 pb-8 pt-4 dark:bg-canvas-dark"
+                  onPress={() => undefined}
+                >
+                  <DateTimePicker
+                    value={day}
+                    mode="date"
+                    display="inline"
+                    minimumDate={now}
+                    accessibilityLabel={t('app:plan.dayPick')}
+                    // Explicitly sized for the same reason the compact one was:
+                    // the native view reports no intrinsic size to Yoga.
+                    style={{ height: 360 }}
+                    // The picker answers with a wall-clock local date; only the
+                    // calendar day it names is used, because `rangeFor`
+                    // reapplies the chosen hour in the couple's timezone.
+                    onValueChange={(_event, picked) => setDay(picked)}
+                  />
+                  <Button label={t('common:action.done')} onPress={() => setPicking(false)} />
+                </Pressable>
+              </Pressable>
+            </Modal>
           </View>
 
           <View className="gap-3">

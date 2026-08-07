@@ -17,6 +17,7 @@ import {
   Button,
   CadenceBar,
   Card,
+  Chevron,
   Chip,
   Disclosure,
   Heading,
@@ -238,7 +239,14 @@ export default function Today() {
                   router.push({ pathname: '/plan/new', params: { kind: status.kind } })
                 }
               >
-                <Body>{label}</Body>
+                {/* The chevron is the whole reason this reads as a control.
+                    Dropping the per-ritual button made the row the button, and
+                    a row of text over a progress bar looks exactly like a
+                    status readout — which is what it used to be. */}
+                <View className="flex-row items-center justify-between gap-3">
+                  <Body>{label}</Body>
+                  <Chevron />
+                </View>
                 <CadenceBar
                   progress={status.progress}
                   health={status.health}
