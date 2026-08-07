@@ -4,9 +4,21 @@
  * Completing a plan is what re-anchors its cadence, so the two actions here
  * are the only things that move the clocks on the rhythm screen.
  */
+import { groupPlans } from '@couple/cadence';
 import type { Plan, PlanPlace } from '@couple/core';
 import { formatDay, formatWindowParts } from '@couple/i18n';
-import { Body, Button, Card, Divider, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
+import {
+  Body,
+  Button,
+  Card,
+  Disclosure,
+  Divider,
+  Heading,
+  Loading,
+  Muted,
+  Screen,
+  Title,
+} from '@couple/ui';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -47,15 +59,13 @@ export default function Plans() {
     return map;
   }, [placesQuery.data]);
 
-  const { upcoming, history } = useMemo(() => {
-    const all = plansQuery.data ?? [];
-    return {
-      upcoming: all
-        .filter((p) => p.status === 'scheduled' && p.startsAt && new Date(p.startsAt) >= now)
-        .sort((a, b) => (a.startsAt ?? '').localeCompare(b.startsAt ?? '')),
-      history: all.filter((p) => p.status === 'completed' || p.status === 'skipped').slice(0, 20),
-    };
-  }, [plansQuery.data, now]);
+  // Grouped by the pure engine, so this app and the other one cannot disagree
+  // about what counts as behind — and so the group that used to be missing
+  // entirely has a test on it.
+  const { needsAnswer, upcoming, history } = useMemo(
+    () => groupPlans(plansQuery.data ?? [], now),
+    [plansQuery.data, now],
+  );
 
   function label(plan: Plan): string {
     if (!plan.startsAt) return t('common:state.empty');
@@ -72,8 +82,48 @@ export default function Plans() {
   if (plansQuery.isLoading) return <Loading />;
 
   return (
-    <Screen>
+    <Screen tabbed>
       <Title>{t('app:tabs.plans')}</Title>
+
+      {/*
+        First, because it is the only thing here anyone is blocked on — and
+        because until now it was nowhere at all. A plan still booked after its
+        own end time matched neither list and disappeared, taking with it the
+        only control that re-anchors its cadence. The wording is a question
+        rather than a nag: "didn't happen" is an answer, not a failure.
+      */}
+      {needsAnswer.length > 0 ? (
+        <Card>
+          <View className="gap-2">
+            <Heading>{t('plans:list.needsAnswer')}</Heading>
+            {needsAnswer.map((plan, index) => (
+              <View key={plan.id} className="gap-2 py-2">
+                {index > 0 ? <Divider /> : null}
+                <Pressable className="gap-2" onPress={() => router.push(`/plan/${plan.id}`)}>
+                  {plan.title ? <Body>{plan.title}</Body> : null}
+                  <Muted>{label(plan)}</Muted>
+                </Pressable>
+                <View className="flex-row gap-2">
+                  <View className="grow basis-0">
+                    <Button
+                      label={t('plans:detail.markDone')}
+                      variant="secondary"
+                      onPress={() => complete.mutate({ planId: plan.id, completed: true })}
+                    />
+                  </View>
+                  <View className="grow basis-0">
+                    <Button
+                      label={t('plans:detail.markSkipped')}
+                      variant="ghost"
+                      onPress={() => complete.mutate({ planId: plan.id, completed: false })}
+                    />
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        </Card>
+      ) : null}
 
       <Card>
         <View className="gap-2">
@@ -126,22 +176,24 @@ export default function Plans() {
         </View>
       </Card>
 
-      <Card>
-        <View className="gap-2">
-          <Heading>{t('plans:list.history')}</Heading>
-          {history.length === 0 ? <Muted>{t('plans:list.emptyHistory')}</Muted> : null}
-          {history.map((plan, index) => (
-            <View key={plan.id} className="gap-1 py-2">
-              {index > 0 ? <Divider /> : null}
-              <Pressable className="gap-1" onPress={() => router.push(`/plan/${plan.id}`)}>
-                {plan.title ? <Body>{plan.title}</Body> : null}
-                <Muted>{label(plan)}</Muted>
-              </Pressable>
-              <Muted>{t(`plans:status.${plan.status}`)}</Muted>
-            </View>
-          ))}
-        </View>
-      </Card>
+      {/* A record, and only ever looked up. Closed. */}
+      <Disclosure label={t('plans:list.history')}>
+        <Card>
+          <View className="gap-2">
+            {history.length === 0 ? <Muted>{t('plans:list.emptyHistory')}</Muted> : null}
+            {history.map((plan, index) => (
+              <View key={plan.id} className="gap-1 py-2">
+                {index > 0 ? <Divider /> : null}
+                <Pressable className="gap-1" onPress={() => router.push(`/plan/${plan.id}`)}>
+                  {plan.title ? <Body>{plan.title}</Body> : null}
+                  <Muted>{label(plan)}</Muted>
+                </Pressable>
+                <Muted>{t(`plans:status.${plan.status}`)}</Muted>
+              </View>
+            ))}
+          </View>
+        </Card>
+      </Disclosure>
     </Screen>
   );
 }

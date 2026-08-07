@@ -8,21 +8,31 @@
  * Every countdown comes from the shared cadence engine, the same pure code the
  * intimacy app runs. Only the intervals differ.
  */
-import { healthLabelKey, nextOccurrences } from '@couple/cadence';
+import { healthLabelKey, plannerTurn } from '@couple/cadence';
 import { kindDescriptionKey, kindLabelKey, type AppDomain } from '@couple/core';
-import { dueTranslation, formatDay, intervalTranslation } from '@couple/i18n';
-import { Body, Button, CadenceBar, Card, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
+import { dueTranslation, formatDay } from '@couple/i18n';
+import {
+  Body,
+  CadenceBar,
+  Card,
+  Chevron,
+  Heading,
+  Loading,
+  Muted,
+  Screen,
+  Title,
+} from '@couple/ui';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { cadenceStatuses, useCadences, usePlans } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 export default function Rhythm() {
   const { t, i18n } = useTranslation(['app', 'common', 'cadence']);
-  const { couple } = usePairedSession();
+  const { profile, couple, partner } = usePairedSession();
   const router = useRouter();
 
   // One clock for the whole render, so no two countdowns disagree mid-paint.
@@ -32,6 +42,8 @@ export default function Rhythm() {
 
   const plansQuery = usePlans(couple.id);
   const cadencesQuery = useCadences(couple.id);
+
+  const partnerName = partner?.displayName ?? t('common:partner.unnamed');
 
   const statuses = useMemo(
     () =>
@@ -45,40 +57,56 @@ export default function Rhythm() {
     [cadencesQuery.data, plansQuery.data, couple.createdAt, timeZone, now],
   );
 
-  const intervalFor = useMemo(() => {
-    const byKind = new Map((cadencesQuery.data ?? []).map((c) => [c.kind, c]));
-    return (kind: string) => byKind.get(kind);
-  }, [cadencesQuery.data]);
-
   if (plansQuery.isLoading || cadencesQuery.isLoading) return <Loading />;
 
   return (
-    <Screen>
+    <Screen tabbed>
       <View className="gap-1">
         <Title>{t('app:home.title')}</Title>
         <Muted>{t('app:home.subtitle')}</Muted>
       </View>
 
+      {/*
+        Four lines of prose under each bar became one.
+        `interval` restated the description's own tail — "Every 2 weeks" under
+        "An evening out, every couple of weeks" — and `upcoming` listed three
+        dates nobody has agreed to, on a screen whose entire job is to say
+        whether one is overdue. What is left is the name, what it means, how
+        long it has been, and the one date that was actually booked.
+      */}
       {statuses.map((status) => {
         const due = dueTranslation(status.daysUntilDue);
-        const cadence = intervalFor(status.kind);
-        const interval = cadence
-          ? intervalTranslation(cadence.intervalValue, cadence.intervalUnit)
-          : null;
-        // The rhythm ahead — the same derivation the intimacy app shows, from
-        // the anchor the bar already uses. Past dates drop off.
-        const upcoming = cadence
-          ? nextOccurrences(cadence, status.anchorAt, 12, timeZone)
-              .filter((date) => date > now)
-              .slice(0, 3)
-          : [];
+        const label = t(kindLabelKey(status.domain as AppDomain, status.kind));
+        const turn = plannerTurn(status, profile.id);
 
         return (
           <Card key={`${status.domain}.${status.kind}`}>
-            <View className="gap-3">
-              <View className="gap-1">
-                <Heading>{t(kindLabelKey(status.domain as AppDomain, status.kind))}</Heading>
-                <Muted>{t(kindDescriptionKey(status.domain as AppDomain, status.kind))}</Muted>
+            {/* The whole card books this commitment — the only thing that ever
+                resets its clock — so the button below it is gone. */}
+            <Pressable
+              accessibilityRole="button"
+              /*
+                The card is one accessible element now, so the bar's own
+                `progressbar` label is no longer reachable and the countdown has
+                to be spoken here. Name first: three cards announcing "Plan it"
+                are three identical rows.
+              */
+              accessibilityLabel={`${label} — ${t(due.key, { count: due.count })}`}
+              accessibilityHint={t('app:home.planIt')}
+              className="gap-3"
+              onPress={() => router.push({ pathname: '/plan/new', params: { kind: status.kind } })}
+            >
+              {/* Same reasoning as the other app: the card became the button
+                  when its "Plan it" went, and without this it reads as a status
+                  card you cannot do anything with. */}
+              <View className="flex-row items-start justify-between gap-3">
+                <View className="shrink gap-1">
+                  <Heading>{label}</Heading>
+                  <Muted>{t(kindDescriptionKey(status.domain as AppDomain, status.kind))}</Muted>
+                </View>
+                <View className="pt-2">
+                  <Chevron />
+                </View>
               </View>
 
               <CadenceBar
@@ -94,35 +122,38 @@ export default function Rhythm() {
                     date: formatDay(status.nextScheduledAt, locale, timeZone),
                   })}
                 </Body>
-              ) : null}
-
-              <Muted>
-                {status.lastCompletedAt
-                  ? t('app:home.lastTime', {
-                      date: formatDay(status.lastCompletedAt, locale, timeZone),
-                    })
-                  : t('app:home.neverYet')}
-              </Muted>
-
-              {interval ? <Muted>{t(interval.key, { count: interval.count })}</Muted> : null}
-
-              {upcoming.length > 0 ? (
+              ) : (
                 <Muted>
-                  {t('app:home.upcoming', {
-                    dates: upcoming.map((date) => formatDay(date, locale, timeZone)).join(' · '),
-                  })}
+                  {status.lastCompletedAt
+                    ? t('app:home.lastTime', {
+                        date: formatDay(status.lastCompletedAt, locale, timeZone),
+                      })
+                    : t('app:home.neverYet')}
+                </Muted>
+              )}
+
+              {/*
+                Whose turn, and only when there is a turn to name — `either`
+                renders nothing rather than inventing who goes first.
+
+                Suppressed once something is booked, too: the rotation exists to
+                answer "who does the next one", and a plan already on the
+                calendar has answered it. Leaving it up would nag about a job
+                somebody has just done.
+
+                A suggestion, never an assignment. Either of them can book any
+                of these at any time, and nothing counts or remembers a turn
+                that went the other way — a rotation that keeps score is the
+                scoreboard invariant 4 exists to prevent.
+              */}
+              {!status.nextScheduledAt && turn !== 'either' ? (
+                <Muted>
+                  {turn === 'you'
+                    ? t('app:home.turnYours')
+                    : t('app:home.turnTheirs', { name: partnerName })}
                 </Muted>
               ) : null}
-
-              {/* The only thing that ever resets this clock. */}
-              <Button
-                label={t('app:home.planIt')}
-                variant="secondary"
-                onPress={() =>
-                  router.push({ pathname: '/plan/new', params: { kind: status.kind } })
-                }
-              />
-            </View>
+            </Pressable>
           </Card>
         );
       })}

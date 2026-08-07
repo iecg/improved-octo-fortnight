@@ -19,5 +19,9 @@
     "description": "Esto cambia solo lo que tú ves. Tu pareja conserva su propio idioma.",
     "en": "Inglés",
     "es": "Español"
+  },
+  "settings": {
+    "permissions": "Calendario y recordatorios",
+    "keys": "Dispositivos y claves"
   }
 }

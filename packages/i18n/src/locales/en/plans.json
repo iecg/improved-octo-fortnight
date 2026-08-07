@@ -10,6 +10,7 @@
   "list": {
     "awaitingYou": "Waiting on you",
     "awaitingThem": "Waiting on {{name}}",
+    "needsAnswer": "Did this happen?",
     "upcoming": "Coming up",
     "history": "Earlier",
     "emptyUpcoming": "Nothing booked yet.",

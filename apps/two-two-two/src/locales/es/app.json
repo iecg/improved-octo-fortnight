@@ -30,8 +30,9 @@
     "lastTime": "La última vez fue el {{date}}",
     "neverYet": "Aún no hay nada registrado",
     "planIt": "Planearlo",
-    "bookedFor": "Reservado para el {{date}}",
-    "upcoming": "Próximas: {{dates}}"
+    "turnYours": "Te toca reservar este",
+    "turnTheirs": "Le toca a {{name}} reservar este",
+    "bookedFor": "Reservado para el {{date}}"
   },
   "plan": {
     "title": "Planear algo",
@@ -39,7 +40,12 @@
     "titleLabel": "Cómo lo llamas",
     "titlePlaceholder": "Opcional",
     "titleHint": "Tu pareja lo ve tal como lo escribes, en el idioma en que lo escribas.",
+    "details": "Añadir un título o un lugar",
     "when": "Qué día",
+    "dayToday": "Hoy",
+    "dayTomorrow": "Mañana",
+    "dayWeekend": "Este fin de semana",
+    "dayPick": "Otro día",
     "startTime": "A partir de las",
     "howLong": "Cuánto dura",
     "hours_one": "{{count}} hora",

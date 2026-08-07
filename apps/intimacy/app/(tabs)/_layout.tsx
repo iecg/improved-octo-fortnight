@@ -89,9 +89,30 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: '#9C5B4E',
-        // No icons: labels alone keep the tab bar unremarkable in a screenshot
-        // or over someone's shoulder.
-        tabBarLabelStyle: { fontSize: 13 },
+        /*
+          No icons: labels alone keep the tab bar unremarkable in a screenshot
+          or over someone's shoulder.
+
+          Three options working together, and none of them is optional.
+          Omitting `tabBarIcon` does not hide the icon — `BottomTabBar` falls
+          back to `MissingIcon`, so every tab carried a filled placeholder
+          triangle in the accent colour. Hiding the slot removes those, but the
+          label keeps its below-the-icon position and hugs the top of the bar,
+          because `tabVerticalUiKit` is `justifyContent: 'flex-start'` and
+          `tabBarItemStyle` cannot reach it — `BottomTabItem` reads only `flex`
+          off it. Forcing `beside-icon` switches the item to
+          `tabHorizontalUiKit`, which centres on both axes; with no icon beside
+          it, the label is simply centred. `marginStart` undoes the gap that
+          layout leaves for the icon that is not there.
+        */
+        tabBarLabelPosition: 'beside-icon',
+        tabBarIconStyle: { display: 'none' },
+        // 15pt, not 13. The bar is already the iOS standard height —
+        // `TABBAR_HEIGHT_UIKIT` 49 plus the 34pt home-indicator inset — so
+        // there is nothing to reclaim there without pushing the tab below the
+        // 44pt tap-target minimum. What made it look empty was a 13pt label
+        // alone in a 49pt row, with no icon to fill it.
+        tabBarLabelStyle: { fontSize: 15, marginStart: 0 },
       }}
     >
       <Tabs.Screen name="index" options={{ title: t('tabs.today') }} />

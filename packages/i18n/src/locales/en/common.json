@@ -19,5 +19,9 @@
     "description": "This changes only what you see. Your partner keeps their own language.",
     "en": "English",
     "es": "Spanish"
+  },
+  "settings": {
+    "permissions": "Calendar and reminders",
+    "keys": "Devices and keys"
   }
 }

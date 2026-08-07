@@ -1,11 +1,29 @@
 /**
  * Plans: what needs an answer, what is booked, and what already happened.
  *
- * Proposals awaiting *you* come first — they are the only thing on this screen
- * that is blocked on someone.
+ * Two things here are blocked on somebody, and they are the two that stay open.
+ * A proposal awaiting *you* comes first. Under it, plans that were booked and
+ * whose time has passed with nobody saying whether they happened — a group that
+ * did not exist until `groupPlans`, because the old filters put those rows in
+ * neither list and the couple could not reach them at all.
+ *
+ * Everything below is a record rather than a request, so it is closed:
+ * `history` and the proposal log.
  */
+import { groupPlans } from '@couple/cadence';
 import type { Plan, PlanProposal } from '@couple/core';
-import { Body, Button, Card, Divider, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
+import {
+  Body,
+  Button,
+  Card,
+  Disclosure,
+  Divider,
+  Heading,
+  Loading,
+  Muted,
+  Screen,
+  Title,
+} from '@couple/ui';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -46,15 +64,12 @@ export default function Plans() {
     };
   }, [proposalsQuery.data, profile.id]);
 
-  const { upcoming, history } = useMemo(() => {
-    const all = plansQuery.data ?? [];
-    return {
-      upcoming: all
-        .filter((p) => p.status === 'scheduled' && p.startsAt && new Date(p.startsAt) >= now)
-        .sort((a, b) => (a.startsAt ?? '').localeCompare(b.startsAt ?? '')),
-      history: all.filter((p) => p.status === 'completed' || p.status === 'skipped').slice(0, 20),
-    };
-  }, [plansQuery.data, now]);
+  // The same pure grouping the 2-2-2 app uses. These two `useMemo` blocks were
+  // identical, which is how one bug lived in both.
+  const { needsAnswer, upcoming, history } = useMemo(
+    () => groupPlans(plansQuery.data ?? [], now),
+    [plansQuery.data, now],
+  );
 
   // The resolved proposals only — the pending ones already drive the top of
   // the screen. Newest first, exactly as `listProposals` returns them.
@@ -160,7 +175,7 @@ export default function Plans() {
   if (plansQuery.isLoading || proposalsQuery.isLoading) return <Loading />;
 
   return (
-    <Screen>
+    <Screen tabbed>
       <Title>{t('app:tabs.plans')}</Title>
 
       {awaitingYou.length > 0 ? (
@@ -176,6 +191,26 @@ export default function Plans() {
         <ProposalCard key={proposal.id} proposal={proposal} mine />
       ))}
 
+      {/*
+        Booked, over, and nobody has said whether it happened — invisible until
+        now, because it matched neither the upcoming filter nor the history one.
+        Above `upcoming` because it is the only group here that is waiting on
+        somebody.
+      */}
+      {needsAnswer.length > 0 ? (
+        <Card>
+          <View className="gap-2">
+            <Heading>{t('plans:list.needsAnswer')}</Heading>
+            {needsAnswer.map((plan, index) => (
+              <View key={plan.id}>
+                {index > 0 ? <Divider /> : null}
+                <PlanRow plan={plan} actionable />
+              </View>
+            ))}
+          </View>
+        </Card>
+      ) : null}
+
       <Card>
         <View className="gap-2">
           <Heading>{t('plans:list.upcoming')}</Heading>
@@ -189,35 +224,41 @@ export default function Plans() {
         </View>
       </Card>
 
-      <Card>
-        <View className="gap-2">
-          <Heading>{t('plans:list.history')}</Heading>
-          {history.length === 0 ? <Muted>{t('plans:list.emptyHistory')}</Muted> : null}
-          {history.map((plan, index) => (
-            <View key={plan.id}>
-              {index > 0 ? <Divider /> : null}
-              <PlanRow plan={plan} actionable={false} />
-            </View>
-          ))}
-        </View>
-      </Card>
-
-      {pastProposals.length > 0 ? (
+      {/* Both of these are records rather than requests, so both are closed.
+          Five open sections was the densest screen in this app after Settings. */}
+      <Disclosure label={t('plans:list.history')}>
         <Card>
           <View className="gap-2">
-            <Heading>{t('plans:proposalLog.title')}</Heading>
-            {/* The negotiation as it went — accepted, declined and countered
-                times, newest first. A record, not a tally. */}
-            {pastProposals.map((proposal, index) => (
-              <View key={proposal.id} className="gap-1 py-2">
+            {history.length === 0 ? <Muted>{t('plans:list.emptyHistory')}</Muted> : null}
+            {history.map((plan, index) => (
+              <View key={plan.id}>
                 {index > 0 ? <Divider /> : null}
-                <Body>{windowLabel(proposal.startsAt, proposal.endsAt)}</Body>
-                <Muted>{t(`plans:proposalLog.${proposal.response}`)}</Muted>
-                {proposal.counteredFrom ? <Muted>{t('plans:proposal.counteredNote')}</Muted> : null}
+                <PlanRow plan={plan} actionable={false} />
               </View>
             ))}
           </View>
         </Card>
+      </Disclosure>
+
+      {pastProposals.length > 0 ? (
+        <Disclosure label={t('plans:proposalLog.title')}>
+          <Card>
+            <View className="gap-2">
+              {/* The negotiation as it went — accepted, declined and countered
+                  times, newest first. A record, not a tally. */}
+              {pastProposals.map((proposal, index) => (
+                <View key={proposal.id} className="gap-1 py-2">
+                  {index > 0 ? <Divider /> : null}
+                  <Body>{windowLabel(proposal.startsAt, proposal.endsAt)}</Body>
+                  <Muted>{t(`plans:proposalLog.${proposal.response}`)}</Muted>
+                  {proposal.counteredFrom ? (
+                    <Muted>{t('plans:proposal.counteredNote')}</Muted>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          </Card>
+        </Disclosure>
       ) : null}
     </Screen>
   );
