@@ -16,6 +16,7 @@
  * direction is that a date night is booked, and this is the app behind the
  * lock. The 2-2-2 app asks first.
  */
+import { formatWindowParts } from '@couple/i18n';
 import { busyFromPlans, mergeRanges, suggestWindows, type TimeRange } from '@couple/cadence';
 import { INTIMACY_KINDS, findKind, kindLabelKey, kindsForDomain } from '@couple/core';
 import { hasCalendarAccess, readBusyBlocks, requestCalendarAccess } from '@couple/device';
@@ -25,7 +26,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TextInput, View } from 'react-native';
 
-import { formatWindowParts } from '../../src/format';
 import { useCounterProposal, usePlans, useProposeTime, useServerBusy } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 

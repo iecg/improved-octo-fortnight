@@ -137,7 +137,7 @@ export default function Plans() {
 
   return (
     <Screen tabbed>
-      <Title>{t('app:tabs.plans')}</Title>
+      <Title>{t('common:tabs.plans')}</Title>
 
       {/*
         First, because it is the only thing here anyone is blocked on — and

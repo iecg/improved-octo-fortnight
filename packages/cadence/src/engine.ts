@@ -11,7 +11,7 @@
  * between, so intervals are applied to wall-clock fields and converted back to
  * an instant rather than by adding milliseconds.
  */
-import type { Cadence, IntervalUnit, Plan } from '@couple/core';
+import type { AppDomain, Cadence, IntervalUnit, Plan } from '@couple/core';
 import {
   addDays,
   addMonths,
@@ -25,7 +25,16 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 export type CadenceHealth = 'on_track' | 'due_soon' | 'overdue';
 
 export interface CadenceStatus {
-  domain: string;
+  /**
+   * Copied straight off the cadence, so it is as narrow here as it is there.
+   *
+   * It was `string` for a while, and the widening had no reason behind it — the
+   * value comes from `Cadence.domain` and cannot be anything else. What it did
+   * have was a cost: every screen building a translation key from a status had
+   * to narrow it back, and the two apps did that two different ways, one with a
+   * helper and one with a cast at the call site.
+   */
+  domain: AppDomain;
   kind: string;
   /** When this ritual last actually happened, or null with no history. */
   lastCompletedAt: Date | null;

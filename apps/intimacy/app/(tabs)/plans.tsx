@@ -10,6 +10,7 @@
  * Everything below is a record rather than a request, so it is closed:
  * `history` and the proposal log.
  */
+import { formatWindowParts } from '@couple/i18n';
 import { groupPlans } from '@couple/cadence';
 import type { Plan, PlanProposal } from '@couple/core';
 import {
@@ -29,7 +30,6 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
-import { formatWindowParts } from '../../src/format';
 import {
   useCompletePlan,
   usePendingProposals,
@@ -176,7 +176,7 @@ export default function Plans() {
 
   return (
     <Screen tabbed>
-      <Title>{t('app:tabs.plans')}</Title>
+      <Title>{t('common:tabs.plans')}</Title>
 
       {awaitingYou.length > 0 ? (
         <View className="gap-3">

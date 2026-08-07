@@ -9,7 +9,7 @@
  * intimacy app runs. Only the intervals differ.
  */
 import { healthLabelKey, plannerTurn } from '@couple/cadence';
-import { kindDescriptionKey, kindLabelKey, type AppDomain } from '@couple/core';
+import { kindDescriptionKey, kindLabelKey } from '@couple/core';
 import { dueTranslation, formatDay } from '@couple/i18n';
 import {
   Body,
@@ -62,7 +62,7 @@ export default function Rhythm() {
   return (
     <Screen tabbed>
       <View className="gap-1">
-        <Title>{t('app:home.title')}</Title>
+        <Title>{t('cadence:list.title')}</Title>
         <Muted>{t('app:home.subtitle')}</Muted>
       </View>
 
@@ -76,7 +76,7 @@ export default function Rhythm() {
       */}
       {statuses.map((status) => {
         const due = dueTranslation(status.daysUntilDue);
-        const label = t(kindLabelKey(status.domain as AppDomain, status.kind));
+        const label = t(kindLabelKey(status.domain, status.kind));
         const turn = plannerTurn(status, profile.id);
 
         return (
@@ -102,7 +102,7 @@ export default function Rhythm() {
               <View className="flex-row items-start justify-between gap-3">
                 <View className="shrink gap-1">
                   <Heading>{label}</Heading>
-                  <Muted>{t(kindDescriptionKey(status.domain as AppDomain, status.kind))}</Muted>
+                  <Muted>{t(kindDescriptionKey(status.domain, status.kind))}</Muted>
                 </View>
                 <View className="pt-2">
                   <Chevron />

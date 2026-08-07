@@ -18,7 +18,7 @@ import { usePairedSession } from '../../src/session';
 const REMINDER_LEAD_MINUTES = 180;
 
 export default function TabsLayout() {
-  const { t } = useTranslation(['app', 'cadence']);
+  const { t } = useTranslation(['app', 'cadence', 'common']);
   const { profile, couple } = usePairedSession();
   const client = useQueryClient();
 
@@ -122,9 +122,9 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: t('app:tabs.today') }} />
-      <Tabs.Screen name="plans" options={{ title: t('app:tabs.plans') }} />
+      <Tabs.Screen name="plans" options={{ title: t('common:tabs.plans') }} />
       <Tabs.Screen name="ideas" options={{ title: t('app:tabs.ideas') }} />
-      <Tabs.Screen name="settings" options={{ title: t('app:tabs.settings') }} />
+      <Tabs.Screen name="settings" options={{ title: t('common:settings.title') }} />
     </Tabs>
   );
 }
