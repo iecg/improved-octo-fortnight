@@ -8,7 +8,7 @@
  * Every countdown comes from the shared cadence engine, the same pure code the
  * intimacy app runs. Only the intervals differ.
  */
-import { healthLabelKey, plannerTurn } from '@couple/cadence';
+import { cadenceStatuses, healthLabelKey, plannerTurn } from '@couple/cadence';
 import { kindDescriptionKey, kindLabelKey } from '@couple/core';
 import { dueTranslation, formatDay } from '@couple/i18n';
 import {
@@ -27,7 +27,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
-import { cadenceStatuses, useCadences, usePlans } from '../../src/queries';
+import { useCadences, usePlans } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
 export default function Rhythm() {

@@ -9,26 +9,14 @@
  * Note what is absent: there is no check-in accessor here, because check-ins
  * are intimacy-owned and reachable only through their own factory.
  */
-import {
-  compareUrgency,
-  computeCadenceStatus,
-  shiftToDay,
-  type CadenceStatus,
-} from '@couple/cadence';
-import type {
-  Cadence,
-  Coordinates,
-  CostBand,
-  IdeaSource,
-  Locale,
-  PlaceProvider,
-  Plan,
-} from '@couple/core';
+import { shiftToDay } from '@couple/cadence';
+import type { Coordinates, CostBand, IdeaSource, Locale, PlaceProvider, Plan } from '@couple/core';
 import {
   createBusyRepository,
   createDomainRepository,
   createIdeaRepository,
   createPlaceRepository,
+  createPlanQueries,
 } from '@couple/data';
 import { isCrossAppBusyEnabled, setCrossAppBusyEnabled } from '@couple/device';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -55,77 +43,38 @@ export const places = createPlaceRepository(supabase, contentCipher);
  */
 export const busy = createBusyRepository(supabase);
 
+/**
+ * Everything both apps do with plans and cadences, from the shared factory.
+ *
+ * It is given the repository rather than a domain, so there is no argument here
+ * that could point it at the intimacy app's rows. What stays below is this
+ * app's own: the shortlist, places, booking outright rather than proposing, and
+ * the cross-app busy gate.
+ */
+const shared = createPlanQueries(plans, DEFAULT_CADENCES);
+
+export const {
+  usePlans,
+  useGetPlan,
+  useCadences,
+  seedCadences,
+  useEnsureCadences,
+  useCompletePlan,
+  useSetCadenceEnabled,
+} = shared;
+
+/**
+ * The shared keys plus this app's own, so nothing below has to know which is
+ * which — and so `plans` and `cadences` cannot be spelled one way in the shared
+ * factory's invalidations and another way here.
+ */
 const keys = {
-  plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
-  plan: (planId: string) => ['plan', DOMAIN, planId] as const,
-  cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
+  ...shared.keys,
   ideas: (coupleId: string) => ['ideas', DOMAIN, coupleId] as const,
   places: (coupleId: string) => ['places', DOMAIN, coupleId] as const,
-  // Not domain-keyed: this list is the same one either app would read.
-  busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
-  // Every bounds pair for a couple. The bounds are part of the key, so
-  // invalidating one window would leave every other range stale.
-  busyAll: (coupleId: string) => ['busy', coupleId] as const,
   // Device-local, so not keyed by couple: it describes this phone.
   crossAppBusy: () => ['preferences', 'crossAppBusy'] as const,
 };
-
-export function usePlans(coupleId: string) {
-  return useQuery({ queryKey: keys.plans(coupleId), queryFn: () => plans.listPlans(coupleId) });
-}
-
-export function useGetPlan(planId: string) {
-  return useQuery({ queryKey: keys.plan(planId), queryFn: () => plans.getPlan(planId) });
-}
-
-export function useCadences(coupleId: string) {
-  return useQuery({
-    queryKey: keys.cadences(coupleId),
-    queryFn: () => plans.listCadences(coupleId),
-  });
-}
-
-/**
- * Seed the three clocks from this app's own kind catalog.
- *
- * Deliberately not a database trigger — a trigger on `couples` would give
- * every couple every app's cadences whichever app they actually installed.
- * Idempotent, because `upsertCadence` upserts on `(couple_id, domain, kind)`.
- */
-export async function seedCadences(coupleId: string): Promise<void> {
-  for (const kind of DEFAULT_CADENCES) {
-    await plans.upsertCadence({
-      coupleId,
-      kind: kind.kind,
-      intervalValue: kind.defaultIntervalValue,
-      intervalUnit: kind.defaultIntervalUnit,
-    });
-  }
-}
-
-/**
- * Seed on first run of *this app*, not just on first pairing.
- *
- * Pairing happens once and serves both apps, so whoever installs this one
- * second never passes through the pairing screen — and that screen was the
- * only thing that had ever called `seedCadences`. Without this, 2-2-2 opens to
- * no date night, no getaway and no trip: every countdown the app exists for.
- *
- * Only a genuinely empty list seeds. A cadence switched off keeps its row with
- * `enabled = false`, so turning one off never resurrects it here.
- */
-export function useEnsureCadences(coupleId: string): void {
-  const client = useQueryClient();
-  const { data, isLoading } = useCadences(coupleId);
-  const empty = !isLoading && data?.length === 0;
-
-  useEffect(() => {
-    if (!empty) return;
-    void seedCadences(coupleId).then(() =>
-      client.invalidateQueries({ queryKey: keys.cadences(coupleId) }),
-    );
-  }, [client, coupleId, empty]);
-}
 
 /**
  * Whether this device may see times the couple is busy in the other app.
@@ -342,29 +291,6 @@ export function useSetPlaceCalendarSharing(coupleId: string) {
 }
 
 /**
- * Mark an outing as done, or as skipped.
- *
- * Completing is what re-anchors the cadence, so the cadence list is
- * invalidated alongside the plans — the rhythm screen would otherwise keep
- * showing the old countdown until something else happened to refetch it.
- *
- * Same shape as the intimacy app's `useCompletePlan`. This used to call the
- * repository straight from the screen and then invalidate the *entire* cache,
- * which refetched every query in the app to update two.
- */
-export function useCompletePlan(coupleId: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { planId: string; completed: boolean }) =>
-      plans.setPlanStatus(input.planId, input.completed ? 'completed' : 'skipped'),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
-      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
-    },
-  });
-}
-
-/**
  * Move a booking to another day, keeping everything else about it.
  *
  * The third answer this app was missing. "Done" and "didn't happen" are both
@@ -405,27 +331,6 @@ export function useReschedulePlan(coupleId: string, timeZone: string) {
       // propose screen's free/busy marks are wrong the moment a window moves.
       void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
       void client.invalidateQueries({ queryKey: keys.busyAll(coupleId) });
-    },
-  });
-}
-
-/**
- * Pause a commitment, or bring it back.
- *
- * A paused cadence keeps its row with `enabled = false` rather than being
- * deleted, which is what lets `useEnsureCadences` tell "never seeded" from
- * "switched off" — and what stops a pause being silently undone on next launch.
- *
- * The plans already made under it stay exactly where they are. This turns off a
- * countdown, not a history.
- */
-export function useSetCadenceEnabled(coupleId: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { cadenceId: string; enabled: boolean }) =>
-      plans.setCadenceEnabled(input.cadenceId, input.enabled),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
     },
   });
 }
@@ -582,26 +487,4 @@ export function useRealtimeSync(coupleId: string | null): void {
       void supabase.removeChannel(channel);
     };
   }, [client, coupleId]);
-}
-
-/** Cadence statuses for every enabled ritual, most urgent first. */
-export function cadenceStatuses(
-  cadences: Cadence[],
-  allPlans: Plan[],
-  coupleCreatedAt: string,
-  timeZone: string,
-  now: Date,
-): CadenceStatus[] {
-  return cadences
-    .filter((cadence) => cadence.enabled)
-    .map((cadence) =>
-      computeCadenceStatus({
-        cadence,
-        plans: allPlans,
-        now,
-        coupleCreatedAt: new Date(coupleCreatedAt),
-        timeZone,
-      }),
-    )
-    .sort(compareUrgency);
 }

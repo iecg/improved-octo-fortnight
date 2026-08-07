@@ -8,7 +8,7 @@
  * styled exactly like "yes" — an app that turns a no into a broken chain makes
  * the problem it is meant to solve worse.
  */
-import { healthLabelKey, plannerTurn } from '@couple/cadence';
+import { cadenceStatuses, healthLabelKey, plannerTurn } from '@couple/cadence';
 import { CHECKIN_INTERESTS, kindLabelKey, type CheckinInterest } from '@couple/core';
 import { dueTranslation, formatDay, formatTime, formatWeekday } from '@couple/i18n';
 import {
@@ -31,7 +31,6 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, TextInput, View } from 'react-native';
 
 import {
-  cadenceStatuses,
   useCadences,
   useCheckinLog,
   useCheckins,

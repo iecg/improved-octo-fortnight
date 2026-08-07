@@ -346,3 +346,34 @@ export function plannerTurn(status: CadenceStatus, profileId: string): PlannerTu
 export function healthLabelKey(health: CadenceHealth): string {
   return `cadence:health.${health}`;
 }
+
+/**
+ * Every enabled ritual's status, most urgent first.
+ *
+ * The list behind both apps' rhythm screens. It lived in each app's `queries`
+ * module, character for character the same in both, which is odd for a function
+ * that touches no query, no client and no domain — it is `filter`, `map` and
+ * `sort` over three functions already in this file. `enabled` is the whole of
+ * the filtering: a paused cadence keeps its row, and keeping its countdown on
+ * screen is what pausing exists to stop.
+ */
+export function cadenceStatuses(
+  cadences: Cadence[],
+  plans: Plan[],
+  coupleCreatedAt: string,
+  timeZone: string,
+  now: Date,
+): CadenceStatus[] {
+  return cadences
+    .filter((cadence) => cadence.enabled)
+    .map((cadence) =>
+      computeCadenceStatus({
+        cadence,
+        plans,
+        now,
+        coupleCreatedAt: new Date(coupleCreatedAt),
+        timeZone,
+      }),
+    )
+    .sort(compareUrgency);
+}
