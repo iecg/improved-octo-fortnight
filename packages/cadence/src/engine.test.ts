@@ -1,6 +1,12 @@
 import type { Cadence, Plan } from '@couple/core';
 import { describe, expect, it } from 'vitest';
-import { addInterval, compareUrgency, computeCadenceStatus, nextOccurrences } from './engine';
+import {
+  addInterval,
+  compareUrgency,
+  computeCadenceStatus,
+  nextOccurrences,
+  nextWeekdayInZone,
+} from './engine';
 
 const NY = 'America/New_York';
 
@@ -336,5 +342,45 @@ describe('compareUrgency', () => {
 
     const sorted = [onTrack, overdue, dueSoon].sort(compareUrgency);
     expect(sorted.map((status) => status.health)).toEqual(['overdue', 'due_soon', 'on_track']);
+  });
+});
+
+describe('nextWeekdayInZone', () => {
+  const saturday = 6;
+
+  it('walks forward to the coming weekday', () => {
+    // Wednesday 2026-01-07, 12:00 UTC.
+    const from = new Date('2026-01-07T12:00:00.000Z');
+    expect(nextWeekdayInZone(from, saturday, 'UTC').toISOString()).toBe('2026-01-10T12:00:00.000Z');
+  });
+
+  it('returns the instant itself when it is already that day', () => {
+    // Saturday. "This weekend" on a Saturday means today, not in a week.
+    const from = new Date('2026-01-10T12:00:00.000Z');
+    expect(nextWeekdayInZone(from, saturday, 'UTC')).toBe(from);
+  });
+
+  it('is the longest wait the day after', () => {
+    // Sunday — six days to the next Saturday, never zero.
+    const from = new Date('2026-01-11T12:00:00.000Z');
+    expect(nextWeekdayInZone(from, saturday, 'UTC').toISOString()).toBe('2026-01-17T12:00:00.000Z');
+  });
+
+  /**
+   * The reason this takes a timezone at all. 23:00 Friday in Madrid is already
+   * Saturday in Auckland, so the same instant answers differently depending on
+   * whose calendar is asking — and the couple's is the only one that counts.
+   */
+  it("reads the weekday on the couple's calendar, not the instant's", () => {
+    const fridayNightInMadrid = new Date('2026-01-09T22:00:00.000Z');
+
+    // Madrid: still Friday, so the coming Saturday is tomorrow.
+    expect(nextWeekdayInZone(fridayNightInMadrid, saturday, 'Europe/Madrid').toISOString()).toBe(
+      '2026-01-10T22:00:00.000Z',
+    );
+    // Auckland: already Saturday, so it is today.
+    expect(nextWeekdayInZone(fridayNightInMadrid, saturday, 'Pacific/Auckland')).toBe(
+      fridayNightInMadrid,
+    );
   });
 });

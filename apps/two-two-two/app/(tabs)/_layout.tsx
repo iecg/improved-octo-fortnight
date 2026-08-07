@@ -104,7 +104,16 @@ export default function TabsLayout() {
   });
 
   return (
-    <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: '#9C5B4E' }}>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: '#9C5B4E',
+        // Same as the other app: without this, `BottomTabBar` substitutes
+        // `MissingIcon` for every tab that gives no `tabBarIcon`, and four
+        // placeholder triangles sit above the labels.
+        tabBarIconStyle: { display: 'none' },
+      }}
+    >
       <Tabs.Screen name="index" options={{ title: t('app:tabs.today') }} />
       <Tabs.Screen name="plans" options={{ title: t('app:tabs.plans') }} />
       <Tabs.Screen name="ideas" options={{ title: t('app:tabs.ideas') }} />

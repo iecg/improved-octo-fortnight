@@ -29,6 +29,7 @@ import {
   Button,
   Card,
   Chip,
+  Disclosure,
   Divider,
   Heading,
   Loading,
@@ -152,7 +153,7 @@ export default function Ideas() {
   if (ideasQuery.isLoading) return <Loading />;
 
   return (
-    <Screen>
+    <Screen tabbed>
       <View className="gap-1">
         <Title>{t('app:ideas.title')}</Title>
         <Muted>{t('app:ideas.subtitle')}</Muted>
@@ -182,26 +183,29 @@ export default function Ideas() {
         </View>
       </Card>
 
-      <Card>
-        <View className="gap-2">
-          <Heading>{t('app:ideas.addOwn')}</Heading>
-          <TextInput
-            className="min-h-12 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
-            value={draft}
-            onChangeText={setDraft}
-            placeholder={t('app:ideas.addOwnPlaceholder')}
-            accessibilityLabel={t('app:ideas.addOwn')}
-          />
-          <Muted>{t('app:ideas.addOwnHint')}</Muted>
-          <Button
-            label={t('app:ideas.add')}
-            variant="secondary"
-            disabled={draft.trim().length === 0}
-            loading={save.isPending}
-            onPress={() => void addOwn()}
-          />
-        </View>
-      </Card>
+      {/* Typing one out is the least common way anybody fills this screen, and
+          it is a text field — the single heaviest thing to have sitting open. */}
+      <Disclosure label={t('app:ideas.addOwn')}>
+        <Card>
+          <View className="gap-2">
+            <TextInput
+              className="min-h-12 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={t('app:ideas.addOwnPlaceholder')}
+              accessibilityLabel={t('app:ideas.addOwn')}
+            />
+            <Muted>{t('app:ideas.addOwnHint')}</Muted>
+            <Button
+              label={t('app:ideas.add')}
+              variant="secondary"
+              disabled={draft.trim().length === 0}
+              loading={save.isPending}
+              onPress={() => void addOwn()}
+            />
+          </View>
+        </Card>
+      </Disclosure>
 
       <AiSuggestionCard
         kind={kind}
@@ -242,45 +246,58 @@ export default function Ideas() {
         }
       />
 
-      <Card>
-        <View className="gap-2">
-          <Heading>{t('app:ideas.library')}</Heading>
-          <Muted>{t('app:ideas.libraryHint')}</Muted>
-          {libraryFor(kind)
-            .filter((id) => !savedTitles.has(t(ideaTitleKey(kind, id))))
-            .map((id, index) => (
-              <View key={id} className="gap-2 py-2">
-                {index > 0 ? <Divider /> : null}
-                <Body>{t(ideaTitleKey(kind, id))}</Body>
-                <Muted>{t(ideaSummaryKey(kind, id))}</Muted>
-                <View className="flex-row gap-2">
-                  <View className="grow basis-0">
-                    <Button
-                      label={t('app:ideas.save')}
-                      variant="secondary"
-                      onPress={() =>
-                        save.mutate({
-                          kind,
-                          title: t(ideaTitleKey(kind, id)),
-                          summary: t(ideaSummaryKey(kind, id)),
-                          source: 'library',
-                          locale,
-                        })
-                      }
-                    />
-                  </View>
-                  <View className="grow basis-0">
-                    <Button
-                      label={t('app:ideas.planIt')}
-                      variant="ghost"
-                      onPress={() => planIt(t(ideaTitleKey(kind, id)))}
-                    />
+      {/*
+        Eight entries for a date night, each a title, a summary and two buttons
+        — roughly a thousand points, and the whole reason this screen scrolled
+        past everything else on it.
+
+        Open only when the shortlist for this kind is empty, because that is
+        when it is the answer to the screen's own question rather than a list
+        underneath one. `key={kind}` is what makes that work: the open state
+        lives in `useState`, so without a remount, switching from a kind you
+        have saved things for to one you have not would leave it shut on an
+        empty screen.
+      */}
+      <Disclosure key={kind} label={t('app:ideas.library')} defaultOpen={saved.length === 0}>
+        <Card>
+          <View className="gap-2">
+            <Muted>{t('app:ideas.libraryHint')}</Muted>
+            {libraryFor(kind)
+              .filter((id) => !savedTitles.has(t(ideaTitleKey(kind, id))))
+              .map((id, index) => (
+                <View key={id} className="gap-2 py-2">
+                  {index > 0 ? <Divider /> : null}
+                  <Body>{t(ideaTitleKey(kind, id))}</Body>
+                  <Muted>{t(ideaSummaryKey(kind, id))}</Muted>
+                  <View className="flex-row gap-2">
+                    <View className="grow basis-0">
+                      <Button
+                        label={t('app:ideas.save')}
+                        variant="secondary"
+                        onPress={() =>
+                          save.mutate({
+                            kind,
+                            title: t(ideaTitleKey(kind, id)),
+                            summary: t(ideaSummaryKey(kind, id)),
+                            source: 'library',
+                            locale,
+                          })
+                        }
+                      />
+                    </View>
+                    <View className="grow basis-0">
+                      <Button
+                        label={t('app:ideas.planIt')}
+                        variant="ghost"
+                        onPress={() => planIt(t(ideaTitleKey(kind, id)))}
+                      />
+                    </View>
                   </View>
                 </View>
-              </View>
-            ))}
-        </View>
-      </Card>
+              ))}
+          </View>
+        </Card>
+      </Disclosure>
     </Screen>
   );
 }

@@ -95,6 +95,24 @@ export function calendarDaysBetween(from: Date, to: Date, timeZone: string): num
 }
 
 /**
+ * The next `weekday` (0 = Sunday, matching `Date#getDay`) at or after `from`,
+ * counted on the couple's wall calendar.
+ *
+ * What the booking screen's "this weekend" is built on. Returns `from`'s own
+ * day when it already is that weekday, which is the reading someone standing on
+ * a Saturday expects — "this weekend" means today, not in seven days.
+ *
+ * Zoned rather than local: the weekday of an instant is a question about a
+ * calendar, and 23:00 Friday in Madrid is already Saturday in Auckland. Reading
+ * `getDay()` off the raw instant would put the couple's weekend on the server's.
+ */
+export function nextWeekdayInZone(from: Date, weekday: number, timeZone: string): Date {
+  const zoned = toZonedTime(from, timeZone);
+  const ahead = (weekday - zoned.getDay() + 7) % 7;
+  return ahead === 0 ? from : fromZonedTime(addDays(zoned, ahead), timeZone);
+}
+
+/**
  * Days until the couple's next anniversary, counted on their wall calendar.
  *
  * The anniversary is a calendar date (`YYYY-MM-DD`); only its month and day

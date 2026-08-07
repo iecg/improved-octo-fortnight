@@ -19,7 +19,7 @@
 import { busyFromPlans, mergeRanges, suggestWindows, type TimeRange } from '@couple/cadence';
 import { INTIMACY_KINDS, findKind, kindLabelKey, kindsForDomain } from '@couple/core';
 import { hasCalendarAccess, readBusyBlocks, requestCalendarAccess } from '@couple/device';
-import { Body, Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
+import { Body, Button, Card, Chip, Disclosure, Heading, Muted, Screen, Title } from '@couple/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -181,7 +181,29 @@ export default function NewPlan() {
   }
 
   return (
-    <Screen>
+    <Screen
+      /*
+        The suggestion this sends, and the button that sends it, pinned where
+        neither can be scrolled past. The chosen window used to be rendered
+        *below* the button — so the one line confirming what you were about to
+        propose was the single most likely thing on the screen to be off it.
+      */
+      footer={
+        <>
+          {/* Its own key rather than `common:state.empty` — "Nothing here yet"
+              reads as *there are no suggestions*, directly under a card full of
+              them, when what it means is that none has been picked. */}
+          {chosen ? <Body>{windowLabel(chosen)}</Body> : <Muted>{t('app:propose.pickOne')}</Muted>}
+          <Button
+            label={t('app:propose.send')}
+            disabled={!chosen}
+            loading={pending}
+            onPress={() => void send()}
+          />
+          <Button label={t('common:action.cancel')} variant="ghost" onPress={() => router.back()} />
+        </>
+      }
+    >
       <Title>{counterOf ? t('plans:proposal.counter') : t('app:propose.title')}</Title>
       {counterOf ? <Muted>{t('plans:proposal.counteredNote')}</Muted> : null}
 
@@ -191,7 +213,9 @@ export default function NewPlan() {
         <Card>
           <View className="gap-3">
             <Heading>{t('app:propose.kind')}</Heading>
-            <View className="flex-row flex-wrap gap-2">
+            {/* Not `flex-wrap`: three equal chips fill one row, and a wrapping
+                row of filled chips is the trap documented on `Chip`. */}
+            <View className="flex-row gap-2">
               {kindsForDomain('intimacy').map((definition) => (
                 <Chip
                   key={definition.kind}
@@ -205,90 +229,86 @@ export default function NewPlan() {
         </Card>
       )}
 
+      {/* How long and when, in one card: the duration is what *produces* the
+          suggestions below it, so splitting them put a cause and its effect in
+          two boxes with a gap between. */}
       <Card>
-        <View className="gap-3">
-          <Heading>{t('app:propose.duration')}</Heading>
-          <View className="flex-row gap-2">
-            {DURATION_CHOICES.map((minutes) => (
+        <View className="gap-4">
+          <View className="gap-3">
+            <Heading>{t('app:propose.duration')}</Heading>
+            <View className="flex-row gap-2">
+              {DURATION_CHOICES.map((minutes) => (
+                <Chip
+                  key={minutes}
+                  label={durationLabel(minutes)}
+                  selected={duration === minutes}
+                  onPress={() => {
+                    setDuration(minutes);
+                    setChosen(null);
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+
+          <View className="gap-3">
+            <Heading>{t('app:propose.suggestions')}</Heading>
+
+            {suggestions.length === 0 ? <Muted>{t('app:propose.noSuggestions')}</Muted> : null}
+
+            {suggestions.map((window) => (
               <Chip
-                key={minutes}
-                label={durationLabel(minutes)}
-                selected={duration === minutes}
-                onPress={() => {
-                  setDuration(minutes);
-                  setChosen(null);
-                }}
+                key={window.start.toISOString()}
+                label={windowLabel(window)}
+                selected={chosen?.start.getTime() === window.start.getTime()}
+                onPress={() => setChosen(window)}
               />
             ))}
           </View>
         </View>
       </Card>
 
-      <Card>
-        <View className="gap-3">
-          <Heading>{t('app:propose.suggestions')}</Heading>
-
-          {/* An offer, not a gate. The suggestions below are rendered either
-              way; calendar access only makes them better informed. */}
-          {calendarOk === false ? (
-            <>
-              <Muted>{t('app:propose.sharperWithCalendar')}</Muted>
-              <Button
-                label={t('app:propose.grantCalendar')}
-                variant="secondary"
-                onPress={() =>
-                  void requestCalendarAccess().then(async (granted) => {
-                    setCalendarOk(granted);
-                    if (granted) await loadBusy();
-                  })
-                }
-              />
-            </>
-          ) : null}
-
-          {suggestions.length === 0 ? <Muted>{t('app:propose.noSuggestions')}</Muted> : null}
-
-          {suggestions.map((window) => (
-            <Chip
-              key={window.start.toISOString()}
-              label={windowLabel(window)}
-              selected={chosen?.start.getTime() === window.start.getTime()}
-              onPress={() => setChosen(window)}
+      {/* An offer, not a gate — and below the suggestions rather than above
+          them, because it improves an answer the screen has already given. Once
+          access is granted this disappears and the screen is one card shorter. */}
+      {calendarOk === false ? (
+        <Card>
+          <View className="gap-3">
+            <Muted>{t('app:propose.sharperWithCalendar')}</Muted>
+            <Button
+              label={t('app:propose.grantCalendar')}
+              variant="secondary"
+              onPress={() =>
+                void requestCalendarAccess().then(async (granted) => {
+                  setCalendarOk(granted);
+                  if (granted) await loadBusy();
+                })
+              }
             />
-          ))}
-        </View>
-      </Card>
+          </View>
+        </Card>
+      ) : null}
 
       {/* A counter answers the time. The note the other person wrote stays
           theirs, so this is not offered again. */}
       {counterOf ? null : (
-        <Card>
-          <View className="gap-2">
-            <Heading>{t('plans:new.notesLabel')}</Heading>
-            <TextInput
-              className="min-h-20 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
-              value={notes}
-              onChangeText={setNotes}
-              placeholder={t('plans:new.notesPlaceholder')}
-              multiline
-              accessibilityLabel={t('plans:new.notesLabel')}
-            />
-            {/* Sets the expectation that this reaches the partner untranslated. */}
-            <Muted>{t('plans:new.notesHint')}</Muted>
-          </View>
-        </Card>
+        <Disclosure label={t('plans:new.notesLabel')}>
+          <Card>
+            <View className="gap-2">
+              <TextInput
+                className="min-h-20 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
+                value={notes}
+                onChangeText={setNotes}
+                placeholder={t('plans:new.notesPlaceholder')}
+                multiline
+                accessibilityLabel={t('plans:new.notesLabel')}
+              />
+              {/* Sets the expectation that this reaches the partner untranslated. */}
+              <Muted>{t('plans:new.notesHint')}</Muted>
+            </View>
+          </Card>
+        </Disclosure>
       )}
-
-      <View className="gap-2">
-        <Button
-          label={t('app:propose.send')}
-          disabled={!chosen}
-          loading={pending}
-          onPress={() => void send()}
-        />
-        <Button label={t('common:action.cancel')} variant="ghost" onPress={() => router.back()} />
-        {chosen ? <Body>{windowLabel(chosen)}</Body> : null}
-      </View>
     </Screen>
   );
 }

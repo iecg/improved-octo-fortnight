@@ -15,8 +15,7 @@
     "propose": "Suggest a time",
     "dateNight": "Next date night",
     "partnerUnreadable": "{{name}}'s answer can't be read on this device",
-    "planIt": "Suggest a time for this",
-    "upcoming": "Next: {{dates}}"
+    "planIt": "Suggest a time for this"
   },
   "checkin": {
     "yes": "Yes",
@@ -36,6 +35,7 @@
     "kind": "What for",
     "suggestions": "You're both free",
     "noSuggestions": "No open evenings found. Pick a time anyway.",
+    "pickOne": "Pick one of the times above.",
     "sharperWithCalendar": "Allow calendar access and these get sharper — we'll also avoid what's on your own calendar.",
     "grantCalendar": "Allow calendar access",
     "duration": "How long",

@@ -8,14 +8,14 @@
  * Every countdown comes from the shared cadence engine, the same pure code the
  * intimacy app runs. Only the intervals differ.
  */
-import { healthLabelKey, nextOccurrences } from '@couple/cadence';
+import { healthLabelKey } from '@couple/cadence';
 import { kindDescriptionKey, kindLabelKey, type AppDomain } from '@couple/core';
-import { dueTranslation, formatDay, intervalTranslation } from '@couple/i18n';
-import { Body, Button, CadenceBar, Card, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
+import { dueTranslation, formatDay } from '@couple/i18n';
+import { Body, CadenceBar, Card, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { cadenceStatuses, useCadences, usePlans } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
@@ -45,39 +45,46 @@ export default function Rhythm() {
     [cadencesQuery.data, plansQuery.data, couple.createdAt, timeZone, now],
   );
 
-  const intervalFor = useMemo(() => {
-    const byKind = new Map((cadencesQuery.data ?? []).map((c) => [c.kind, c]));
-    return (kind: string) => byKind.get(kind);
-  }, [cadencesQuery.data]);
-
   if (plansQuery.isLoading || cadencesQuery.isLoading) return <Loading />;
 
   return (
-    <Screen>
+    <Screen tabbed>
       <View className="gap-1">
         <Title>{t('app:home.title')}</Title>
         <Muted>{t('app:home.subtitle')}</Muted>
       </View>
 
+      {/*
+        Four lines of prose under each bar became one.
+        `interval` restated the description's own tail — "Every 2 weeks" under
+        "An evening out, every couple of weeks" — and `upcoming` listed three
+        dates nobody has agreed to, on a screen whose entire job is to say
+        whether one is overdue. What is left is the name, what it means, how
+        long it has been, and the one date that was actually booked.
+      */}
       {statuses.map((status) => {
         const due = dueTranslation(status.daysUntilDue);
-        const cadence = intervalFor(status.kind);
-        const interval = cadence
-          ? intervalTranslation(cadence.intervalValue, cadence.intervalUnit)
-          : null;
-        // The rhythm ahead — the same derivation the intimacy app shows, from
-        // the anchor the bar already uses. Past dates drop off.
-        const upcoming = cadence
-          ? nextOccurrences(cadence, status.anchorAt, 12, timeZone)
-              .filter((date) => date > now)
-              .slice(0, 3)
-          : [];
+        const label = t(kindLabelKey(status.domain as AppDomain, status.kind));
 
         return (
           <Card key={`${status.domain}.${status.kind}`}>
-            <View className="gap-3">
+            {/* The whole card books this commitment — the only thing that ever
+                resets its clock — so the button below it is gone. */}
+            <Pressable
+              accessibilityRole="button"
+              /*
+                The card is one accessible element now, so the bar's own
+                `progressbar` label is no longer reachable and the countdown has
+                to be spoken here. Name first: three cards announcing "Plan it"
+                are three identical rows.
+              */
+              accessibilityLabel={`${label} — ${t(due.key, { count: due.count })}`}
+              accessibilityHint={t('app:home.planIt')}
+              className="gap-3"
+              onPress={() => router.push({ pathname: '/plan/new', params: { kind: status.kind } })}
+            >
               <View className="gap-1">
-                <Heading>{t(kindLabelKey(status.domain as AppDomain, status.kind))}</Heading>
+                <Heading>{label}</Heading>
                 <Muted>{t(kindDescriptionKey(status.domain as AppDomain, status.kind))}</Muted>
               </View>
 
@@ -94,35 +101,16 @@ export default function Rhythm() {
                     date: formatDay(status.nextScheduledAt, locale, timeZone),
                   })}
                 </Body>
-              ) : null}
-
-              <Muted>
-                {status.lastCompletedAt
-                  ? t('app:home.lastTime', {
-                      date: formatDay(status.lastCompletedAt, locale, timeZone),
-                    })
-                  : t('app:home.neverYet')}
-              </Muted>
-
-              {interval ? <Muted>{t(interval.key, { count: interval.count })}</Muted> : null}
-
-              {upcoming.length > 0 ? (
+              ) : (
                 <Muted>
-                  {t('app:home.upcoming', {
-                    dates: upcoming.map((date) => formatDay(date, locale, timeZone)).join(' · '),
-                  })}
+                  {status.lastCompletedAt
+                    ? t('app:home.lastTime', {
+                        date: formatDay(status.lastCompletedAt, locale, timeZone),
+                      })
+                    : t('app:home.neverYet')}
                 </Muted>
-              ) : null}
-
-              {/* The only thing that ever resets this clock. */}
-              <Button
-                label={t('app:home.planIt')}
-                variant="secondary"
-                onPress={() =>
-                  router.push({ pathname: '/plan/new', params: { kind: status.kind } })
-                }
-              />
-            </View>
+              )}
+            </Pressable>
           </Card>
         );
       })}

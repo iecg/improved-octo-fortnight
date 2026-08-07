@@ -30,8 +30,7 @@
     "lastTime": "Last time {{date}}",
     "neverYet": "Nothing logged yet",
     "planIt": "Plan it",
-    "bookedFor": "Booked for {{date}}",
-    "upcoming": "Next: {{dates}}"
+    "bookedFor": "Booked for {{date}}"
   },
   "plan": {
     "title": "Plan something",
@@ -39,7 +38,12 @@
     "titleLabel": "What are you calling it",
     "titlePlaceholder": "Optional",
     "titleHint": "Your partner sees this exactly as you write it, in whatever language you write it.",
+    "details": "Add a title or a place",
     "when": "Which day",
+    "dayToday": "Today",
+    "dayTomorrow": "Tomorrow",
+    "dayWeekend": "This weekend",
+    "dayPick": "Another day",
     "startTime": "Starting at",
     "howLong": "How long",
     "hours_one": "{{count}} hour",

@@ -40,7 +40,13 @@ export default function PlanDetail() {
   const plan = planQuery.data;
 
   return (
-    <Screen>
+    <Screen
+      /* Pinned, like every other primary action in these apps: a plan with a
+         long note is a scrolling screen, and the way out of it should not be. */
+      footer={
+        <Button label={t('plans:detail.back')} variant="ghost" onPress={() => router.back()} />
+      }
+    >
       {plan ? (
         <>
           {/* The couple's own words when they gave any, shown verbatim;
@@ -79,8 +85,6 @@ export default function PlanDetail() {
       ) : (
         <Muted>{t('plans:detail.notFound')}</Muted>
       )}
-
-      <Button label={t('plans:detail.back')} variant="ghost" onPress={() => router.back()} />
     </Screen>
   );
 }

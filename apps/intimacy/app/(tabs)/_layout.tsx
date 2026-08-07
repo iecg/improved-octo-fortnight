@@ -89,8 +89,18 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: '#9C5B4E',
-        // No icons: labels alone keep the tab bar unremarkable in a screenshot
-        // or over someone's shoulder.
+        /*
+          No icons: labels alone keep the tab bar unremarkable in a screenshot
+          or over someone's shoulder.
+
+          Omitting `tabBarIcon` does not achieve that, which is what this
+          comment claimed for as long as it has existed. `BottomTabBar` falls
+          back to `MissingIcon` when none is given, so every tab has been
+          carrying a filled placeholder triangle tinted in the accent colour —
+          three meaningless glyphs above the labels, on every screen. Hiding
+          the icon slot is what actually removes them.
+        */
+        tabBarIconStyle: { display: 'none' },
         tabBarLabelStyle: { fontSize: 13 },
       }}
     >

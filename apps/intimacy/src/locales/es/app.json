@@ -15,8 +15,7 @@
     "propose": "Proponer una hora",
     "dateNight": "Próxima cita",
     "partnerUnreadable": "La respuesta de {{name}} no se puede leer en este dispositivo",
-    "planIt": "Proponer una hora para esto",
-    "upcoming": "Próximas: {{dates}}"
+    "planIt": "Proponer una hora para esto"
   },
   "checkin": {
     "yes": "Sí",
@@ -36,6 +35,7 @@
     "kind": "Para qué",
     "suggestions": "Los dos están libres",
     "noSuggestions": "No encontramos noches libres. Elige una hora de todos modos.",
+    "pickOne": "Elige una de las horas de arriba.",
     "sharperWithCalendar": "Permite el acceso al calendario y estas mejoran: también evitaremos lo que ya tienes anotado.",
     "grantCalendar": "Permitir acceso al calendario",
     "duration": "Cuánto tiempo",
