@@ -104,6 +104,42 @@ export function calendarDaysBetween(from: Date, to: Date, timeZone: string): num
 }
 
 /**
+ * The same booking, on a different day.
+ *
+ * What "pick a new date" means arithmetically: the whole window slides by the
+ * number of calendar days between the day it starts on and the day it is being
+ * moved to. Both ends step through `addInterval`, so the start hour, the end
+ * hour and the number of nights survive a DST boundary — adding the raw
+ * millisecond difference instead would move a 9am departure to 10am twice a
+ * year, and a three-night getaway would come home an hour early.
+ *
+ * `null` when the day it already starts on is the day it was moved to. That is
+ * the whole no-op check: a screen that opens a picker and closes it again has
+ * nothing to write, and the caller can tell "unchanged" from "moved" without
+ * comparing instants itself.
+ *
+ * Deliberately not given the plan: it takes the two columns it moves, so it
+ * cannot read a title it has no business reading and stays usable from either
+ * app.
+ */
+export function shiftToDay(
+  window: { startsAt: string; endsAt: string | null },
+  day: Date,
+  timeZone: string,
+): { startsAt: string; endsAt: string | null } | null {
+  const start = new Date(window.startsAt);
+  const days = calendarDaysBetween(start, day, timeZone);
+  if (days === 0) return null;
+
+  return {
+    startsAt: addInterval(start, days, 'day', timeZone).toISOString(),
+    endsAt: window.endsAt
+      ? addInterval(new Date(window.endsAt), days, 'day', timeZone).toISOString()
+      : null,
+  };
+}
+
+/**
  * The next `weekday` (0 = Sunday, matching `Date#getDay`) at or after `from`,
  * counted on the couple's wall calendar.
  *

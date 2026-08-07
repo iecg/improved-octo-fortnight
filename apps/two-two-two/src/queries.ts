@@ -9,7 +9,12 @@
  * Note what is absent: there is no check-in accessor here, because check-ins
  * are intimacy-owned and reachable only through their own factory.
  */
-import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
+import {
+  compareUrgency,
+  computeCadenceStatus,
+  shiftToDay,
+  type CadenceStatus,
+} from '@couple/cadence';
 import type {
   Cadence,
   Coordinates,
@@ -355,6 +360,51 @@ export function useCompletePlan(coupleId: string) {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
       void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+    },
+  });
+}
+
+/**
+ * Move a booking to another day, keeping everything else about it.
+ *
+ * The third answer this app was missing. "Done" and "didn't happen" are both
+ * terminal, so a night that simply moved had to be recorded as a failure and
+ * booked again from scratch — and until then it sat in "Did this happen?"
+ * reading as a reproach.
+ *
+ * Shifted by whole calendar days rather than by a duration: the day is the only
+ * thing the sheet asks about, and stepping both ends through `addInterval` in
+ * the couple's timezone keeps the start hour, the end hour and the number of
+ * nights exactly as they were across a DST boundary. Adding a millisecond delta
+ * instead would move a 9am departure to 10am twice a year.
+ *
+ * The status is untouched on purpose. A moved plan is still `scheduled`, which
+ * is what takes it back out of the needs-an-answer group without pretending
+ * anything happened — and what keeps its cadence unanchored, because only
+ * completing anchors one.
+ */
+export function useReschedulePlan(coupleId: string, timeZone: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { plan: Plan; day: Date }) => {
+      const startsAt = input.plan.startsAt;
+      if (!startsAt) throw new Error('a plan with no date cannot be moved');
+
+      // Opening the sheet and closing it again is not an edit, and `shiftToDay`
+      // says so with `null`. Without that the no-op writes a row, bumps
+      // `updated_at`, and pushes a calendar rewrite to both phones for a plan
+      // nobody moved.
+      const moved = shiftToDay({ startsAt, endsAt: input.plan.endsAt }, input.day, timeZone);
+      if (!moved) return input.plan;
+
+      return plans.setPlanSchedule(input.plan.id, moved);
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
+      // The rhythm screen reads `nextScheduledAt` off the plans, and the
+      // propose screen's free/busy marks are wrong the moment a window moves.
+      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
+      void client.invalidateQueries({ queryKey: keys.busyAll(coupleId) });
     },
   });
 }

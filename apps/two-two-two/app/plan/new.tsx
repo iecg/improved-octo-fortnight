@@ -46,12 +46,12 @@ import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain, type PlaceProvider } f
 import { hasCalendarAccess, readBusyBlocks } from '@couple/device';
 import { formatDay, formatTime } from '@couple/i18n';
 import { Body, Button, Card, Chip, Disclosure, Heading, Muted, Screen, Title } from '@couple/ui';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, Pressable, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
 
+import { DaySheet } from '../../src/DaySheet';
 import { normalizeManualPlace } from '../../src/features/places/label';
 import type { PlaceResult } from '../../src/features/places/maps/types';
 import { PlaceSearch } from '../../src/features/places/PlaceSearch';
@@ -437,49 +437,14 @@ export default function NewPlan() {
               />
             </View>
 
-            {/*
-              A sheet of our own, because iOS has no modal date picker: the
-              native control is an inline view, and mounting one on demand in a
-              flex row lays it out at 0x0 — invisible, absent from the
-              accessibility tree, and indistinguishable from a dead button.
-              Inside a container we size, `inline` is the full calendar and
-              behaves.
-            */}
-            <Modal
+            <DaySheet
               visible={picking}
-              transparent
-              animationType="slide"
-              onRequestClose={() => setPicking(false)}
-            >
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t('common:action.cancel')}
-                className="flex-1 justify-end bg-black/40"
-                onPress={() => setPicking(false)}
-              >
-                {/* Swallows the press so tapping the sheet does not dismiss it. */}
-                <Pressable
-                  className="gap-3 rounded-t-2xl bg-canvas px-5 pb-8 pt-4 dark:bg-canvas-dark"
-                  onPress={() => undefined}
-                >
-                  <DateTimePicker
-                    value={day}
-                    mode="date"
-                    display="inline"
-                    minimumDate={now}
-                    accessibilityLabel={t('app:plan.dayPick')}
-                    // Explicitly sized for the same reason the compact one was:
-                    // the native view reports no intrinsic size to Yoga.
-                    style={{ height: 360 }}
-                    // The picker answers with a wall-clock local date; only the
-                    // calendar day it names is used, because `rangeFor`
-                    // reapplies the chosen hour in the couple's timezone.
-                    onValueChange={(_event, picked) => setDay(picked)}
-                  />
-                  <Button label={t('common:action.done')} onPress={() => setPicking(false)} />
-                </Pressable>
-              </Pressable>
-            </Modal>
+              value={day}
+              minimumDate={now}
+              label={t('app:plan.dayPick')}
+              onChange={setDay}
+              onClose={() => setPicking(false)}
+            />
           </View>
 
           <View className="gap-3">
