@@ -14,11 +14,16 @@ export default tseslint.config(
       '**/ios/**',
       '**/android/**',
       '**/*.config.js',
+      // Same class of file as the `*.config.js` above — CommonJS that a
+      // Tailwind config has to `require()` — but not named to match.
+      '**/tailwind.preset.js',
       // Written by the Supabase CLI while the local stack runs — it drops a
       // minified edge-runtime bundle in here. Gitignored, but flat config does
       // not read .gitignore.
-      'supabase/.temp/**',
-      'supabase/.branches/**',
+      // Anchored with `**/` so it also covers an app that brings its own
+      // Supabase project, not just the one at the repo root.
+      '**/supabase/.temp/**',
+      '**/supabase/.branches/**',
     ],
   },
 
@@ -53,15 +58,28 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       'react/jsx-key': 'error',
+    },
+  },
 
-      /**
-       * The bilingual invariant, enforced at review time.
-       *
-       * A literal string in JSX is a string one partner will read in the wrong
-       * language. Everything user-visible goes through `t()`; the allowed list
-       * is punctuation and separators that are the same in English and
-       * Spanish.
-       */
+  /**
+   * The bilingual invariant, enforced at review time.
+   *
+   * A literal string in JSX is a string one partner will read in the wrong
+   * language. Everything user-visible goes through `t()`; the allowed list is
+   * punctuation and separators that are the same in English and Spanish.
+   *
+   * Scoped to the two bilingual apps rather than all of `apps/**`, because the
+   * invariant is about being bilingual, not about being an app —
+   * `apps/household-chores` is English-only and has no `t()` to route through.
+   * `packages/ui` stays in scope regardless of who consumes it: a shared
+   * component that hard-codes a word would put that word in every app at once,
+   * which is exactly the thing this prevents.
+   */
+  {
+    files: ['apps/intimacy/**/*.tsx', 'apps/two-two-two/**/*.tsx', 'packages/ui/**/*.tsx'],
+    plugins: { react },
+    settings: { react: { version: 'detect' } },
+    rules: {
       'react/jsx-no-literals': [
         'error',
         {

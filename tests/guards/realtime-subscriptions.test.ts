@@ -51,9 +51,22 @@ function filesIn(dir: string, keep: (file: string) => boolean, found: string[] =
   return found;
 }
 
-/** Every `(schema, table)` any app subscribes to. */
+/**
+ * The apps backed by the couple database at `supabase/migrations`.
+ *
+ * Listed rather than discovered, because this guard compares subscriptions
+ * against *that* publication specifically. An app with its own Supabase project
+ * — `household-chores` has one under `apps/household-chores/supabase` — would
+ * be checked against the wrong migrations, and a table it legitimately
+ * subscribes to would be reported as unpublished.
+ */
+const COUPLE_APPS = ['intimacy', 'two-two-two'];
+
+/** Every `(schema, table)` any couple app subscribes to. */
 function subscribedTables(): { schema: string; table: string }[] {
-  const sources = filesIn(join(REPO_ROOT, 'apps'), (file) => SOURCE_EXTENSIONS.has(extname(file)));
+  const sources = COUPLE_APPS.flatMap((app) =>
+    filesIn(join(REPO_ROOT, 'apps', app), (file) => SOURCE_EXTENSIONS.has(extname(file))),
+  );
   const subscriptions: { schema: string; table: string }[] = [];
 
   for (const file of sources) {

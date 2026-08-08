@@ -27,7 +27,7 @@
  * over routes will not reach them. If a shared package ever renders a screen
  * that *is* mounted in the tabs, this guard will not notice.
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { extname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -49,13 +49,24 @@ function tsxFilesIn(dir: string, found: string[] = []): string[] {
   return found;
 }
 
-/** Every `.tsx` under any app's `app/` route directory. */
+/**
+ * Every `.tsx` under any app's route directory.
+ *
+ * expo-router's root is the app's `app/`, except where an app keeps its source
+ * under `src/` — `household-chores` does, so its routes are at `src/app/`.
+ * Resolved per app, and a miss throws rather than filtering the app out: an app
+ * whose routes this cannot find is an app the guard silently stops covering,
+ * which is the failure it exists to prevent.
+ */
 function routeFiles(): string[] {
   const apps = join(REPO_ROOT, 'apps');
-  return readdirSync(apps)
-    .map((app) => join(apps, app, 'app'))
-    .filter((dir) => statSync(dir).isDirectory())
-    .flatMap((dir) => tsxFilesIn(dir));
+  return readdirSync(apps).flatMap((app) => {
+    const dir = [join(apps, app, 'app'), join(apps, app, 'src', 'app')].find(
+      (candidate) => existsSync(candidate) && statSync(candidate).isDirectory(),
+    );
+    if (!dir) throw new Error(`No expo-router route directory found for apps/${app}`);
+    return tsxFilesIn(dir);
+  });
 }
 
 /** Inside the tab navigator's route group, at any depth below it. */

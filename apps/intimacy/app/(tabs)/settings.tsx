@@ -31,6 +31,7 @@ import {
   Chip,
   Disclosure,
   Divider,
+  Field,
   Heading,
   Muted,
   Screen,
@@ -39,7 +40,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Switch, TextInput, View } from 'react-native';
+import { Switch, View } from 'react-native';
 
 import { useCadences, useSetCadenceEnabled } from '../../src/queries';
 import { getCalendarLabel, keyService, setCalendarLabel } from '../../src/runtime';
@@ -218,17 +219,13 @@ export default function Settings() {
 
             <Divider />
 
-            <View className="gap-2">
-              <Body>{t('app:settings.calendarLabel')}</Body>
-              <TextInput
-                className="rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
-                value={label}
-                onChangeText={setLabel}
-                onBlur={() => void commitLabel()}
-                accessibilityLabel={t('app:settings.calendarLabel')}
-              />
-              <Muted>{t('app:settings.calendarLabelHint')}</Muted>
-            </View>
+            <Field
+              label={t('app:settings.calendarLabel')}
+              hint={t('app:settings.calendarLabelHint')}
+              value={label}
+              onChangeText={setLabel}
+              onBlur={() => void commitLabel()}
+            />
           </View>
         </Card>
       </Disclosure>

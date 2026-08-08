@@ -29,13 +29,15 @@ jobs:
     name: Bundle ${{ matrix.app }}
     runs-on: ubuntu-latest
     strategy:
-      # Both apps, because they are separate Expo projects with separate Metro
+      # Every app, because they are separate Expo projects with separate Metro
       # and babel configs. This job used to build the intimacy app only, while
       # the 2-2-2 app grew a feature tree, a zustand store and a fourth tab
-      # that nothing here ever resolved.
+      # that nothing here ever resolved. household-chores is here from the day
+      # it arrived for the same reason — it is the only app whose Metro has to
+      # resolve `@couple/ui` from a package it did not grow up with.
       fail-fast: false
       matrix:
-        app: [intimacy, two-two-two]
+        app: [intimacy, two-two-two, household-chores]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
