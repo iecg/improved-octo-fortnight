@@ -1,10 +1,7 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Dialog, List, Portal, Text } from 'react-native-paper';
+import { Body, Button, Heading, Loading, Muted, Row, Screen, Title } from '@couple/ui';
+import { Alert, View } from 'react-native';
 
 import { InviteCodeShare } from '@/components/InviteCodeShare';
-import { LoadingScreen } from '@/components/LoadingScreen';
 import { MemberAvatar } from '@/components/MemberAvatar';
 import {
   useHousehold,
@@ -18,18 +15,31 @@ export default function HouseholdScreen() {
   const { data: members } = useHouseholdMembers(membership?.household_id);
   const regenerateCode = useRegenerateInviteCode(membership?.household_id);
   const leaveHousehold = useLeaveHousehold();
-  const [confirmLeave, setConfirmLeave] = useState(false);
 
-  if (isLoading || !membership) return <LoadingScreen />;
+  if (isLoading || !membership) return <Loading />;
 
   const isOwner = membership.role === 'owner';
 
+  // The system alert rather than a bespoke dialog: it is the confirmation
+  // people already know, it reads correctly to VoiceOver without any work here,
+  // and it means this screen holds no dismissable state to get out of sync.
+  const confirmLeave = () =>
+    Alert.alert(
+      'Leave this household?',
+      "You'll lose access to its chores. You can rejoin later with the invite code.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: () => void leaveHousehold.mutateAsync(),
+        },
+      ],
+    );
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineSmall" style={styles.title}>
-        {membership.households.name}
-      </Text>
+    <Screen>
+      <Title>{membership.households.name}</Title>
 
       <InviteCodeShare
         code={membership.households.invite_code}
@@ -38,66 +48,20 @@ export default function HouseholdScreen() {
         onRegenerate={() => regenerateCode.mutate()}
       />
 
-      <Text variant="labelLarge" style={styles.sectionTitle}>
-        Members
-      </Text>
-      <View style={styles.memberList}>
+      <Heading>Members</Heading>
+      <View className="gap-3">
         {(members ?? []).map((member) => (
-          <List.Item
-            key={member.id}
-            title={member.profiles?.full_name ?? 'Household member'}
-            description={member.role === 'owner' ? 'Owner' : undefined}
-            left={() => (
-              <View style={styles.avatarWrap}>
-                <MemberAvatar name={member.profiles?.full_name} />
-              </View>
-            )}
-          />
+          <Row key={member.id}>
+            <MemberAvatar name={member.profiles?.full_name} />
+            <View className="shrink gap-0.5">
+              <Body>{member.profiles?.full_name ?? 'Household member'}</Body>
+              {member.role === 'owner' ? <Muted>Owner</Muted> : null}
+            </View>
+          </Row>
         ))}
       </View>
 
-      <Button
-        mode="outlined"
-        textColor="#B3261E"
-        style={styles.leaveButton}
-        onPress={() => setConfirmLeave(true)}
-      >
-        Leave household
-      </Button>
-
-      <Portal>
-        <Dialog visible={confirmLeave} onDismiss={() => setConfirmLeave(false)}>
-          <Dialog.Title>Leave this household?</Dialog.Title>
-          <Dialog.Content>
-            <Text>
-              You&apos;ll lose access to its chores. You can rejoin later with the invite code.
-            </Text>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setConfirmLeave(false)}>Cancel</Button>
-            <Button
-              textColor="#B3261E"
-              onPress={async () => {
-                await leaveHousehold.mutateAsync();
-                setConfirmLeave(false);
-              }}
-            >
-              Leave
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
-      </ScrollView>
-    </SafeAreaView>
+      <Button label="Leave household" variant="danger" onPress={confirmLeave} />
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  container: { padding: 16 },
-  title: { marginBottom: 16 },
-  sectionTitle: { marginTop: 8, marginBottom: 4 },
-  memberList: { marginBottom: 24 },
-  avatarWrap: { justifyContent: 'center', paddingLeft: 8 },
-  leaveButton: { marginTop: 8 },
-});

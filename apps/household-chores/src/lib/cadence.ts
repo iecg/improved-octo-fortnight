@@ -43,7 +43,7 @@ export function isChoreDue(
   cadenceType: CadenceType,
   cadenceConfig: CadenceConfig,
   startDate: string,
-  checkDate: string
+  checkDate: string,
 ): boolean {
   if (checkDate < startDate) return false;
 
@@ -76,7 +76,7 @@ export function nextDueDates(
   cadenceConfig: CadenceConfig,
   startDate: string,
   from: string,
-  count: number
+  count: number,
 ): string[] {
   const dates: string[] = [];
   let cursor = from < startDate ? startDate : from;

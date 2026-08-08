@@ -1,7 +1,7 @@
+import { Loading } from '@couple/ui';
 import { useRouter } from 'expo-router';
 
 import { ChoreForm } from '@/components/ChoreForm';
-import { LoadingScreen } from '@/components/LoadingScreen';
 import { useHousehold } from '@/hooks/useHousehold';
 
 export default function NewChoreScreen() {
@@ -9,7 +9,7 @@ export default function NewChoreScreen() {
   const { data: membership } = useHousehold();
   const householdId = membership?.household_id;
 
-  if (!householdId) return <LoadingScreen />;
+  if (!householdId) return <Loading />;
 
   return <ChoreForm householdId={householdId} onSaved={() => router.back()} />;
 }

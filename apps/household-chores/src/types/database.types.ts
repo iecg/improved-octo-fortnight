@@ -16,10 +16,7 @@ export type InstanceStatus = 'pending' | 'completed' | 'missed';
 export type HouseholdRole = 'owner' | 'member';
 
 export type CadenceConfig =
-  | Record<string, never>
-  | { weekdays: number[] }
-  | { n: number }
-  | { day_of_month: number };
+  Record<string, never> | { weekdays: number[] } | { n: number } | { day_of_month: number };
 
 export interface Database {
   public: {

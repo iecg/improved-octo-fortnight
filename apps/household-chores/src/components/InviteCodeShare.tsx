@@ -1,6 +1,6 @@
+import { Button, Card, Heading } from '@couple/ui';
 import * as Linking from 'expo-linking';
-import { Share, StyleSheet, View } from 'react-native';
-import { Button, Card, Text } from 'react-native-paper';
+import { Share, Text, View } from 'react-native';
 
 export function InviteCodeShare({
   code,
@@ -22,30 +22,28 @@ export function InviteCodeShare({
   };
 
   return (
-    <Card style={styles.card}>
-      <Card.Content>
-        <Text variant="labelLarge">Invite code</Text>
-        <Text variant="displaySmall" style={styles.code}>
+    <Card>
+      <View className="gap-3">
+        <Heading>Invite code</Heading>
+        {/* Selectable and letter-spaced: this is read aloud or copied, and an
+            unbroken run of six characters is hard to read out accurately. */}
+        <Text
+          selectable
+          className="text-3xl font-semibold tracking-[6px] text-ink dark:text-ink-dark"
+        >
           {code}
         </Text>
-        <View style={styles.actions}>
-          <Button mode="contained" icon="share-variant" onPress={share} style={styles.actionButton}>
-            Share
-          </Button>
+        <View className="flex-row gap-3">
+          <View className="grow basis-0">
+            <Button label="Share" onPress={share} />
+          </View>
           {canRegenerate ? (
-            <Button mode="outlined" onPress={onRegenerate} style={styles.actionButton}>
-              Regenerate
-            </Button>
+            <View className="grow basis-0">
+              <Button label="Regenerate" variant="secondary" onPress={onRegenerate} />
+            </View>
           ) : null}
         </View>
-      </Card.Content>
+      </View>
     </Card>
   );
 }
-
-const styles = StyleSheet.create({
-  card: { marginBottom: 16 },
-  code: { letterSpacing: 4, marginVertical: 8 },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  actionButton: { flex: 1 },
-});

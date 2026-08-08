@@ -1,30 +1,29 @@
-import { StyleSheet } from 'react-native';
-import { Card, Text } from 'react-native-paper';
+import { View } from 'react-native';
+import { Body, Card, Heading, Muted } from '@couple/ui';
 
 import { describeCadence } from '@/lib/cadence';
 import type { Chore } from '@/types';
 
 export function ChoreCard({ chore, onPress }: { chore: Chore; onPress?: () => void }) {
-  return (
-    <Card style={styles.card} onPress={onPress}>
-      <Card.Content>
-        <Text variant="titleMedium">{chore.title}</Text>
-        <Text variant="bodySmall" style={styles.meta}>
-          {describeCadence(chore.cadence_type, chore.cadence_config)} ·{' '}
-          {chore.assignment_type === 'rotating' ? 'Rotates' : 'Fixed'}
-        </Text>
-        {chore.description ? (
-          <Text variant="bodyMedium" style={styles.description}>
-            {chore.description}
-          </Text>
-        ) : null}
-      </Card.Content>
+  const meta = `${describeCadence(chore.cadence_type, chore.cadence_config)} · ${
+    chore.assignment_type === 'rotating' ? 'Rotates' : 'Fixed'
+  }`;
+
+  const body = (
+    <View className="gap-1">
+      <Heading>{chore.title}</Heading>
+      <Muted>{meta}</Muted>
+      {chore.description ? <Body>{chore.description}</Body> : null}
+    </View>
+  );
+
+  // The card is the tap target, so the accessible name has to be the chore
+  // rather than every line of text inside it.
+  return onPress ? (
+    <Card onPress={onPress} accessibilityLabel={chore.title} className="mb-3">
+      {body}
     </Card>
+  ) : (
+    <Card className="mb-3">{body}</Card>
   );
 }
-
-const styles = StyleSheet.create({
-  card: { marginBottom: 12 },
-  meta: { opacity: 0.6, marginTop: 4 },
-  description: { marginTop: 8 },
-});

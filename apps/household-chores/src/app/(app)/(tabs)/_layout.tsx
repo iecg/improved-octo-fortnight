@@ -1,15 +1,14 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { useTheme } from 'react-native-paper';
 
 export default function TabsLayout() {
-  const theme = useTheme();
-
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.colors.primary,
+        // Matches `accent` in tailwind.config.js. The tab bar is React
+        // Navigation chrome, so it takes a value rather than a class name.
+        tabBarActiveTintColor: '#0F6FD1',
       }}
     >
       <Tabs.Screen

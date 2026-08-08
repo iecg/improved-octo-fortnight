@@ -1,6 +1,6 @@
+import { Checkbox, Card, Heading, Muted } from '@couple/ui';
 import { Image } from 'expo-image';
-import { StyleSheet, View } from 'react-native';
-import { Card, Checkbox, Text } from 'react-native-paper';
+import { Text, View } from 'react-native';
 
 import { useSignedPhotoUrl } from '@/hooks/useSignedPhotoUrl';
 import { describeCadence } from '@/lib/cadence';
@@ -9,7 +9,7 @@ import type { ChoreInstanceWithChore } from '@/hooks/useTodayInstances';
 function InstanceThumbnail({ photoPath }: { photoPath: string }) {
   const { data: url } = useSignedPhotoUrl(photoPath);
   if (!url) return null;
-  return <Image source={{ uri: url }} style={styles.thumbnail} contentFit="cover" />;
+  return <Image source={{ uri: url }} style={{ width: 44, height: 44, borderRadius: 8 }} />;
 }
 
 export function TodayChoreList({
@@ -20,42 +20,47 @@ export function TodayChoreList({
   onPressInstance: (instance: ChoreInstanceWithChore) => void;
 }) {
   return (
-    <View style={styles.list}>
+    <View className="gap-3">
       {instances.map((instance) => {
         const completed = instance.status === 'completed';
-        return (
-          <Card
-            key={instance.id}
-            style={styles.card}
-            onPress={completed ? undefined : () => onPressInstance(instance)}
-          >
-            <Card.Content style={styles.row}>
-              <Checkbox status={completed ? 'checked' : 'unchecked'} disabled={completed} />
-              <View style={styles.textColumn}>
-                <Text variant="titleMedium" style={completed ? styles.strikethrough : undefined}>
+
+        const row = (
+          <View className="flex-row items-center gap-3">
+            {/* Decorative: the card itself is the button, and its label already
+                says which chore this is. */}
+            <Checkbox checked={completed} />
+            <View className="shrink grow gap-0.5">
+              {completed ? (
+                <Text className="text-base font-semibold text-muted line-through dark:text-muted-dark">
                   {instance.chores.title}
                 </Text>
-                <Text variant="bodySmall" style={styles.meta}>
-                  {describeCadence(instance.chores.cadence_type, instance.chores.cadence_config)}
-                </Text>
-              </View>
-              {completed && instance.photo_path ? (
-                <InstanceThumbnail photoPath={instance.photo_path} />
-              ) : null}
-            </Card.Content>
+              ) : (
+                <Heading>{instance.chores.title}</Heading>
+              )}
+              <Muted>
+                {describeCadence(instance.chores.cadence_type, instance.chores.cadence_config)}
+              </Muted>
+            </View>
+            {completed && instance.photo_path ? (
+              <InstanceThumbnail photoPath={instance.photo_path} />
+            ) : null}
+          </View>
+        );
+
+        // A completed chore is not pressable, so it is a plain card rather than
+        // a button that does nothing.
+        return completed ? (
+          <Card key={instance.id}>{row}</Card>
+        ) : (
+          <Card
+            key={instance.id}
+            onPress={() => onPressInstance(instance)}
+            accessibilityLabel={instance.chores.title}
+          >
+            {row}
           </Card>
         );
       })}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  list: { gap: 12 },
-  card: {},
-  row: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  textColumn: { flex: 1 },
-  meta: { opacity: 0.6, marginTop: 2 },
-  strikethrough: { textDecorationLine: 'line-through', opacity: 0.6 },
-  thumbnail: { width: 44, height: 44, borderRadius: 8 },
-});

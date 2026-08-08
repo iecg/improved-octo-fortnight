@@ -1,6 +1,6 @@
+import { Chip, Field, Heading, Muted, SegmentedControl } from '@couple/ui';
 import { Controller, type Control } from 'react-hook-form';
-import { StyleSheet, View } from 'react-native';
-import { Chip, HelperText, SegmentedButtons, Text, TextInput } from 'react-native-paper';
+import { View } from 'react-native';
 
 import { WEEKDAY_LABELS } from '@/types';
 import type { ChoreFormValues } from '@/lib/validation';
@@ -10,18 +10,18 @@ const CADENCE_OPTIONS = [
   { value: 'weekly_days', label: 'Weekdays' },
   { value: 'every_n_days', label: 'Every N days' },
   { value: 'monthly', label: 'Monthly' },
-];
+] as const;
 
 export function CadencePicker({ control }: { control: Control<ChoreFormValues> }) {
   return (
-    <View style={styles.container}>
-      <Text variant="labelLarge">Repeats</Text>
+    <View className="gap-2">
+      <Heading>Repeats</Heading>
 
       <Controller
         control={control}
         name="cadenceType"
         render={({ field: { onChange, value } }) => (
-          <SegmentedButtons value={value} onValueChange={onChange} buttons={CADENCE_OPTIONS} />
+          <SegmentedControl options={CADENCE_OPTIONS} value={value} onChange={onChange} />
         )}
       />
 
@@ -40,14 +40,22 @@ export function CadencePicker({ control }: { control: Control<ChoreFormValues> }
                     onChange(
                       selected.includes(day)
                         ? selected.filter((d) => d !== day)
-                        : [...selected, day].sort()
+                        : [...selected, day].sort(),
                     );
                   return (
-                    <View style={styles.chipRow}>
+                    <View className="flex-row flex-wrap gap-2">
                       {WEEKDAY_LABELS.map((label, day) => (
-                        <Chip key={day} selected={selected.includes(day)} onPress={() => toggle(day)}>
-                          {label}
-                        </Chip>
+                        <Chip
+                          key={day}
+                          label={label}
+                          // Pick-any, so checkbox rather than radio — and sized
+                          // to its own text so one long day does not stretch
+                          // the rest of the grid.
+                          role="checkbox"
+                          fill={false}
+                          selected={selected.includes(day)}
+                          onPress={() => toggle(day)}
+                        />
                       ))}
                     </View>
                   );
@@ -62,12 +70,13 @@ export function CadencePicker({ control }: { control: Control<ChoreFormValues> }
                 control={control}
                 name="everyNDays"
                 render={({ field: { onChange, value } }) => (
-                  <TextInput
+                  <Field
                     label="Every how many days?"
-                    mode="outlined"
                     keyboardType="number-pad"
                     value={value ? String(value) : ''}
-                    onChangeText={(text) => onChange(Number(text.replace(/[^0-9]/g, '')) || undefined)}
+                    onChangeText={(text) =>
+                      onChange(Number(text.replace(/[^0-9]/g, '')) || undefined)
+                    }
                   />
                 )}
               />
@@ -80,12 +89,13 @@ export function CadencePicker({ control }: { control: Control<ChoreFormValues> }
                 control={control}
                 name="dayOfMonth"
                 render={({ field: { onChange, value } }) => (
-                  <TextInput
+                  <Field
                     label="Day of the month (1-31)"
-                    mode="outlined"
                     keyboardType="number-pad"
                     value={value ? String(value) : ''}
-                    onChangeText={(text) => onChange(Number(text.replace(/[^0-9]/g, '')) || undefined)}
+                    onChangeText={(text) =>
+                      onChange(Number(text.replace(/[^0-9]/g, '')) || undefined)
+                    }
                   />
                 )}
               />
@@ -96,17 +106,10 @@ export function CadencePicker({ control }: { control: Control<ChoreFormValues> }
         }}
       />
 
-      <HelperText type="info" visible>
-        {cadenceHelperText}
-      </HelperText>
+      <Muted>{CADENCE_HELPER_TEXT}</Muted>
     </View>
   );
 }
 
-const cadenceHelperText =
+const CADENCE_HELPER_TEXT =
   'Every N days also covers custom intervals — e.g. every 3 days for watering plants.';
-
-const styles = StyleSheet.create({
-  container: { gap: 8 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-});

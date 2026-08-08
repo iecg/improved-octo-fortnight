@@ -34,7 +34,10 @@ export async function uploadChorePhoto(params: {
 }
 
 /** Private bucket: photos are always shown via a short-lived signed URL. */
-export async function getSignedChorePhotoUrl(path: string, expiresInSeconds = 3600): Promise<string> {
+export async function getSignedChorePhotoUrl(
+  path: string,
+  expiresInSeconds = 3600,
+): Promise<string> {
   const { data, error } = await supabase.storage
     .from(CHORE_PHOTOS_BUCKET)
     .createSignedUrl(path, expiresInSeconds);

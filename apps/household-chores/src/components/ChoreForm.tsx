@@ -1,8 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Chip, HelperText, SegmentedButtons, Text, TextInput } from 'react-native-paper';
+import { Button, Chip, ErrorText, Heading, Muted, SegmentedControl } from '@couple/ui';
+import { Field } from '@couple/ui';
+import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 
 import { CadencePicker } from '@/components/CadencePicker';
 import { useHouseholdMembers } from '@/hooks/useHousehold';
@@ -11,12 +12,16 @@ import { todayDateOnly } from '@/lib/cadence';
 import { choreFormSchema, type ChoreFormValues } from '@/lib/validation';
 import type { Chore, CadenceConfig } from '@/types';
 
-function cadenceConfigFromChore(chore?: Chore): Pick<ChoreFormValues, 'weekdays' | 'everyNDays' | 'dayOfMonth'> {
+function cadenceConfigFromChore(
+  chore?: Chore,
+): Pick<ChoreFormValues, 'weekdays' | 'everyNDays' | 'dayOfMonth'> {
   if (!chore) return {};
   const config = chore.cadence_config as CadenceConfig;
-  if (chore.cadence_type === 'weekly_days') return { weekdays: (config as { weekdays: number[] }).weekdays };
+  if (chore.cadence_type === 'weekly_days')
+    return { weekdays: (config as { weekdays: number[] }).weekdays };
   if (chore.cadence_type === 'every_n_days') return { everyNDays: (config as { n: number }).n };
-  if (chore.cadence_type === 'monthly') return { dayOfMonth: (config as { day_of_month: number }).day_of_month };
+  if (chore.cadence_type === 'monthly')
+    return { dayOfMonth: (config as { day_of_month: number }).day_of_month };
   return {};
 }
 
@@ -84,25 +89,22 @@ export function ChoreForm({
   };
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView
+      className="flex-1 bg-canvas dark:bg-canvas-dark"
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView contentContainerClassName="gap-4 p-4" keyboardShouldPersistTaps="handled">
         <Controller
           control={control}
           name="title"
           render={({ field: { onChange, onBlur, value } }) => (
-            <View style={styles.field}>
-              <TextInput
-                label="Title"
-                mode="outlined"
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={!!errors.title}
-              />
-              <HelperText type="error" visible={!!errors.title}>
-                {errors.title?.message}
-              </HelperText>
-            </View>
+            <Field
+              label="Title"
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              error={errors.title?.message}
+            />
           )}
         />
 
@@ -110,38 +112,26 @@ export function ChoreForm({
           control={control}
           name="description"
           render={({ field: { onChange, onBlur, value } }) => (
-            <View style={styles.field}>
-              <TextInput
-                label="Description (optional)"
-                mode="outlined"
-                multiline
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-              />
-            </View>
+            <Field
+              label="Description (optional)"
+              multiline
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+            />
           )}
         />
 
         <CadencePicker control={control} />
-        <HelperText type="error" visible={!!errors.weekdays}>
-          {errors.weekdays?.message as string}
-        </HelperText>
+        {errors.weekdays ? <ErrorText>{errors.weekdays.message as string}</ErrorText> : null}
 
-        <View style={styles.field}>
-          <Text variant="labelLarge">Assigned to</Text>
+        <View className="gap-2">
+          <Heading>Assigned to</Heading>
           <Controller
             control={control}
             name="assignmentType"
             render={({ field: { onChange, value } }) => (
-              <SegmentedButtons
-                value={value}
-                onValueChange={onChange}
-                buttons={[
-                  { value: 'rotating', label: 'Rotates' },
-                  { value: 'fixed', label: 'Fixed person' },
-                ]}
-              />
+              <SegmentedControl value={value} onChange={onChange} options={ASSIGNMENT_OPTIONS} />
             )}
           />
         </View>
@@ -155,48 +145,43 @@ export function ChoreForm({
                 control={control}
                 name="fixedAssigneeId"
                 render={({ field: { onChange, value } }) => (
-                  <View style={styles.field}>
-                    <View style={styles.chipRow}>
+                  <View className="gap-2">
+                    <View className="flex-row flex-wrap gap-2">
                       {(members ?? []).map((member) => (
                         <Chip
                           key={member.id}
+                          label={member.profiles?.full_name ?? 'Household member'}
+                          fill={false}
                           selected={value === member.user_id}
                           onPress={() => onChange(member.user_id)}
-                        >
-                          {member.profiles?.full_name ?? 'Household member'}
-                        </Chip>
+                        />
                       ))}
                     </View>
-                    <HelperText type="error" visible={!!errors.fixedAssigneeId}>
-                      {errors.fixedAssigneeId?.message}
-                    </HelperText>
+                    {errors.fixedAssigneeId ? (
+                      <ErrorText>{errors.fixedAssigneeId.message}</ErrorText>
+                    ) : null}
                   </View>
                 )}
               />
             ) : (
-              <Text variant="bodySmall" style={styles.rotatingHint}>
-                Rotates through all household members, in the order they joined.
-              </Text>
+              <Muted>Rotates through all household members, in the order they joined.</Muted>
             )
           }
         />
 
-        <HelperText type="error" visible={!!submitError}>
-          {submitError}
-        </HelperText>
+        {submitError ? <ErrorText>{submitError}</ErrorText> : null}
 
-        <Button mode="contained" onPress={handleSubmit(onSubmit)} loading={isSubmitting}>
-          {chore ? 'Save changes' : 'Create chore'}
-        </Button>
+        <Button
+          label={chore ? 'Save changes' : 'Create chore'}
+          onPress={handleSubmit(onSubmit)}
+          loading={isSubmitting}
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  container: { padding: 16, gap: 16 },
-  field: { gap: 4 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  rotatingHint: { opacity: 0.6 },
-});
+const ASSIGNMENT_OPTIONS = [
+  { value: 'rotating', label: 'Rotates' },
+  { value: 'fixed', label: 'Fixed person' },
+] as const;

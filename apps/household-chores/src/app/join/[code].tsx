@@ -1,6 +1,6 @@
+import { Loading } from '@couple/ui';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 
-import { LoadingScreen } from '@/components/LoadingScreen';
 import { useAuth } from '@/hooks/useAuth';
 import { useHousehold } from '@/hooks/useHousehold';
 
@@ -14,7 +14,7 @@ export default function JoinDeepLinkScreen() {
   const { session, loading: authLoading } = useAuth();
   const { data: membership, isLoading: householdLoading, isFetched } = useHousehold();
 
-  if (authLoading || (session && !isFetched)) return <LoadingScreen />;
+  if (authLoading || (session && !isFetched)) return <Loading />;
 
   if (!session) {
     // MVP simplification: no "continue after login" chaining — the user
@@ -31,5 +31,5 @@ export default function JoinDeepLinkScreen() {
     return <Redirect href={{ pathname: '/(onboarding)/join-household', params: { code } }} />;
   }
 
-  return <LoadingScreen />;
+  return <Loading />;
 }

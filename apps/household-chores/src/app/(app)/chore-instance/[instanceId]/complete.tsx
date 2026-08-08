@@ -1,9 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
-import { Button, HelperText, Text } from 'react-native-paper';
+import { Button, ErrorText, Loading, Muted, Screen, Title } from '@couple/ui';
 
-import { LoadingScreen } from '@/components/LoadingScreen';
 import { PhotoCapture } from '@/components/PhotoCapture';
 import { useHousehold } from '@/hooks/useHousehold';
 import { useChoreInstance, useCompleteChoreInstance } from '@/hooks/useTodayInstances';
@@ -20,7 +18,7 @@ export default function CompleteChoreScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (isLoading || !instance || !membership) return <LoadingScreen />;
+  if (isLoading || !instance || !membership) return <Loading />;
 
   const onConfirm = async () => {
     if (!photoUri) {
@@ -45,26 +43,20 @@ export default function CompleteChoreScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineSmall">{instance.chores.title}</Text>
-      <Text variant="bodyMedium" style={styles.subtitle}>
-        Take or choose a photo as proof this is done.
-      </Text>
+    <Screen>
+      <Title>{instance.chores.title}</Title>
+      <Muted>Take or choose a photo as proof this is done.</Muted>
 
       <PhotoCapture uri={photoUri} onChange={setPhotoUri} />
 
-      <HelperText type="error" visible={!!error}>
-        {error}
-      </HelperText>
+      {error ? <ErrorText>{error}</ErrorText> : null}
 
-      <Button mode="contained" onPress={onConfirm} loading={submitting} disabled={submitting}>
-        Mark complete
-      </Button>
-    </ScrollView>
+      <Button
+        label="Mark complete"
+        onPress={onConfirm}
+        loading={submitting}
+        disabled={submitting}
+      />
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { padding: 16, gap: 16 },
-  subtitle: { opacity: 0.7 },
-});

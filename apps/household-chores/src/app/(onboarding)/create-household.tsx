@@ -1,9 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, HelperText, Text, TextInput } from 'react-native-paper';
+import { Button, ErrorText, Field, Muted, Screen } from '@couple/ui';
+import { KeyboardAvoidingView, Platform } from 'react-native';
 
 import { useInvalidateHousehold } from '@/hooks/useHousehold';
 import { supabase } from '@/lib/supabase';
@@ -37,55 +36,35 @@ export default function CreateHouseholdScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Screen scroll={false}>
       <KeyboardAvoidingView
-        style={styles.flex}
+        className="flex-1 gap-4"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.container}>
-          <Text variant="bodyMedium" style={styles.subtitle}>
-            Give your household a name. You&apos;ll get a shareable invite code once it&apos;s
-            created.
-          </Text>
+        <Muted>
+          Give your household a name. You&apos;ll get a shareable invite code once it&apos;s
+          created.
+        </Muted>
 
-          <Controller
-            control={control}
-            name="name"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <View style={styles.field}>
-                <TextInput
-                  label="Household name"
-                  mode="outlined"
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  error={!!errors.name}
-                  autoFocus
-                />
-                <HelperText type="error" visible={!!errors.name}>
-                  {errors.name?.message}
-                </HelperText>
-              </View>
-            )}
-          />
+        <Controller
+          control={control}
+          name="name"
+          render={({ field: { onChange, onBlur, value } }) => (
+            <Field
+              label="Household name"
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              error={errors.name?.message}
+              autoFocus
+            />
+          )}
+        />
 
-          <HelperText type="error" visible={!!submitError}>
-            {submitError}
-          </HelperText>
+        {submitError ? <ErrorText>{submitError}</ErrorText> : null}
 
-          <Button mode="contained" onPress={handleSubmit(onSubmit)} loading={isSubmitting}>
-            Create household
-          </Button>
-        </View>
+        <Button label="Create household" onPress={handleSubmit(onSubmit)} loading={isSubmitting} />
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  flex: { flex: 1 },
-  container: { flex: 1, padding: 24, gap: 4 },
-  subtitle: { marginBottom: 16, opacity: 0.7 },
-  field: { marginBottom: 4 },
-});

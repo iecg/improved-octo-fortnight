@@ -1,10 +1,10 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { FAB, Loading } from '@couple/ui';
 import { useRouter } from 'expo-router';
-import { FlatList, StyleSheet, View } from 'react-native';
-import { FAB } from 'react-native-paper';
+import { FlatList, View } from 'react-native';
 
 import { ChoreCard } from '@/components/ChoreCard';
 import { EmptyState } from '@/components/EmptyState';
-import { LoadingScreen } from '@/components/LoadingScreen';
 import { useChores } from '@/hooks/useChores';
 import { useHousehold } from '@/hooks/useHousehold';
 
@@ -14,14 +14,14 @@ export default function ChoresListScreen() {
   const householdId = membership?.household_id;
   const { data: chores, isLoading } = useChores(householdId);
 
-  if (isLoading) return <LoadingScreen />;
+  if (isLoading) return <Loading />;
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1 bg-canvas dark:bg-canvas-dark">
       <FlatList
         data={chores}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerClassName="grow p-4"
         renderItem={({ item }) => (
           <ChoreCard chore={item} onPress={() => router.push(`/chores/${item.id}`)} />
         )}
@@ -32,13 +32,11 @@ export default function ChoresListScreen() {
           />
         }
       />
-      <FAB style={styles.fab} icon="plus" onPress={() => router.push('/chores/new')} />
+      <FAB
+        icon={<MaterialCommunityIcons name="plus" color="#FFFFFF" size={28} />}
+        accessibilityLabel="New chore"
+        onPress={() => router.push('/chores/new')}
+      />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  list: { padding: 16, flexGrow: 1 },
-  fab: { position: 'absolute', right: 16, bottom: 16 },
-});

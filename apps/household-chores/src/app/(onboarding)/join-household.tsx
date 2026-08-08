@@ -2,9 +2,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, HelperText, Text, TextInput } from 'react-native-paper';
+import { Button, ErrorText, Field, Muted, Screen } from '@couple/ui';
+import { KeyboardAvoidingView, Platform } from 'react-native';
 
 import { useInvalidateHousehold } from '@/hooks/useHousehold';
 import { supabase } from '@/lib/supabase';
@@ -27,64 +26,47 @@ export default function JoinHouseholdScreen() {
     setSubmitError(null);
     const { error } = await supabase.rpc('join_household_by_code', { p_code: values.code });
     if (error) {
-      setSubmitError(error.message === 'Invalid invite code' ? error.message : 'Could not join that household. Check the code and try again.');
+      setSubmitError(
+        error.message === 'Invalid invite code'
+          ? error.message
+          : 'Could not join that household. Check the code and try again.',
+      );
       return;
     }
     await invalidateHousehold();
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Screen scroll={false}>
       <KeyboardAvoidingView
-        style={styles.flex}
+        className="flex-1 gap-4"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.container}>
-          <Text variant="bodyMedium" style={styles.subtitle}>
-            Enter the 6-character invite code a housemate shared with you.
-          </Text>
+        <Muted>Enter the 6-character invite code a housemate shared with you.</Muted>
 
-          <Controller
-            control={control}
-            name="code"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <View style={styles.field}>
-                <TextInput
-                  label="Invite code"
-                  mode="outlined"
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={6}
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  error={!!errors.code}
-                  autoFocus
-                />
-                <HelperText type="error" visible={!!errors.code}>
-                  {errors.code?.message}
-                </HelperText>
-              </View>
-            )}
-          />
+        <Controller
+          control={control}
+          name="code"
+          render={({ field: { onChange, onBlur, value } }) => (
+            <Field
+              label="Invite code"
+              variant="code"
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              error={errors.code?.message}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={6}
+              autoFocus
+            />
+          )}
+        />
 
-          <HelperText type="error" visible={!!submitError}>
-            {submitError}
-          </HelperText>
+        {submitError ? <ErrorText>{submitError}</ErrorText> : null}
 
-          <Button mode="contained" onPress={handleSubmit(onSubmit)} loading={isSubmitting}>
-            Join household
-          </Button>
-        </View>
+        <Button label="Join household" onPress={handleSubmit(onSubmit)} loading={isSubmitting} />
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  flex: { flex: 1 },
-  container: { flex: 1, padding: 24, gap: 4 },
-  subtitle: { marginBottom: 16, opacity: 0.7 },
-  field: { marginBottom: 4 },
-});

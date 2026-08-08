@@ -1,6 +1,6 @@
+import { Loading } from '@couple/ui';
 import { Redirect } from 'expo-router';
 
-import { LoadingScreen } from '@/components/LoadingScreen';
 import { useAuth } from '@/hooks/useAuth';
 import { useHousehold } from '@/hooks/useHousehold';
 
@@ -12,7 +12,7 @@ export default function Index() {
   const { session, loading: authLoading } = useAuth();
   const { data: membership, isFetched: householdFetched } = useHousehold();
 
-  if (authLoading || (session && !householdFetched)) return <LoadingScreen />;
+  if (authLoading || (session && !householdFetched)) return <Loading />;
   if (!session) return <Redirect href="/login" />;
   if (!membership) return <Redirect href="/welcome" />;
   return <Redirect href="/today" />;

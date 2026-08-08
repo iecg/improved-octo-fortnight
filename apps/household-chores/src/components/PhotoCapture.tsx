@@ -1,8 +1,8 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import { StyleSheet, View } from 'react-native';
-import { Button, Text } from 'react-native-paper';
+import { Button, Muted } from '@couple/ui';
+import { View } from 'react-native';
 
 const PICKER_OPTIONS: ImagePicker.ImagePickerOptions = {
   mediaTypes: ['images'],
@@ -42,45 +42,28 @@ export function PhotoCapture({
   };
 
   return (
-    <View style={styles.container}>
+    <View className="gap-3">
       {uri ? (
-        <Image source={{ uri }} style={styles.preview} contentFit="cover" />
+        <Image source={{ uri }} className="w-full rounded-xl" style={{ aspectRatio: 4 / 3 }} />
       ) : (
-        <View style={styles.placeholder}>
-          <Text style={styles.placeholderText}>No photo yet</Text>
+        <View
+          className="w-full items-center justify-center rounded-xl border border-line bg-surface dark:border-line-dark dark:bg-surface-dark"
+          style={{ aspectRatio: 4 / 3 }}
+        >
+          <Muted>No photo yet</Muted>
         </View>
       )}
 
-      <View style={styles.buttonRow}>
-        <Button mode="outlined" icon="camera" onPress={pickFromCamera} style={styles.button}>
-          Camera
-        </Button>
-        <Button mode="outlined" icon="image" onPress={pickFromLibrary} style={styles.button}>
-          Library
-        </Button>
+      <View className="flex-row gap-3">
+        <View className="grow basis-0">
+          <Button label="Camera" variant="secondary" onPress={pickFromCamera} />
+        </View>
+        <View className="grow basis-0">
+          <Button label="Library" variant="secondary" onPress={pickFromLibrary} />
+        </View>
       </View>
 
-      {uri ? (
-        <Button onPress={() => onChange(null)} textColor="#B3261E">
-          Remove photo
-        </Button>
-      ) : null}
+      {uri ? <Button label="Remove photo" variant="danger" onPress={() => onChange(null)} /> : null}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { gap: 12 },
-  preview: { width: '100%', aspectRatio: 4 / 3, borderRadius: 12 },
-  placeholder: {
-    width: '100%',
-    aspectRatio: 4 / 3,
-    borderRadius: 12,
-    backgroundColor: 'rgba(128,128,128,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeholderText: { opacity: 0.6 },
-  buttonRow: { flexDirection: 'row', gap: 12 },
-  button: { flex: 1 },
-});

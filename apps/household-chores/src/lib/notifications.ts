@@ -46,12 +46,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     return null;
   }
 
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
   if (!projectId) {
-    console.warn(
-      'No EAS projectId configured (run `eas init`); skipping push token registration.'
-    );
+    console.warn('No EAS projectId configured (run `eas init`); skipping push token registration.');
     return null;
   }
 
@@ -64,8 +61,12 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   const { error } = await supabase
     .from('push_tokens')
     .upsert(
-      { user_id: userData.user.id, token, device_id: `${Platform.OS}-${Device.modelName ?? 'unknown'}` },
-      { onConflict: 'token' }
+      {
+        user_id: userData.user.id,
+        token,
+        device_id: `${Platform.OS}-${Device.modelName ?? 'unknown'}`,
+      },
+      { onConflict: 'token' },
     );
 
   if (error) {

@@ -1,10 +1,9 @@
+import { Loading, Title } from '@couple/ui';
 import { useRouter } from 'expo-router';
-import { RefreshControl, ScrollView, StyleSheet } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Text } from 'react-native-paper';
 
 import { EmptyState } from '@/components/EmptyState';
-import { LoadingScreen } from '@/components/LoadingScreen';
 import { TodayChoreList } from '@/components/TodayChoreList';
 import { useHousehold } from '@/hooks/useHousehold';
 import { useMyTodayInstances } from '@/hooks/useTodayInstances';
@@ -20,17 +19,18 @@ export default function TodayScreen() {
     router.push(`/chore-instance/${instance.id}/complete`);
   };
 
-  if (isLoading) return <LoadingScreen />;
+  if (isLoading) return <Loading />;
 
+  // Not `Screen`: this one owns its ScrollView so it can carry pull-to-refresh.
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView className="flex-1 bg-canvas dark:bg-canvas-dark" edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.container}
+        contentContainerClassName="grow px-5 py-4"
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
       >
-        <Text variant="headlineMedium" style={styles.title}>
-          Today
-        </Text>
+        <View className="mb-4">
+          <Title>Today</Title>
+        </View>
 
         {instances.length === 0 ? (
           <EmptyState title="Nothing due today" subtitle="Enjoy the free time!" />
@@ -41,9 +41,3 @@ export default function TodayScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  container: { padding: 16, flexGrow: 1 },
-  title: { marginBottom: 16 },
-});

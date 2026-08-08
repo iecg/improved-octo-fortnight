@@ -1,9 +1,7 @@
+import { Body, Button, ErrorText, Field, Heading, Loading, Muted, Screen } from '@couple/ui';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, HelperText, Text, TextInput } from 'react-native-paper';
+import { View } from 'react-native';
 
-import { LoadingScreen } from '@/components/LoadingScreen';
 import { MemberAvatar } from '@/components/MemberAvatar';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile, useUpdateProfile } from '@/hooks/useProfile';
@@ -17,10 +15,10 @@ export default function ProfileScreen() {
   const [name, setName] = useState(profile?.full_name ?? '');
   const [savedName, setSavedName] = useState(profile?.full_name ?? '');
   const [notifStatus, setNotifStatus] = useState<'idle' | 'registering' | 'registered' | 'denied'>(
-    'idle'
+    'idle',
   );
 
-  if (isLoading || !profile) return <LoadingScreen />;
+  if (isLoading || !profile) return <Loading />;
 
   const currentName = name || profile.full_name || '';
 
@@ -37,57 +35,35 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <MemberAvatar name={profile.full_name} size={64} />
-        <Text variant="bodyMedium" style={styles.email}>
-          {session?.user.email}
-        </Text>
+    <Screen>
+      <View className="items-center gap-2">
+        <MemberAvatar name={profile.full_name} />
+        <Muted>{session?.user.email}</Muted>
       </View>
 
-      <View style={styles.field}>
-        <TextInput label="Name" mode="outlined" value={currentName} onChangeText={setName} onBlur={saveName} />
-        <HelperText type="info" visible>
-          Saved automatically
-        </HelperText>
-      </View>
+      <Field
+        label="Name"
+        hint="Saved automatically"
+        value={currentName}
+        onChangeText={setName}
+        onBlur={saveName}
+      />
 
-      <View style={styles.field}>
-        <Text variant="labelLarge">Notifications</Text>
-        <Text variant="bodySmall" style={styles.meta}>
-          Get a daily reminder for chores due today.
-        </Text>
+      <View className="gap-2">
+        <Heading>Notifications</Heading>
+        <Body>Get a daily reminder for chores due today.</Body>
         <Button
-          mode="outlined"
-          style={styles.notifButton}
+          label={notifStatus === 'registered' ? 'Notifications enabled' : 'Enable notifications'}
+          variant="secondary"
           onPress={enableNotifications}
           loading={notifStatus === 'registering'}
-        >
-          {notifStatus === 'registered' ? 'Notifications enabled' : 'Enable notifications'}
-        </Button>
+        />
         {notifStatus === 'denied' ? (
-          <HelperText type="error" visible>
-            Permission denied, or no EAS project configured yet.
-          </HelperText>
+          <ErrorText>Permission denied, or no EAS project configured yet.</ErrorText>
         ) : null}
       </View>
 
-      <Button style={styles.signOut} onPress={() => supabase.auth.signOut()}>
-        Sign out
-      </Button>
-    </ScrollView>
-    </SafeAreaView>
+      <Button label="Sign out" variant="ghost" onPress={() => supabase.auth.signOut()} />
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  container: { padding: 16, gap: 8 },
-  header: { alignItems: 'center', gap: 8, marginBottom: 16 },
-  email: { opacity: 0.6 },
-  field: { marginBottom: 16 },
-  meta: { opacity: 0.6, marginBottom: 8 },
-  notifButton: { alignSelf: 'flex-start' },
-  signOut: { marginTop: 16 },
-});

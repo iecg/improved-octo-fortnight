@@ -1,5 +1,9 @@
-import { Avatar } from 'react-native-paper';
+import { Avatar } from '@couple/ui';
 
+/**
+ * First and last initial. Kept here rather than in `@couple/ui` because which
+ * characters stand for a name is a language question, not a layout one.
+ */
 function initials(name: string | null | undefined): string {
   if (!name) return '?';
   const parts = name.trim().split(/\s+/);
@@ -8,6 +12,6 @@ function initials(name: string | null | undefined): string {
   return (first + last).toUpperCase();
 }
 
-export function MemberAvatar({ name, size = 32 }: { name: string | null | undefined; size?: number }) {
-  return <Avatar.Text size={size} label={initials(name)} />;
+export function MemberAvatar({ name }: { name: string | null | undefined }) {
+  return <Avatar initials={initials(name)} />;
 }
