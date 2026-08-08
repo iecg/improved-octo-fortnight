@@ -5,9 +5,7 @@
   },
   "tabs": {
     "today": "Ritmo",
-    "plans": "Planes",
-    "ideas": "Ideas",
-    "settings": "Ajustes"
+    "ideas": "Ideas"
   },
   "ideas": {
     "title": "Ideas",
@@ -25,7 +23,6 @@
     "fromAi": "Sugerido por un modelo"
   },
   "home": {
-    "title": "Su ritmo",
     "subtitle": "Tres compromisos, tres relojes.",
     "lastTime": "La última vez fue el {{date}}",
     "neverYet": "Aún no hay nada registrado",
@@ -58,18 +55,8 @@
     "busyOption": "{{option}} — ya ocupado"
   },
   "settings": {
-    "title": "Ajustes",
-    "account": "Cuenta",
-    "partner": "Vinculado con {{name}}",
-    "notPaired": "Aún sin vincular",
-    "cadences": "Con qué frecuencia",
-    "calendarAccess": "Acceso al calendario",
-    "allow": "Permitir",
-    "allowed": "Permitido",
     "crossAppBusy": "Evitar horas ocupadas en la otra app",
-    "crossAppBusyHint": "Marca las horas que ya tienen reservadas en su otra app. Solo las horas, nunca para qué son.",
-    "notificationAccess": "Recordatorios",
-    "signOut": "Cerrar sesión"
+    "crossAppBusyHint": "Marca las horas que ya tienen reservadas en su otra app. Solo las horas, nunca para qué son."
   },
   "notification": {
     "title": "Two22",

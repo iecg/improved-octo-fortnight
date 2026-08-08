@@ -31,6 +31,14 @@ a test, listed with them.
    method that takes `domain` as a per-call argument.**
    (`packages/data/src/repository.test.ts`)
 
+   The boundary has a second face since the query layer moved here.
+   `createPlanQueries` takes a **repository**, not a domain — it reads
+   `repo.domain` for its react-query keys, so there is no argument a caller
+   could pass to point it elsewhere, and the cache key cannot disagree with the
+   filter. That matters because a shared key is a leak PostgREST never sees:
+   the second app to ask would be served the first one's list out of the cache
+   and never make the request. Same test file.
+
    There is exactly one accessor that reads across it, and the shape of the
    exception is the point. `createBusyRepository` reads `plan_busy_times`, a
    view selecting `couple_id`, `starts_at` and `ends_at` and nothing else — so
@@ -81,7 +89,8 @@ apps/two-two-two/   Expo app — same scaffold, different domain
 packages/core/      Domain types + kind catalogs (no deps)
 packages/auth/      Sign-in + pairing screens, session provider (shared)
 packages/cadence/   PURE recurrence engine + free-window search
-packages/data/      Supabase client, domain-scoped repositories
+packages/data/      Supabase client, domain-scoped repositories, and the
+                    plan/cadence react-query hooks both apps share
 packages/i18n/      i18next bootstrap, shared namespaces, date formatting
 packages/ui/        Shared components (no strings)
 packages/device/    expo-calendar / notifications / local-auth wrappers

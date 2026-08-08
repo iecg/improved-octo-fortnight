@@ -93,7 +93,7 @@ export default function Settings() {
 
   return (
     <Screen tabbed>
-      <Title>{t('app:settings.title')}</Title>
+      <Title>{t('common:settings.title')}</Title>
 
       <Card>
         <View className="gap-3">
@@ -141,17 +141,17 @@ export default function Settings() {
         settings screen whose own index does not fit is the problem this pass
         exists to fix, so nothing here defaults open except the language card.
       */}
-      <Disclosure label={t('app:settings.account')}>
+      <Disclosure label={t('common:settings.account')}>
         <View className="gap-4">
           <Card>
             <View className="gap-3">
               <Muted>
                 {partner
-                  ? t('app:settings.partner', { name: partnerName })
-                  : t('app:settings.notPaired')}
+                  ? t('common:settings.partner', { name: partnerName })
+                  : t('common:settings.notPaired')}
               </Muted>
               <Button
-                label={t('app:settings.signOut')}
+                label={t('common:settings.signOut')}
                 variant="secondary"
                 onPress={() => void signOut()}
               />
@@ -174,7 +174,7 @@ export default function Settings() {
       {/* Turning one off hides its countdown and stops its reminders. The plans
           already made under it stay. There is nothing to break by pausing —
           this is the opposite of a streak. */}
-      <Disclosure label={t('app:settings.cadences')}>
+      <Disclosure label={t('common:settings.cadences')}>
         <Card>
           <View className="gap-3">
             {(cadencesQuery.data ?? []).map((cadence) => (
@@ -236,20 +236,20 @@ export default function Settings() {
       <Disclosure label={t('common:settings.permissions')}>
         <Card>
           <View className="gap-3">
-            <Heading>{t('app:settings.calendarAccess')}</Heading>
+            <Heading>{t('common:settings.calendarAccess')}</Heading>
             {calendarOk ? (
-              <Muted>{t('app:settings.allowed')}</Muted>
+              <Muted>{t('common:settings.allowed')}</Muted>
             ) : (
               <Button
-                label={t('app:settings.allow')}
+                label={t('common:settings.allow')}
                 variant="secondary"
                 onPress={() => void requestCalendarAccess().then(setCalendarOk)}
               />
             )}
             <Divider />
-            <Heading>{t('app:settings.notificationAccess')}</Heading>
+            <Heading>{t('common:settings.notificationAccess')}</Heading>
             <Button
-              label={t('app:settings.allow')}
+              label={t('common:settings.allow')}
               variant="secondary"
               onPress={() => void requestNotificationPermission()}
             />

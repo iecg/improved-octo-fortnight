@@ -8,10 +8,9 @@
  * styled exactly like "yes" — an app that turns a no into a broken chain makes
  * the problem it is meant to solve worse.
  */
-import { healthLabelKey, plannerTurn } from '@couple/cadence';
-import { CHECKIN_INTERESTS, type CheckinInterest } from '@couple/core';
-import { formatDay } from '@couple/i18n';
-import { dueTranslation, formatWeekday, formatTime, kindLabelKeyFor } from '../../src/format';
+import { cadenceStatuses, healthLabelKey, plannerTurn } from '@couple/cadence';
+import { CHECKIN_INTERESTS, kindLabelKey, type CheckinInterest } from '@couple/core';
+import { dueTranslation, formatDay, formatTime, formatWeekday } from '@couple/i18n';
 import {
   Body,
   Button,
@@ -32,7 +31,6 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, TextInput, View } from 'react-native';
 
 import {
-  cadenceStatuses,
   useCadences,
   useCheckinLog,
   useCheckins,
@@ -216,10 +214,10 @@ export default function Today() {
       */}
       <Card>
         <View className="gap-4">
-          <Heading>{t('app:today.rituals')}</Heading>
+          <Heading>{t('cadence:list.title')}</Heading>
           {statuses.map((status) => {
             const due = dueTranslation(status.daysUntilDue);
-            const label = t(kindLabelKeyFor(status.domain, status.kind));
+            const label = t(kindLabelKey(status.domain, status.kind));
 
             /*
               Whose turn it is to suggest — *suggest*, not book, because that is

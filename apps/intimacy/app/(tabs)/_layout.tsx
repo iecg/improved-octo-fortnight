@@ -18,7 +18,7 @@ import { usePairedSession } from '../../src/session';
 const REMINDER_LEAD_MINUTES = 120;
 
 export default function TabsLayout() {
-  const { t } = useTranslation('app');
+  const { t } = useTranslation(['app', 'common']);
   const { profile, couple } = usePairedSession();
   const client = useQueryClient();
 
@@ -50,7 +50,7 @@ export default function TabsLayout() {
   // plan title, no notes, no location. The calendar is visible to anyone
   // holding an unlocked phone and syncs to a desktop.
   const calendarTitleFor = useCallback(
-    () => calendarLabel ?? t('settings.calendarLabelDefault'),
+    () => calendarLabel ?? t('app:settings.calendarLabelDefault'),
     [calendarLabel, t],
   );
 
@@ -60,8 +60,8 @@ export default function TabsLayout() {
   const reminder = useMemo(
     () => ({
       leadMinutes: REMINDER_LEAD_MINUTES,
-      title: t('notification.title'),
-      body: t('notification.body'),
+      title: t('app:notification.title'),
+      body: t('app:notification.body'),
     }),
     [t],
   );
@@ -115,9 +115,9 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontSize: 15, marginStart: 0 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: t('tabs.today') }} />
-      <Tabs.Screen name="plans" options={{ title: t('tabs.plans') }} />
-      <Tabs.Screen name="settings" options={{ title: t('tabs.settings') }} />
+      <Tabs.Screen name="index" options={{ title: t('app:tabs.today') }} />
+      <Tabs.Screen name="plans" options={{ title: t('common:tabs.plans') }} />
+      <Tabs.Screen name="settings" options={{ title: t('common:settings.title') }} />
     </Tabs>
   );
 }

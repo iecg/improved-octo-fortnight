@@ -5,9 +5,7 @@
   },
   "tabs": {
     "today": "Rhythm",
-    "plans": "Plans",
-    "ideas": "Ideas",
-    "settings": "Settings"
+    "ideas": "Ideas"
   },
   "ideas": {
     "title": "Ideas",
@@ -25,7 +23,6 @@
     "fromAi": "Suggested by a model"
   },
   "home": {
-    "title": "Your rhythm",
     "subtitle": "Three commitments, three clocks.",
     "lastTime": "Last time {{date}}",
     "neverYet": "Nothing logged yet",
@@ -58,18 +55,8 @@
     "busyOption": "{{option}} — already booked"
   },
   "settings": {
-    "title": "Settings",
-    "account": "Account",
-    "partner": "Paired with {{name}}",
-    "notPaired": "Not paired yet",
-    "cadences": "How often",
-    "calendarAccess": "Calendar access",
-    "allow": "Allow",
-    "allowed": "Allowed",
     "crossAppBusy": "Avoid times you are busy elsewhere",
-    "crossAppBusyHint": "Marks times the two of you are already booked in your other app. Times only — never what they are for.",
-    "notificationAccess": "Reminders",
-    "signOut": "Sign out"
+    "crossAppBusyHint": "Marks times the two of you are already booked in your other app. Times only — never what they are for."
   },
   "notification": {
     "title": "Two22",

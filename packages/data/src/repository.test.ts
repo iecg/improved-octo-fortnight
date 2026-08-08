@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createBusyRepository } from './busy';
 import { toPlan } from './mappers';
+import { createPlanQueries } from './plan-queries';
 import { createDomainRepository } from './repository';
 import { fakeCipher } from './testing/fake-cipher';
 import { fakeClient, filtersOn, payloadOf, tablesTouched } from './testing/fake-client';
@@ -285,5 +286,56 @@ describe('the busy-times repository', () => {
   it('survives an empty result', async () => {
     const { client } = fakeClient(null);
     expect(await createBusyRepository(client).listBetween('couple-1', FROM, TO)).toEqual([]);
+  });
+});
+
+/**
+ * The same boundary, one layer up.
+ *
+ * `createPlanQueries` hoists the plan and cadence hooks both apps run, and it
+ * introduces a second way for one app to end up holding the other's rows: a
+ * shared react-query cache key. PostgREST would still be asked the right
+ * question, and the answer would still be filtered — but the second app to ask
+ * would be served the first one's list out of the cache and never make the
+ * request at all.
+ *
+ * The keys are a plain object, so this needs no React and no renderer. The
+ * factory takes a repository rather than a domain precisely so that these keys
+ * and that filter cannot disagree; this is the assertion that they don't.
+ */
+describe('the shared plan queries key their cache by domain', () => {
+  const intimacy = createPlanQueries(
+    createDomainRepository(fakeClient([]).client, 'intimacy', fakeCipher('intimacy')),
+    [],
+  );
+  const twoTwoTwo = createPlanQueries(
+    createDomainRepository(fakeClient([]).client, 'two_two_two', fakeCipher('two_two_two')),
+    [],
+  );
+
+  it.each(['plans', 'cadences'] as const)('gives the two apps different %s keys', (key) => {
+    expect(intimacy.keys[key]('couple-1')).not.toEqual(twoTwoTwo.keys[key]('couple-1'));
+  });
+
+  it('gives the two apps different single-plan keys', () => {
+    expect(intimacy.keys.plan('plan-1')).not.toEqual(twoTwoTwo.keys.plan('plan-1'));
+  });
+
+  /**
+   * Busy times are the deliberate exception, and the shape of the exception is
+   * the point: `plan_busy_times` has no domain to filter on, so both apps read
+   * the identical list and there is nothing for a separate cache to protect.
+   */
+  it('shares the busy-times key, because both apps read the same view', () => {
+    expect(intimacy.keys.busy('couple-1', 'a', 'b')).toEqual(
+      twoTwoTwo.keys.busy('couple-1', 'a', 'b'),
+    );
+    expect(intimacy.keys.busyAll('couple-1')).toEqual(twoTwoTwo.keys.busyAll('couple-1'));
+  });
+
+  /** `busyAll` has to be a prefix of `busy`, or invalidating it reaches nothing. */
+  it('keys every bounds pair under the prefix that invalidates them all', () => {
+    const all = intimacy.keys.busyAll('couple-1');
+    expect(intimacy.keys.busy('couple-1', 'a', 'b').slice(0, all.length)).toEqual(all);
   });
 });

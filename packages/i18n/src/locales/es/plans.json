@@ -33,6 +33,7 @@
   "detail": {
     "markDone": "Marcar como hecho",
     "markSkipped": "No ocurrió",
+    "move": "Elegir otra fecha",
     "when": "Cuándo",
     "where": "Dónde",
     "notes": "Notas",

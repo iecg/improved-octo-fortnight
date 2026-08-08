@@ -11,7 +11,7 @@
  * between, so intervals are applied to wall-clock fields and converted back to
  * an instant rather than by adding milliseconds.
  */
-import type { Cadence, IntervalUnit, Plan } from '@couple/core';
+import type { AppDomain, Cadence, IntervalUnit, Plan } from '@couple/core';
 import {
   addDays,
   addMonths,
@@ -25,7 +25,16 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 export type CadenceHealth = 'on_track' | 'due_soon' | 'overdue';
 
 export interface CadenceStatus {
-  domain: string;
+  /**
+   * Copied straight off the cadence, so it is as narrow here as it is there.
+   *
+   * It was `string` for a while, and the widening had no reason behind it — the
+   * value comes from `Cadence.domain` and cannot be anything else. What it did
+   * have was a cost: every screen building a translation key from a status had
+   * to narrow it back, and the two apps did that two different ways, one with a
+   * helper and one with a cast at the call site.
+   */
+  domain: AppDomain;
   kind: string;
   /** When this ritual last actually happened, or null with no history. */
   lastCompletedAt: Date | null;
@@ -101,6 +110,42 @@ export function addInterval(
 /** Calendar-day difference as the couple would count it on a wall calendar. */
 export function calendarDaysBetween(from: Date, to: Date, timeZone: string): number {
   return differenceInCalendarDays(toZonedTime(to, timeZone), toZonedTime(from, timeZone));
+}
+
+/**
+ * The same booking, on a different day.
+ *
+ * What "pick a new date" means arithmetically: the whole window slides by the
+ * number of calendar days between the day it starts on and the day it is being
+ * moved to. Both ends step through `addInterval`, so the start hour, the end
+ * hour and the number of nights survive a DST boundary — adding the raw
+ * millisecond difference instead would move a 9am departure to 10am twice a
+ * year, and a three-night getaway would come home an hour early.
+ *
+ * `null` when the day it already starts on is the day it was moved to. That is
+ * the whole no-op check: a screen that opens a picker and closes it again has
+ * nothing to write, and the caller can tell "unchanged" from "moved" without
+ * comparing instants itself.
+ *
+ * Deliberately not given the plan: it takes the two columns it moves, so it
+ * cannot read a title it has no business reading and stays usable from either
+ * app.
+ */
+export function shiftToDay(
+  window: { startsAt: string; endsAt: string | null },
+  day: Date,
+  timeZone: string,
+): { startsAt: string; endsAt: string | null } | null {
+  const start = new Date(window.startsAt);
+  const days = calendarDaysBetween(start, day, timeZone);
+  if (days === 0) return null;
+
+  return {
+    startsAt: addInterval(start, days, 'day', timeZone).toISOString(),
+    endsAt: window.endsAt
+      ? addInterval(new Date(window.endsAt), days, 'day', timeZone).toISOString()
+      : null,
+  };
 }
 
 /**
@@ -300,4 +345,35 @@ export function plannerTurn(status: CadenceStatus, profileId: string): PlannerTu
 
 export function healthLabelKey(health: CadenceHealth): string {
   return `cadence:health.${health}`;
+}
+
+/**
+ * Every enabled ritual's status, most urgent first.
+ *
+ * The list behind both apps' rhythm screens. It lived in each app's `queries`
+ * module, character for character the same in both, which is odd for a function
+ * that touches no query, no client and no domain — it is `filter`, `map` and
+ * `sort` over three functions already in this file. `enabled` is the whole of
+ * the filtering: a paused cadence keeps its row, and keeping its countdown on
+ * screen is what pausing exists to stop.
+ */
+export function cadenceStatuses(
+  cadences: Cadence[],
+  plans: Plan[],
+  coupleCreatedAt: string,
+  timeZone: string,
+  now: Date,
+): CadenceStatus[] {
+  return cadences
+    .filter((cadence) => cadence.enabled)
+    .map((cadence) =>
+      computeCadenceStatus({
+        cadence,
+        plans,
+        now,
+        coupleCreatedAt: new Date(coupleCreatedAt),
+        timeZone,
+      }),
+    )
+    .sort(compareUrgency);
 }

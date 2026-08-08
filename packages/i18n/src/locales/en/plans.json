@@ -33,6 +33,7 @@
   "detail": {
     "markDone": "Mark as done",
     "markSkipped": "Didn't happen",
+    "move": "Pick a new date",
     "when": "When",
     "where": "Where",
     "notes": "Notes",
