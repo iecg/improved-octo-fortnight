@@ -7,6 +7,9 @@ export type { AccountRepository } from './accounts';
 export { createDomainRepository } from './repository';
 export type { CreatePlanInput, DomainRepository, ProposeInput } from './repository';
 
+export { createPlanQueries } from './plan-queries';
+export type { PlanQueries, PlanQueryKeys } from './plan-queries';
+
 export { createCheckinRepository } from './checkins';
 export type { CheckinRepository, RecordCheckinInput } from './checkins';
 

@@ -35,7 +35,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <Screen>
+    <Screen tabbed>
       <View className="items-center gap-2">
         <MemberAvatar name={profile.full_name} />
         <Muted>{session?.user.email}</Muted>

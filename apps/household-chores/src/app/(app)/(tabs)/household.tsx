@@ -38,7 +38,7 @@ export default function HouseholdScreen() {
     );
 
   return (
-    <Screen>
+    <Screen tabbed>
       <Title>{membership.households.name}</Title>
 
       <InviteCodeShare

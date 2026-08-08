@@ -67,7 +67,7 @@ export default function ChoreDetailScreen() {
   }`;
 
   return (
-    <Screen>
+    <Screen tabbed>
       <View className="gap-1">
         <Title>{chore.title}</Title>
         <Muted>{meta}</Muted>

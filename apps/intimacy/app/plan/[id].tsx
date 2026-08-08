@@ -6,12 +6,13 @@
  * together. Read by id through the domain repository, so an id from the other
  * app's domain resolves to nothing rather than crossing the boundary.
  */
+import { kindLabelKey } from '@couple/core';
+import { formatWindowParts } from '@couple/i18n';
 import { Body, Button, Card, Heading, Loading, Muted, Screen, Title } from '@couple/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { formatWindowParts, kindLabelKeyFor } from '../../src/format';
 import { useGetPlan } from '../../src/queries';
 import { usePairedSession } from '../../src/session';
 
@@ -40,12 +41,18 @@ export default function PlanDetail() {
   const plan = planQuery.data;
 
   return (
-    <Screen>
+    <Screen
+      /* Pinned, like every other primary action in these apps: a plan with a
+         long note is a scrolling screen, and the way out of it should not be. */
+      footer={
+        <Button label={t('plans:detail.back')} variant="ghost" onPress={() => router.back()} />
+      }
+    >
       {plan ? (
         <>
           {/* The title is the couple's own words when they gave any, shown
               verbatim; otherwise the ritual's name. */}
-          <Title>{plan.title ?? t(kindLabelKeyFor(plan.domain, plan.kind))}</Title>
+          <Title>{plan.title ?? t(kindLabelKey(plan.domain, plan.kind))}</Title>
           <Muted>{t(`plans:status.${plan.status}`)}</Muted>
 
           <Card>
@@ -79,8 +86,6 @@ export default function PlanDetail() {
       ) : (
         <Muted>{t('plans:detail.notFound')}</Muted>
       )}
-
-      <Button label={t('plans:detail.back')} variant="ghost" onPress={() => router.back()} />
     </Screen>
   );
 }

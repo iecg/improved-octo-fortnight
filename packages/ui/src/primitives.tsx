@@ -8,7 +8,7 @@
  * Spanish runs roughly 20% longer than English, so anything holding text wraps
  * rather than truncating, and nothing is sized to fit a specific word.
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -21,13 +21,54 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boolean }) {
+export function Screen({
+  children,
+  scroll = true,
+  tabbed = false,
+  footer,
+}: {
+  children: ReactNode;
+  scroll?: boolean;
+  /**
+   * This screen sits inside the tab navigator, so the bottom inset is already
+   * spent and claiming it here would spend it twice.
+   *
+   * React Navigation lays the scene container and the tab bar as siblings in a
+   * column flex, and `getTabBarHeight` is `TABBAR_HEIGHT_UIKIT + inset` — the
+   * scene already stops above the home indicator. Nothing hands the scene a
+   * reduced inset: bottom tabs gives them to the tab bar alone, and only
+   * `StackView` re-provides them. So a second `'bottom'` edge here adds ~34pt
+   * of dead strip, and the scene's `overflow: 'hidden'` clips the content into
+   * it rather than letting it scroll.
+   *
+   * A prop rather than a context read, because no shared package imports
+   * `expo-router` and reaching `BottomTabBarHeightContext` would be the first
+   * one to. `tests/guards/screen-insets.test.ts` is what stops it being
+   * forgotten on the next tab screen.
+   */
+  tabbed?: boolean;
+  /**
+   * Pinned below the scroll area: the screen's primary action, and whatever
+   * one line explains what it will do.
+   *
+   * Outside the `ScrollView` on purpose. A button at the bottom of a long form
+   * is a button most people never reach — the propose sheet's submit sat at
+   * y≈990 on an 874pt screen and read as dead.
+   */
+  footer?: ReactNode;
+}) {
   const body = <View className="flex-1 gap-4 px-5 py-4">{children}</View>;
   return (
-    <SafeAreaView className="flex-1 bg-canvas dark:bg-canvas-dark" edges={['top', 'bottom']}>
+    <SafeAreaView
+      className="flex-1 bg-canvas dark:bg-canvas-dark"
+      edges={tabbed ? ['top'] : ['top', 'bottom']}
+    >
       {scroll ? (
         <ScrollView
-          contentContainerClassName="grow"
+          /* The extra bottom padding is for the footer's sake: without it the
+             last card ends flush against the footer's top border, which reads
+             as content sliced off rather than content that has finished. */
+          contentContainerClassName={footer ? 'grow pb-4' : 'grow'}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -36,6 +77,11 @@ export function Screen({ children, scroll = true }: { children: ReactNode; scrol
       ) : (
         body
       )}
+      {footer ? (
+        <View className="gap-2 border-t border-line bg-canvas px-5 py-3 dark:border-line-dark dark:bg-canvas-dark">
+          {footer}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -119,6 +165,20 @@ const BUTTON_STYLES: Record<ButtonVariant, { container: string; label: string }>
   },
 };
 
+/**
+ * What a button that cannot be pressed looks like — and it is deliberately not
+ * "the same button, fainter".
+ *
+ * A primary at 50% opacity is still a filled, coloured, button-shaped thing;
+ * tapping it and getting nothing is the single clearest way to look broken. A
+ * disabled control should read as an outline waiting to be filled in, so it
+ * drops the fill entirely and keeps only the shape.
+ */
+const BUTTON_DISABLED = {
+  container: 'border border-line bg-transparent dark:border-line-dark',
+  label: 'text-muted dark:text-muted-dark',
+};
+
 export function Button({
   label,
   variant = 'primary',
@@ -130,8 +190,9 @@ export function Button({
   variant?: ButtonVariant;
   loading?: boolean;
 } & PressableProps) {
-  const styles = BUTTON_STYLES[variant];
   const inactive = disabled || loading;
+  // Loading keeps its own look: it is mid-press, not unavailable.
+  const styles = disabled && !loading ? BUTTON_DISABLED : BUTTON_STYLES[variant];
 
   return (
     <Pressable
@@ -139,7 +200,7 @@ export function Button({
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       className={`min-h-12 items-center justify-center rounded-xl px-4 py-3 ${styles.container} ${
-        inactive ? 'opacity-50' : ''
+        loading ? 'opacity-50' : ''
       }`}
       {...pressable}
     >
@@ -163,19 +224,37 @@ export function Button({
  * about someone's calendar than we have. The marker is a dot rather than a
  * word so this file keeps holding no strings — `accessibilityLabel` is what
  * carries the meaning, already translated by the caller.
+ *
+ * `fill` is the difference between one row and a wrapping list, and getting it
+ * wrong is not subtle. Filling means `grow basis-0`: every chip the same width,
+ * the row exactly full, which is what a fixed set of three or four options
+ * wants. In a `flex-wrap` list it destroys the chips. Yoga does not implement
+ * CSS's automatic minimum size — `min-width: auto` never resolves to
+ * min-content — so with a zero basis each chip shrinks *past* its own text
+ * instead of stopping at it. Fourteen day chips came out ~13pt wide with
+ * `Aug 16, 2026` wrapped to one character per line, rendering as dotted
+ * vertical bars, while the three that wrapped to a second row looked perfect.
+ * Anything that wraps must pass `fill={false}` and be sized by its text.
  */
 export function Chip({
   label,
   selected = false,
   busy = false,
+  fill = true,
   accessibilityLabel,
   onPress,
   role = 'radio',
-  fill = true,
 }: {
   label: string;
   selected?: boolean;
   busy?: boolean;
+  /**
+   * Share the row equally (`grow basis-0`), which is what a segmented row of
+   * choices wants. False for anything in a `flex-wrap`: a grid of weekdays or
+   * household members should be as wide as its own text, or "Wednesday" drags
+   * every other day out to match it.
+   */
+  fill?: boolean;
   accessibilityLabel?: string;
   onPress?: () => void;
   /**
@@ -185,13 +264,6 @@ export function Chip({
    * multi-select grid of radios tells the user something false about the form.
    */
   role?: 'radio' | 'checkbox';
-  /**
-   * Share the row equally (`grow basis-0`), which is what a segmented row of
-   * choices wants. A grid of weekdays or household members does not — those
-   * should be as wide as their own text and wrap, or "Wednesday" drags every
-   * other day out to match it.
-   */
-  fill?: boolean;
 }) {
   const border = selected
     ? 'border-accent bg-accent/10 dark:border-accent-dark'
@@ -205,8 +277,19 @@ export function Chip({
       accessibilityState={role === 'checkbox' ? { checked: selected } : { selected }}
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
+      /*
+        `justify-center` is not decoration. Flex rows stretch their children to
+        the tallest, so one option wrapping to two lines makes every sibling
+        that tall — and without this their labels stay pinned to the top of a
+        box twice the height of the text. "Unhurried time" wrapping was enough
+        to misalign the whole row, and Spanish runs ~20% longer, so the wrapping
+        case is the common one rather than the exception.
+
+        `min-h-12` is the 48dp target, which matters most for the short labels —
+        a weekday chip is three characters and would otherwise be nowhere near it.
+      */
       className={`min-h-12 items-center justify-center rounded-xl border px-3 py-3 ${
-        fill ? 'grow basis-0' : ''
+        fill ? 'grow basis-0' : 'shrink-0'
       } ${border}`}
     >
       <Text
@@ -256,13 +339,29 @@ export function CadenceBar({
    */
   healthLabel: string;
 }) {
-  const percent = Math.round(Math.min(1, Math.max(0, progress)) * 100);
+  const clamped = Math.min(1, Math.max(0, progress));
+  const exact = Math.round(clamped * 100);
+  /*
+   * A floor, so a clock at the start of its interval never renders as an empty
+   * track — an empty bar reads as broken or still loading rather than as a
+   * clock that has only just been wound.
+   *
+   * Unconditional, including at exactly zero. Exempting true zero was the first
+   * attempt and it looked worse than the bug: a ritual completed today sat at
+   * 0% with a blank bar, directly above two that had a visible sliver because
+   * two days of a two-year interval still rounds above nothing. The one that
+   * had just been done looked like the broken one.
+   *
+   * The value a screen reader hears stays exact — the floor is about the pixel,
+   * not the number.
+   */
+  const percent = Math.max(exact, 2);
 
   return (
     <View className="gap-1.5">
       <View
         accessibilityRole="progressbar"
-        accessibilityValue={{ min: 0, max: 100, now: percent }}
+        accessibilityValue={{ min: 0, max: 100, now: exact }}
         accessibilityLabel={`${label} — ${healthLabel}`}
         className="h-2 overflow-hidden rounded-full bg-line dark:bg-line-dark"
       >
@@ -272,6 +371,76 @@ export function CadenceBar({
         />
       </View>
       <Muted>{label}</Muted>
+    </View>
+  );
+}
+
+/**
+ * The "there is more this way" mark.
+ *
+ * Two rotated borders rather than an icon, because this file may hold no
+ * strings and the repo ships no icon set. Decorative by construction: every
+ * caller is a control that already carries its own label, and a screen reader
+ * announcing "chevron" after it would be noise.
+ */
+export function Chevron({ direction = 'right' }: { direction?: 'right' | 'down' }) {
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+      className={`h-2.5 w-2.5 border-b-2 border-r-2 border-muted dark:border-muted-dark ${
+        direction === 'down' ? 'rotate-45' : '-rotate-45'
+      }`}
+    />
+  );
+}
+
+/**
+ * A section that is closed until someone wants it.
+ *
+ * The point is what is *not* on screen. Every optional field on a form — a
+ * title, a place, a note — is one more thing to read and decide about before
+ * reaching the button, and the people these apps are for are the ones that
+ * costs most. Closed by default, so the screen shows what must be answered and
+ * the answer to everything else is already good.
+ *
+ * Conditional rendering rather than height animation: nothing here needs a
+ * layout animation, and an unmounted subtree keeps its inputs out of the
+ * accessibility tree as well as off the screen. The chevron is two rotated
+ * borders because this file may not hold strings and there is no icon set —
+ * `label` carries the meaning for a screen reader either way.
+ */
+export function Disclosure({
+  label,
+  children,
+  defaultOpen = false,
+}: {
+  label: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <View className="gap-3">
+      {/*
+        Carries `Card`'s own surface, and that is the point rather than polish.
+        These headings sit between cards — on Settings they *are* the screen —
+        and as bare text on the canvas they read as weaker than the content they
+        contain, which inverts the hierarchy: the navigation looked like a
+        caption and the caption looked like a control.
+      */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={label}
+        onPress={() => setOpen((was) => !was)}
+        className="min-h-12 flex-row items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-4 dark:border-line-dark dark:bg-surface-dark"
+      >
+        <Heading>{label}</Heading>
+        <Chevron direction={open ? 'down' : 'right'} />
+      </Pressable>
+      {open ? children : null}
     </View>
   );
 }

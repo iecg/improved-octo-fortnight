@@ -11,7 +11,7 @@
  * between, so intervals are applied to wall-clock fields and converted back to
  * an instant rather than by adding milliseconds.
  */
-import type { Cadence, IntervalUnit, Plan } from '@couple/core';
+import type { AppDomain, Cadence, IntervalUnit, Plan } from '@couple/core';
 import {
   addDays,
   addMonths,
@@ -25,10 +25,28 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 export type CadenceHealth = 'on_track' | 'due_soon' | 'overdue';
 
 export interface CadenceStatus {
-  domain: string;
+  /**
+   * Copied straight off the cadence, so it is as narrow here as it is there.
+   *
+   * It was `string` for a while, and the widening had no reason behind it — the
+   * value comes from `Cadence.domain` and cannot be anything else. What it did
+   * have was a cost: every screen building a translation key from a status had
+   * to narrow it back, and the two apps did that two different ways, one with a
+   * helper and one with a cast at the call site.
+   */
+  domain: AppDomain;
   kind: string;
   /** When this ritual last actually happened, or null with no history. */
   lastCompletedAt: Date | null;
+  /**
+   * Who booked that last one — the profile id from its `created_by`.
+   *
+   * Null with no history, and null when the person who booked it has since
+   * left the couple: `created_by` is `on delete set null`, so a departed
+   * partner's plans survive with no author. Both cases mean the same thing to
+   * a caller — there is nobody to take a turn after.
+   */
+  lastCompletedBy: string | null;
   /**
    * What `nextDueAt` was measured from: the last occurrence, or the couple's
    * start date when there is none.
@@ -95,6 +113,60 @@ export function calendarDaysBetween(from: Date, to: Date, timeZone: string): num
 }
 
 /**
+ * The same booking, on a different day.
+ *
+ * What "pick a new date" means arithmetically: the whole window slides by the
+ * number of calendar days between the day it starts on and the day it is being
+ * moved to. Both ends step through `addInterval`, so the start hour, the end
+ * hour and the number of nights survive a DST boundary — adding the raw
+ * millisecond difference instead would move a 9am departure to 10am twice a
+ * year, and a three-night getaway would come home an hour early.
+ *
+ * `null` when the day it already starts on is the day it was moved to. That is
+ * the whole no-op check: a screen that opens a picker and closes it again has
+ * nothing to write, and the caller can tell "unchanged" from "moved" without
+ * comparing instants itself.
+ *
+ * Deliberately not given the plan: it takes the two columns it moves, so it
+ * cannot read a title it has no business reading and stays usable from either
+ * app.
+ */
+export function shiftToDay(
+  window: { startsAt: string; endsAt: string | null },
+  day: Date,
+  timeZone: string,
+): { startsAt: string; endsAt: string | null } | null {
+  const start = new Date(window.startsAt);
+  const days = calendarDaysBetween(start, day, timeZone);
+  if (days === 0) return null;
+
+  return {
+    startsAt: addInterval(start, days, 'day', timeZone).toISOString(),
+    endsAt: window.endsAt
+      ? addInterval(new Date(window.endsAt), days, 'day', timeZone).toISOString()
+      : null,
+  };
+}
+
+/**
+ * The next `weekday` (0 = Sunday, matching `Date#getDay`) at or after `from`,
+ * counted on the couple's wall calendar.
+ *
+ * What the booking screen's "this weekend" is built on. Returns `from`'s own
+ * day when it already is that weekday, which is the reading someone standing on
+ * a Saturday expects — "this weekend" means today, not in seven days.
+ *
+ * Zoned rather than local: the weekday of an instant is a question about a
+ * calendar, and 23:00 Friday in Madrid is already Saturday in Auckland. Reading
+ * `getDay()` off the raw instant would put the couple's weekend on the server's.
+ */
+export function nextWeekdayInZone(from: Date, weekday: number, timeZone: string): Date {
+  const zoned = toZonedTime(from, timeZone);
+  const ahead = (weekday - zoned.getDay() + 7) % 7;
+  return ahead === 0 ? from : fromZonedTime(addDays(zoned, ahead), timeZone);
+}
+
+/**
  * Days until the couple's next anniversary, counted on their wall calendar.
  *
  * The anniversary is a calendar date (`YYYY-MM-DD`); only its month and day
@@ -141,14 +213,19 @@ export function computeCadenceStatus(input: ComputeCadenceStatusInput): CadenceS
   const { cadence, plans, now, coupleCreatedAt, timeZone } = input;
   const relevant = plans.filter((plan) => matches(plan, cadence));
 
-  const lastCompletedAt = relevant
+  // The plan itself, not just its date: `created_by` is what the planning
+  // rotation reads, and it has to come from the same row the anchor does.
+  const lastCompleted = relevant
     .filter((plan) => plan.status === 'completed')
-    .map(occurredAt)
-    .filter((date): date is Date => date !== null)
-    .reduce<Date | null>(
-      (latest, date) => (latest === null || date > latest ? date : latest),
+    .map((plan) => ({ plan, at: occurredAt(plan) }))
+    .filter((entry): entry is { plan: Plan; at: Date } => entry.at !== null)
+    .reduce<{ plan: Plan; at: Date } | null>(
+      (latest, entry) => (latest === null || entry.at > latest.at ? entry : latest),
       null,
     );
+
+  const lastCompletedAt = lastCompleted?.at ?? null;
+  const lastCompletedBy = lastCompleted?.plan.createdBy ?? null;
 
   // With no history the couple's start date is the anchor, so a brand new
   // couple gets a full interval before anything reads as overdue.
@@ -194,6 +271,7 @@ export function computeCadenceStatus(input: ComputeCadenceStatusInput): CadenceS
     domain: cadence.domain,
     kind: cadence.kind,
     lastCompletedAt,
+    lastCompletedBy,
     anchorAt,
     nextDueAt,
     daysUntilDue,
@@ -235,6 +313,67 @@ export function compareUrgency(a: CadenceStatus, b: CadenceStatus): number {
 }
 
 /** Translation key for a health state, so no display string is built here. */
+/**
+ * Whose turn it is to do the booking.
+ *
+ * `either` is a real answer, not a fallback: with no completed plan behind it
+ * there is nothing to alternate from, and inventing a first turn would be this
+ * app telling a couple who goes first.
+ */
+export type PlannerTurn = 'you' | 'them' | 'either';
+
+/**
+ * Alternate who books, derived rather than stored.
+ *
+ * Whoever booked the last completed one, it is the other person's turn. That
+ * needs no column, no migration and no encryption work: `created_by` is
+ * readable by design, because RLS and the authorship triggers need it, so the
+ * whole rule is arithmetic over rows the screen already holds.
+ *
+ * Deriving it also means it cannot drift. A stored "whose turn" would need
+ * somebody to write it on completion, and any missed write would leave the two
+ * phones disagreeing about a fact that is supposed to be shared.
+ *
+ * It is a suggestion and nothing else. Either partner can book anything at any
+ * time; nothing here counts, compares, or remembers a turn that was skipped —
+ * a rotation that keeps score is the scoreboard invariant 4 exists to prevent.
+ */
+export function plannerTurn(status: CadenceStatus, profileId: string): PlannerTurn {
+  if (!status.lastCompletedBy) return 'either';
+  return status.lastCompletedBy === profileId ? 'them' : 'you';
+}
+
 export function healthLabelKey(health: CadenceHealth): string {
   return `cadence:health.${health}`;
+}
+
+/**
+ * Every enabled ritual's status, most urgent first.
+ *
+ * The list behind both apps' rhythm screens. It lived in each app's `queries`
+ * module, character for character the same in both, which is odd for a function
+ * that touches no query, no client and no domain — it is `filter`, `map` and
+ * `sort` over three functions already in this file. `enabled` is the whole of
+ * the filtering: a paused cadence keeps its row, and keeping its countdown on
+ * screen is what pausing exists to stop.
+ */
+export function cadenceStatuses(
+  cadences: Cadence[],
+  plans: Plan[],
+  coupleCreatedAt: string,
+  timeZone: string,
+  now: Date,
+): CadenceStatus[] {
+  return cadences
+    .filter((cadence) => cadence.enabled)
+    .map((cadence) =>
+      computeCadenceStatus({
+        cadence,
+        plans,
+        now,
+        coupleCreatedAt: new Date(coupleCreatedAt),
+        timeZone,
+      }),
+    )
+    .sort(compareUrgency);
 }

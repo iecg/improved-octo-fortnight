@@ -54,6 +54,82 @@ export function busyFromPlans(plans: Plan[]): TimeRange[] {
   return busy;
 }
 
+/** What a plans screen shows, in the three groups it shows them in. */
+export interface GroupedPlans {
+  /**
+   * Booked, and the time has passed with nobody saying whether it happened.
+   *
+   * This group is why the function exists. Both apps filtered `upcoming` on
+   * `startsAt >= now` and `history` on `completed || skipped`, so a plan that
+   * was still `scheduled` after its own end time fell through both and became
+   * invisible — the couple could not mark it done because they could not see
+   * it. It is not a cosmetic gap: `computeCadenceStatus` re-anchors on
+   * completion, so an unanswered plan means that clock never resets, and the
+   * ritual reads as more overdue every day because of a plan that already
+   * happened.
+   *
+   * Newest first: the thing you most recently did is the one you can answer.
+   */
+  needsAnswer: Plan[];
+  /** Booked and still ahead, soonest first. */
+  upcoming: Plan[];
+  /** Answered — done or skipped — newest first. */
+  history: Plan[];
+}
+
+/** Sortable instant for a plan, or `null` when it has no time yet. */
+function startOf(plan: Plan): number | null {
+  if (!plan.startsAt) return null;
+  const at = new Date(plan.startsAt).getTime();
+  return Number.isNaN(at) ? null : at;
+}
+
+/**
+ * Split a couple's plans into the groups a plans screen renders.
+ *
+ * Pure, and `now` is an argument like everywhere else in this package — which
+ * is also what makes the boundary between "ahead" and "behind" testable at all.
+ *
+ * A plan counts as behind once it has *ended*, not once it has started: asking
+ * "did this happen?" about an evening the couple is currently out on would be
+ * absurd. With no `endsAt` the start is the whole of it.
+ *
+ * Lived in both apps' `plans.tsx` as identical `useMemo` blocks before this,
+ * which is how they came to share a bug.
+ */
+export function groupPlans(plans: Plan[], now: Date): GroupedPlans {
+  const at = now.getTime();
+  const needsAnswer: Plan[] = [];
+  const upcoming: Plan[] = [];
+  const history: Plan[] = [];
+
+  for (const plan of plans) {
+    if (plan.status === 'completed' || plan.status === 'skipped') {
+      history.push(plan);
+      continue;
+    }
+    if (plan.status !== 'scheduled') continue;
+
+    const start = startOf(plan);
+    // Booked with no time on it cannot be behind, so it waits with the rest.
+    if (start === null) {
+      upcoming.push(plan);
+      continue;
+    }
+    const parsedEnd = plan.endsAt ? new Date(plan.endsAt).getTime() : start;
+    const end = Number.isNaN(parsedEnd) ? start : parsedEnd;
+    if (end < at) needsAnswer.push(plan);
+    else upcoming.push(plan);
+  }
+
+  const byStart = (a: Plan, b: Plan) => (startOf(a) ?? 0) - (startOf(b) ?? 0);
+  needsAnswer.sort((a, b) => byStart(b, a));
+  upcoming.sort(byStart);
+  history.sort((a, b) => byStart(b, a));
+
+  return { needsAnswer, upcoming, history };
+}
+
 export interface SuggestWindowsOptions {
   /** Search bounds. */
   from: Date;

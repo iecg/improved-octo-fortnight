@@ -18,7 +18,7 @@ import { usePairedSession } from '../../src/session';
 const REMINDER_LEAD_MINUTES = 180;
 
 export default function TabsLayout() {
-  const { t } = useTranslation(['app', 'cadence']);
+  const { t } = useTranslation(['app', 'cadence', 'common']);
   const { profile, couple } = usePairedSession();
   const client = useQueryClient();
 
@@ -104,11 +104,27 @@ export default function TabsLayout() {
   });
 
   return (
-    <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: '#9C5B4E' }}>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: '#9C5B4E',
+        // Same three options as the other app, for the same reasons — see the
+        // comment there. Hiding the slot alone leaves the label pinned to the
+        // top of the bar; `beside-icon` is what centres it.
+        tabBarLabelPosition: 'beside-icon',
+        tabBarIconStyle: { display: 'none' },
+        // 15pt, not 13. The bar is already the iOS standard height —
+        // `TABBAR_HEIGHT_UIKIT` 49 plus the 34pt home-indicator inset — so
+        // there is nothing to reclaim there without pushing the tab below the
+        // 44pt tap-target minimum. What made it look empty was a 13pt label
+        // alone in a 49pt row, with no icon to fill it.
+        tabBarLabelStyle: { fontSize: 15, marginStart: 0 },
+      }}
+    >
       <Tabs.Screen name="index" options={{ title: t('app:tabs.today') }} />
-      <Tabs.Screen name="plans" options={{ title: t('app:tabs.plans') }} />
+      <Tabs.Screen name="plans" options={{ title: t('common:tabs.plans') }} />
       <Tabs.Screen name="ideas" options={{ title: t('app:tabs.ideas') }} />
-      <Tabs.Screen name="settings" options={{ title: t('app:tabs.settings') }} />
+      <Tabs.Screen name="settings" options={{ title: t('common:settings.title') }} />
     </Tabs>
   );
 }

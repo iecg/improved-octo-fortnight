@@ -1,8 +1,6 @@
 {
   "tabs": {
-    "today": "Today",
-    "plans": "Plans",
-    "settings": "Settings"
+    "today": "Today"
   },
   "today": {
     "greeting": "Today",
@@ -11,12 +9,12 @@
     "partnerNoAnswer": "{{name}} hasn't answered yet",
     "nextUp": "Next up",
     "nothingBooked": "Nothing booked.",
-    "rituals": "Your rhythm",
     "propose": "Suggest a time",
     "dateNight": "Next date night",
     "partnerUnreadable": "{{name}}'s answer can't be read on this device",
     "planIt": "Suggest a time for this",
-    "upcoming": "Next: {{dates}}"
+    "turnYours": "Your turn to suggest something",
+    "turnTheirs": "{{name}}'s turn to suggest something"
   },
   "checkin": {
     "yes": "Yes",
@@ -36,6 +34,7 @@
     "kind": "What for",
     "suggestions": "You're both free",
     "noSuggestions": "No open evenings found. Pick a time anyway.",
+    "pickOne": "Pick one of the times above.",
     "sharperWithCalendar": "Allow calendar access and these get sharper — we'll also avoid what's on your own calendar.",
     "grantCalendar": "Allow calendar access",
     "duration": "How long",
@@ -46,23 +45,13 @@
     "send": "Suggest it"
   },
   "settings": {
-    "title": "Settings",
-    "account": "Account",
-    "partner": "Paired with {{name}}",
-    "notPaired": "Not paired yet",
-    "cadences": "How often",
     "privacy": "Privacy",
     "lock": "Require Face ID or passcode",
     "lockDescription": "Ask every time the app opens.",
     "lockUnavailable": "Set a passcode on this device to use this.",
     "calendarLabel": "Calendar event name",
     "calendarLabelHint": "This is all that appears in your calendar. Nothing else is written.",
-    "calendarLabelDefault": "Us",
-    "calendarAccess": "Calendar access",
-    "notificationAccess": "Reminders",
-    "allow": "Allow",
-    "allowed": "Allowed",
-    "signOut": "Sign out"
+    "calendarLabelDefault": "Us"
   },
   "lock": {
     "prompt": "Unlock",

@@ -4,12 +4,12 @@
  * Everything goes through the domain-scoped repositories in `@couple/data`,
  * which is what keeps this app's rows separate from the 2-2-2 app's.
  */
-import { compareUrgency, computeCadenceStatus, type CadenceStatus } from '@couple/cadence';
-import type { Cadence, CheckinInterest, Plan, PlanProposal } from '@couple/core';
+import type { CheckinInterest, PlanProposal } from '@couple/core';
 import {
   createBusyRepository,
   createCheckinRepository,
   createDomainRepository,
+  createPlanQueries,
 } from '@couple/data';
 import { calendarDateIn } from '@couple/i18n';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,6 +23,26 @@ export const plans = createDomainRepository(supabase, DOMAIN, contentCipher);
 export const checkins = createCheckinRepository(supabase, contentCipher);
 
 /**
+ * Everything both apps do with plans and cadences, from the shared factory.
+ *
+ * It is given the repository rather than a domain, so there is no argument here
+ * that could point it at the other app's rows. What is left below is this app's
+ * own: check-ins, and the propose/answer/counter loop the 2-2-2 app has no
+ * equivalent of.
+ */
+const shared = createPlanQueries(plans, DEFAULT_INTIMACY_CADENCES);
+
+export const {
+  usePlans,
+  useGetPlan,
+  useCadences,
+  seedCadences,
+  useEnsureCadences,
+  useCompletePlan,
+  useSetCadenceEnabled,
+} = shared;
+
+/**
  * Times the couple is occupied, across both apps — and only times.
  *
  * Read unconditionally here, unlike in the 2-2-2 app. What it exposes in this
@@ -32,10 +52,13 @@ export const checkins = createCheckinRepository(supabase, contentCipher);
  */
 export const busy = createBusyRepository(supabase);
 
+/**
+ * The shared keys plus this app's own, so nothing below has to know which is
+ * which — and so `plans` and `cadences` cannot be spelled one way in the shared
+ * factory's invalidations and another way here.
+ */
 const keys = {
-  plans: (coupleId: string) => ['plans', DOMAIN, coupleId] as const,
-  plan: (planId: string) => ['plan', DOMAIN, planId] as const,
-  cadences: (coupleId: string) => ['cadences', DOMAIN, coupleId] as const,
+  ...shared.keys,
   proposals: (coupleId: string) => ['proposals', DOMAIN, coupleId] as const,
   // Under the same prefix, so respond/counter and the realtime handler refresh
   // the pending list and the history together.
@@ -45,94 +68,7 @@ const keys = {
   // refresh the day's card and the log together.
   checkinsAll: (coupleId: string) => ['checkins', coupleId] as const,
   checkinLog: (coupleId: string, since: string) => ['checkins', coupleId, 'log', since] as const,
-  // Not domain-keyed: this list is the same one either app would read.
-  busy: (coupleId: string, from: string, to: string) => ['busy', coupleId, from, to] as const,
-  // Every bounds pair for a couple. The bounds are part of the key, so
-  // invalidating one window would leave every other range stale.
-  busyAll: (coupleId: string) => ['busy', coupleId] as const,
 };
-
-export function usePlans(coupleId: string) {
-  return useQuery({
-    queryKey: keys.plans(coupleId),
-    queryFn: () => plans.listPlans(coupleId),
-  });
-}
-
-export function useGetPlan(planId: string) {
-  return useQuery({
-    queryKey: keys.plan(planId),
-    queryFn: () => plans.getPlan(planId),
-  });
-}
-
-export function useCadences(coupleId: string) {
-  return useQuery({
-    queryKey: keys.cadences(coupleId),
-    queryFn: () => plans.listCadences(coupleId),
-  });
-}
-
-/**
- * Pause a ritual, or bring it back.
- *
- * A paused cadence keeps its row with `enabled = false` rather than being
- * deleted, which is what lets `useEnsureCadences` tell "never seeded" from
- * "switched off". The plans already made under it stay where they are: this
- * turns off a countdown, not a history.
- */
-export function useSetCadenceEnabled(coupleId: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { cadenceId: string; enabled: boolean }) =>
-      plans.setCadenceEnabled(input.cadenceId, input.enabled),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
-    },
-  });
-}
-
-/**
- * Seed this app's standing rituals from its own kind catalog.
- *
- * Deliberately not a database trigger — a trigger on `couples` would give
- * every couple every app's cadences whichever app they actually installed.
- * Idempotent, because `upsertCadence` upserts on `(couple_id, domain, kind)`.
- */
-export async function seedCadences(coupleId: string): Promise<void> {
-  for (const kind of DEFAULT_INTIMACY_CADENCES) {
-    await plans.upsertCadence({
-      coupleId,
-      kind: kind.kind,
-      intervalValue: kind.defaultIntervalValue,
-      intervalUnit: kind.defaultIntervalUnit,
-    });
-  }
-}
-
-/**
- * Seed on first run of *this app*, not just on first pairing.
- *
- * Pairing happens once and serves both apps, so the partner who installs the
- * second one never passes through the pairing screen — and that screen was the
- * only thing that had ever called `seedCadences`. Without this the second app
- * opens to an empty rhythm and there is no other way to create a cadence.
- *
- * Only a genuinely empty list seeds. A ritual switched off keeps its row with
- * `enabled = false`, so turning one off never resurrects it here.
- */
-export function useEnsureCadences(coupleId: string): void {
-  const client = useQueryClient();
-  const { data, isLoading } = useCadences(coupleId);
-  const empty = !isLoading && data?.length === 0;
-
-  useEffect(() => {
-    if (!empty) return;
-    void seedCadences(coupleId).then(() =>
-      client.invalidateQueries({ queryKey: keys.cadences(coupleId) }),
-    );
-  }, [client, coupleId, empty]);
-}
 
 /**
  * Occupied windows from the server, both apps' plans, times only.
@@ -327,18 +263,6 @@ export function useProposeTime(coupleId: string, profileId: string) {
   });
 }
 
-export function useCompletePlan(coupleId: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { planId: string; completed: boolean }) =>
-      plans.setPlanStatus(input.planId, input.completed ? 'completed' : 'skipped'),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: keys.plans(coupleId) });
-      void client.invalidateQueries({ queryKey: keys.cadences(coupleId) });
-    },
-  });
-}
-
 /**
  * Live updates for the propose/respond loop.
  *
@@ -401,26 +325,4 @@ export function useRealtimeSync(coupleId: string | null): void {
       void supabase.removeChannel(channel);
     };
   }, [client, coupleId]);
-}
-
-/** Cadence statuses for every enabled ritual, most urgent first. */
-export function cadenceStatuses(
-  cadences: Cadence[],
-  allPlans: Plan[],
-  coupleCreatedAt: string,
-  timeZone: string,
-  now: Date,
-): CadenceStatus[] {
-  return cadences
-    .filter((cadence) => cadence.enabled)
-    .map((cadence) =>
-      computeCadenceStatus({
-        cadence,
-        plans: allPlans,
-        now,
-        coupleCreatedAt: new Date(coupleCreatedAt),
-        timeZone,
-      }),
-    )
-    .sort(compareUrgency);
 }

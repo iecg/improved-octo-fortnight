@@ -5,6 +5,7 @@ import type { Plan, PlanStatus } from '@couple/core';
 import {
   atHourInZone,
   busyFromPlans,
+  groupPlans,
   mergeRanges,
   overlapsAny,
   suggestWindows,
@@ -294,5 +295,85 @@ describe('suggestWindows', () => {
     ['inverted hours', { earliestHour: 23, latestHour: 20 }],
   ])('returns nothing for %s', (_label, override) => {
     expect(suggestWindows([], { ...base, ...override })).toEqual([]);
+  });
+});
+
+describe('groupPlans', () => {
+  const now = new Date('2026-09-12T21:00:00.000Z');
+
+  /**
+   * The regression this function was written for.
+   *
+   * Both apps filtered upcoming on `startsAt >= now` and history on
+   * `completed || skipped`, so a plan still `scheduled` after its end time
+   * matched neither and vanished — with no way to mark it done, and therefore
+   * no way for its cadence to re-anchor.
+   */
+  it('keeps a booked plan whose time has passed', () => {
+    const over = makePlan({
+      id: 'over',
+      startsAt: '2026-09-12T18:00:00.000Z',
+      endsAt: '2026-09-12T20:00:00.000Z',
+    });
+
+    const { needsAnswer, upcoming, history } = groupPlans([over], now);
+
+    expect(needsAnswer.map((p) => p.id)).toEqual(['over']);
+    expect(upcoming).toEqual([]);
+    expect(history).toEqual([]);
+  });
+
+  it('leaves a plan that is happening right now alone', () => {
+    // Started an hour ago, ends in an hour. Asking "did this happen?" while
+    // the couple is out is the wrong question.
+    const during = makePlan({
+      id: 'during',
+      startsAt: '2026-09-12T20:00:00.000Z',
+      endsAt: '2026-09-12T22:00:00.000Z',
+    });
+
+    const { needsAnswer, upcoming } = groupPlans([during], now);
+
+    expect(needsAnswer).toEqual([]);
+    expect(upcoming.map((p) => p.id)).toEqual(['during']);
+  });
+
+  it('measures from the end, not the start', () => {
+    // No `endsAt`, so the start is the whole of it — and it is behind us.
+    const open = makePlan({ id: 'open', startsAt: '2026-09-12T18:00:00.000Z', endsAt: null });
+
+    expect(groupPlans([open], now).needsAnswer.map((p) => p.id)).toEqual(['open']);
+  });
+
+  it('sorts each group the way its screen reads it', () => {
+    const plans = [
+      makePlan({ id: 'soon', startsAt: '2026-09-13T18:00:00.000Z', endsAt: null }),
+      makePlan({ id: 'later', startsAt: '2026-09-20T18:00:00.000Z', endsAt: null }),
+      makePlan({ id: 'old-miss', startsAt: '2026-09-01T18:00:00.000Z', endsAt: null }),
+      makePlan({ id: 'recent-miss', startsAt: '2026-09-10T18:00:00.000Z', endsAt: null }),
+      makePlan({ id: 'old-done', status: 'completed', startsAt: '2026-08-01T18:00:00.000Z' }),
+      makePlan({ id: 'recent-done', status: 'skipped', startsAt: '2026-09-05T18:00:00.000Z' }),
+    ];
+
+    const grouped = groupPlans(plans, now);
+
+    expect(grouped.upcoming.map((p) => p.id)).toEqual(['soon', 'later']);
+    expect(grouped.needsAnswer.map((p) => p.id)).toEqual(['recent-miss', 'old-miss']);
+    expect(grouped.history.map((p) => p.id)).toEqual(['recent-done', 'old-done']);
+  });
+
+  it('shows nothing for a status that was never a commitment', () => {
+    const ignored = ['idea', 'proposed', 'declined'] as const;
+
+    for (const status of ignored) {
+      const grouped = groupPlans([makePlan({ status })], now);
+      expect([grouped.needsAnswer, grouped.upcoming, grouped.history]).toEqual([[], [], []]);
+    }
+  });
+
+  it('waits with the rest when a booked plan has no time on it', () => {
+    const undated = makePlan({ id: 'undated', startsAt: null, endsAt: null });
+
+    expect(groupPlans([undated], now).upcoming.map((p) => p.id)).toEqual(['undated']);
   });
 });

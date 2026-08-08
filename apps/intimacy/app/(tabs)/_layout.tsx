@@ -18,7 +18,7 @@ import { usePairedSession } from '../../src/session';
 const REMINDER_LEAD_MINUTES = 120;
 
 export default function TabsLayout() {
-  const { t } = useTranslation('app');
+  const { t } = useTranslation(['app', 'common']);
   const { profile, couple } = usePairedSession();
   const client = useQueryClient();
 
@@ -50,7 +50,7 @@ export default function TabsLayout() {
   // plan title, no notes, no location. The calendar is visible to anyone
   // holding an unlocked phone and syncs to a desktop.
   const calendarTitleFor = useCallback(
-    () => calendarLabel ?? t('settings.calendarLabelDefault'),
+    () => calendarLabel ?? t('app:settings.calendarLabelDefault'),
     [calendarLabel, t],
   );
 
@@ -60,8 +60,8 @@ export default function TabsLayout() {
   const reminder = useMemo(
     () => ({
       leadMinutes: REMINDER_LEAD_MINUTES,
-      title: t('notification.title'),
-      body: t('notification.body'),
+      title: t('app:notification.title'),
+      body: t('app:notification.body'),
     }),
     [t],
   );
@@ -89,14 +89,35 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: '#9C5B4E',
-        // No icons: labels alone keep the tab bar unremarkable in a screenshot
-        // or over someone's shoulder.
-        tabBarLabelStyle: { fontSize: 13 },
+        /*
+          No icons: labels alone keep the tab bar unremarkable in a screenshot
+          or over someone's shoulder.
+
+          Three options working together, and none of them is optional.
+          Omitting `tabBarIcon` does not hide the icon — `BottomTabBar` falls
+          back to `MissingIcon`, so every tab carried a filled placeholder
+          triangle in the accent colour. Hiding the slot removes those, but the
+          label keeps its below-the-icon position and hugs the top of the bar,
+          because `tabVerticalUiKit` is `justifyContent: 'flex-start'` and
+          `tabBarItemStyle` cannot reach it — `BottomTabItem` reads only `flex`
+          off it. Forcing `beside-icon` switches the item to
+          `tabHorizontalUiKit`, which centres on both axes; with no icon beside
+          it, the label is simply centred. `marginStart` undoes the gap that
+          layout leaves for the icon that is not there.
+        */
+        tabBarLabelPosition: 'beside-icon',
+        tabBarIconStyle: { display: 'none' },
+        // 15pt, not 13. The bar is already the iOS standard height —
+        // `TABBAR_HEIGHT_UIKIT` 49 plus the 34pt home-indicator inset — so
+        // there is nothing to reclaim there without pushing the tab below the
+        // 44pt tap-target minimum. What made it look empty was a 13pt label
+        // alone in a 49pt row, with no icon to fill it.
+        tabBarLabelStyle: { fontSize: 15, marginStart: 0 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: t('tabs.today') }} />
-      <Tabs.Screen name="plans" options={{ title: t('tabs.plans') }} />
-      <Tabs.Screen name="settings" options={{ title: t('tabs.settings') }} />
+      <Tabs.Screen name="index" options={{ title: t('app:tabs.today') }} />
+      <Tabs.Screen name="plans" options={{ title: t('common:tabs.plans') }} />
+      <Tabs.Screen name="settings" options={{ title: t('common:settings.title') }} />
     </Tabs>
   );
 }

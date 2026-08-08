@@ -1,6 +1,14 @@
 import type { Cadence, Plan } from '@couple/core';
 import { describe, expect, it } from 'vitest';
-import { addInterval, compareUrgency, computeCadenceStatus, nextOccurrences } from './engine';
+import {
+  addInterval,
+  compareUrgency,
+  computeCadenceStatus,
+  nextOccurrences,
+  nextWeekdayInZone,
+  plannerTurn,
+  shiftToDay,
+} from './engine';
 
 const NY = 'America/New_York';
 
@@ -336,5 +344,189 @@ describe('compareUrgency', () => {
 
     const sorted = [onTrack, overdue, dueSoon].sort(compareUrgency);
     expect(sorted.map((status) => status.health)).toEqual(['overdue', 'due_soon', 'on_track']);
+  });
+});
+
+describe('nextWeekdayInZone', () => {
+  const saturday = 6;
+
+  it('walks forward to the coming weekday', () => {
+    // Wednesday 2026-01-07, 12:00 UTC.
+    const from = new Date('2026-01-07T12:00:00.000Z');
+    expect(nextWeekdayInZone(from, saturday, 'UTC').toISOString()).toBe('2026-01-10T12:00:00.000Z');
+  });
+
+  it('returns the instant itself when it is already that day', () => {
+    // Saturday. "This weekend" on a Saturday means today, not in a week.
+    const from = new Date('2026-01-10T12:00:00.000Z');
+    expect(nextWeekdayInZone(from, saturday, 'UTC')).toBe(from);
+  });
+
+  it('is the longest wait the day after', () => {
+    // Sunday — six days to the next Saturday, never zero.
+    const from = new Date('2026-01-11T12:00:00.000Z');
+    expect(nextWeekdayInZone(from, saturday, 'UTC').toISOString()).toBe('2026-01-17T12:00:00.000Z');
+  });
+
+  /**
+   * The reason this takes a timezone at all. 23:00 Friday in Madrid is already
+   * Saturday in Auckland, so the same instant answers differently depending on
+   * whose calendar is asking — and the couple's is the only one that counts.
+   */
+  it("reads the weekday on the couple's calendar, not the instant's", () => {
+    const fridayNightInMadrid = new Date('2026-01-09T22:00:00.000Z');
+
+    // Madrid: still Friday, so the coming Saturday is tomorrow.
+    expect(nextWeekdayInZone(fridayNightInMadrid, saturday, 'Europe/Madrid').toISOString()).toBe(
+      '2026-01-10T22:00:00.000Z',
+    );
+    // Auckland: already Saturday, so it is today.
+    expect(nextWeekdayInZone(fridayNightInMadrid, saturday, 'Pacific/Auckland')).toBe(
+      fridayNightInMadrid,
+    );
+  });
+});
+
+describe('plannerTurn', () => {
+  const me = 'me';
+  const them = 'them';
+
+  function statusWith(overrides: Partial<Plan>[] = []) {
+    return computeCadenceStatus({
+      cadence: makeCadence(),
+      plans: overrides.map((o, i) => makePlan({ id: `p${i}`, ...o })),
+      now: new Date('2026-02-01T00:00:00.000Z'),
+      coupleCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      timeZone: 'UTC',
+    });
+  }
+
+  it("is nobody's turn before anything has happened", () => {
+    expect(plannerTurn(statusWith([]), me)).toBe('either');
+  });
+
+  it('passes to the other person after you booked the last one', () => {
+    const status = statusWith([
+      { status: 'completed', createdBy: me, startsAt: '2026-01-20T18:00:00.000Z' },
+    ]);
+    expect(status.lastCompletedBy).toBe(me);
+    expect(plannerTurn(status, me)).toBe('them');
+  });
+
+  it('comes to you after they booked the last one', () => {
+    const status = statusWith([
+      { status: 'completed', createdBy: them, startsAt: '2026-01-20T18:00:00.000Z' },
+    ]);
+    expect(plannerTurn(status, me)).toBe('you');
+  });
+
+  /**
+   * The rotation follows the *latest* completed plan, not the newest row — the
+   * anchor and the turn have to come from the same one or they can disagree.
+   */
+  it('reads the most recent completion, whatever order the rows arrive in', () => {
+    const status = statusWith([
+      { status: 'completed', createdBy: them, startsAt: '2026-01-05T18:00:00.000Z' },
+      { status: 'completed', createdBy: me, startsAt: '2026-01-25T18:00:00.000Z' },
+      { status: 'completed', createdBy: them, startsAt: '2026-01-15T18:00:00.000Z' },
+    ]);
+    expect(status.lastCompletedAt?.toISOString()).toBe('2026-01-25T18:00:00.000Z');
+    expect(plannerTurn(status, me)).toBe('them');
+  });
+
+  it('ignores plans that were only booked, or skipped', () => {
+    const status = statusWith([
+      { status: 'scheduled', createdBy: me, startsAt: '2026-02-20T18:00:00.000Z' },
+      { status: 'skipped', createdBy: me, startsAt: '2026-01-20T18:00:00.000Z' },
+    ]);
+    expect(plannerTurn(status, me)).toBe('either');
+  });
+
+  /**
+   * `created_by` is `on delete set null`, so a departed partner's plans outlive
+   * them with no author. There is nobody to take a turn after that.
+   */
+  it("is nobody's turn when the person who booked it has left", () => {
+    const status = statusWith([
+      { status: 'completed', createdBy: null, startsAt: '2026-01-20T18:00:00.000Z' },
+    ]);
+    expect(plannerTurn(status, me)).toBe('either');
+  });
+});
+
+describe('shiftToDay', () => {
+  const MADRID = 'Europe/Madrid';
+
+  it('slides both ends by the calendar days between the two days', () => {
+    // 18:00 in Madrid, +1 in winter.
+    const moved = shiftToDay(
+      { startsAt: '2026-02-06T17:00:00.000Z', endsAt: '2026-02-06T20:00:00.000Z' },
+      new Date('2026-02-13T09:00:00.000Z'),
+      MADRID,
+    );
+    expect(moved).toEqual({
+      startsAt: '2026-02-13T17:00:00.000Z',
+      endsAt: '2026-02-13T20:00:00.000Z',
+    });
+  });
+
+  it('moves backwards as readily as forwards', () => {
+    const moved = shiftToDay(
+      { startsAt: '2026-02-20T17:00:00.000Z', endsAt: null },
+      new Date('2026-02-18T09:00:00.000Z'),
+      MADRID,
+    );
+    expect(moved).toEqual({ startsAt: '2026-02-18T17:00:00.000Z', endsAt: null });
+  });
+
+  /**
+   * The reason this steps calendar days rather than adding a millisecond
+   * delta. Madrid goes to +2 on 29 March 2026, so a three-night getaway moved
+   * across that Sunday keeps both its 09:00s only if each end is stepped in the
+   * couple's own timezone. A raw delta would land the return at 10:00.
+   */
+  it('keeps the wall-clock hour on both ends across a DST change', () => {
+    const moved = shiftToDay(
+      // 09:00 → 09:00 Madrid, three nights, both ends still at +1.
+      { startsAt: '2026-03-20T08:00:00.000Z', endsAt: '2026-03-23T08:00:00.000Z' },
+      new Date('2026-03-27T12:00:00.000Z'),
+      MADRID,
+    );
+    expect(moved).toEqual({
+      startsAt: '2026-03-27T08:00:00.000Z',
+      // Still 09:00 in Madrid, now at +2.
+      endsAt: '2026-03-30T07:00:00.000Z',
+    });
+  });
+
+  /**
+   * Opening the picker and closing it again. The caller writes nothing on
+   * `null`, which is what keeps a no-op off the wire and off both calendars.
+   */
+  it('answers null when the day it already starts on is the day chosen', () => {
+    expect(
+      shiftToDay(
+        { startsAt: '2026-02-06T17:00:00.000Z', endsAt: '2026-02-06T20:00:00.000Z' },
+        // A different instant on the same Madrid day.
+        new Date('2026-02-06T08:30:00.000Z'),
+        MADRID,
+      ),
+    ).toBeNull();
+  });
+
+  /**
+   * The day is judged on the couple's wall calendar, not UTC's. An evening in
+   * Madrid is already tomorrow in UTC, so a zone-blind reading would call this
+   * a one-day move and quietly push the plan a day out.
+   */
+  it("reads the starting day in the couple's timezone, not UTC", () => {
+    expect(
+      shiftToDay(
+        // 00:30 on the 7th in Madrid; still the 6th in UTC.
+        { startsAt: '2026-02-06T23:30:00.000Z', endsAt: null },
+        new Date('2026-02-07T12:00:00.000Z'),
+        MADRID,
+      ),
+    ).toBeNull();
   });
 });

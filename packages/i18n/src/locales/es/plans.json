@@ -10,6 +10,7 @@
   "list": {
     "awaitingYou": "Esperando tu respuesta",
     "awaitingThem": "Esperando a {{name}}",
+    "needsAnswer": "¿Esto ocurrió?",
     "upcoming": "Próximamente",
     "history": "Antes",
     "emptyUpcoming": "Aún no hay nada reservado.",
@@ -32,6 +33,7 @@
   "detail": {
     "markDone": "Marcar como hecho",
     "markSkipped": "No ocurrió",
+    "move": "Elegir otra fecha",
     "when": "Cuándo",
     "where": "Dónde",
     "notes": "Notas",

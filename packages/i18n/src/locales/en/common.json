@@ -19,5 +19,22 @@
     "description": "This changes only what you see. Your partner keeps their own language.",
     "en": "English",
     "es": "Spanish"
+  },
+  "settings": {
+    "title": "Settings",
+    "account": "Account",
+    "partner": "Paired with {{name}}",
+    "notPaired": "Not paired yet",
+    "cadences": "How often",
+    "calendarAccess": "Calendar access",
+    "notificationAccess": "Reminders",
+    "allow": "Allow",
+    "allowed": "Allowed",
+    "signOut": "Sign out",
+    "permissions": "Calendar and reminders",
+    "keys": "Devices and keys"
+  },
+  "tabs": {
+    "plans": "Plans"
   }
 }

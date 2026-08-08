@@ -1,8 +1,6 @@
 {
   "tabs": {
-    "today": "Hoy",
-    "plans": "Planes",
-    "settings": "Ajustes"
+    "today": "Hoy"
   },
   "today": {
     "greeting": "Hoy",
@@ -11,12 +9,12 @@
     "partnerNoAnswer": "{{name}} aún no ha respondido",
     "nextUp": "Lo próximo",
     "nothingBooked": "No hay nada reservado.",
-    "rituals": "Su ritmo",
     "propose": "Proponer una hora",
     "dateNight": "Próxima cita",
     "partnerUnreadable": "La respuesta de {{name}} no se puede leer en este dispositivo",
     "planIt": "Proponer una hora para esto",
-    "upcoming": "Próximas: {{dates}}"
+    "turnYours": "Te toca proponer algo",
+    "turnTheirs": "Le toca proponer algo a {{name}}"
   },
   "checkin": {
     "yes": "Sí",
@@ -36,6 +34,7 @@
     "kind": "Para qué",
     "suggestions": "Los dos están libres",
     "noSuggestions": "No encontramos noches libres. Elige una hora de todos modos.",
+    "pickOne": "Elige una de las horas de arriba.",
     "sharperWithCalendar": "Permite el acceso al calendario y estas mejoran: también evitaremos lo que ya tienes anotado.",
     "grantCalendar": "Permitir acceso al calendario",
     "duration": "Cuánto tiempo",
@@ -46,23 +45,13 @@
     "send": "Proponerlo"
   },
   "settings": {
-    "title": "Ajustes",
-    "account": "Cuenta",
-    "partner": "Vinculado con {{name}}",
-    "notPaired": "Aún sin vincular",
-    "cadences": "Con qué frecuencia",
     "privacy": "Privacidad",
     "lock": "Pedir Face ID o código",
     "lockDescription": "Preguntar cada vez que se abra la app.",
     "lockUnavailable": "Configura un código en este dispositivo para usarlo.",
     "calendarLabel": "Nombre del evento en el calendario",
     "calendarLabelHint": "Esto es todo lo que aparece en tu calendario. No se escribe nada más.",
-    "calendarLabelDefault": "Nosotros",
-    "calendarAccess": "Acceso al calendario",
-    "notificationAccess": "Recordatorios",
-    "allow": "Permitir",
-    "allowed": "Permitido",
-    "signOut": "Cerrar sesión"
+    "calendarLabelDefault": "Nosotros"
   },
   "lock": {
     "prompt": "Desbloquear",

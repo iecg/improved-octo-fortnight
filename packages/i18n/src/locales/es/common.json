@@ -19,5 +19,22 @@
     "description": "Esto cambia solo lo que tú ves. Tu pareja conserva su propio idioma.",
     "en": "Inglés",
     "es": "Español"
+  },
+  "settings": {
+    "title": "Ajustes",
+    "account": "Cuenta",
+    "partner": "Vinculado con {{name}}",
+    "notPaired": "Aún sin vincular",
+    "cadences": "Con qué frecuencia",
+    "calendarAccess": "Acceso al calendario",
+    "notificationAccess": "Recordatorios",
+    "allow": "Permitir",
+    "allowed": "Permitido",
+    "signOut": "Cerrar sesión",
+    "permissions": "Calendario y recordatorios",
+    "keys": "Dispositivos y claves"
+  },
+  "tabs": {
+    "plans": "Planes"
   }
 }

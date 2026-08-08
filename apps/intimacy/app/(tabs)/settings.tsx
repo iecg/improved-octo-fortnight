@@ -29,6 +29,7 @@ import {
   Button,
   Card,
   Chip,
+  Disclosure,
   Divider,
   Field,
   Heading,
@@ -92,8 +93,8 @@ export default function Settings() {
   const partnerName = partner?.displayName ?? t('common:partner.unnamed');
 
   return (
-    <Screen>
-      <Title>{t('app:settings.title')}</Title>
+    <Screen tabbed>
+      <Title>{t('common:settings.title')}</Title>
 
       <Card>
         <View className="gap-3">
@@ -113,127 +114,17 @@ export default function Settings() {
         </View>
       </Card>
 
-      {/* Turning one off hides its countdown and stops its reminders. The plans
-          already made under it stay. There is nothing to break by pausing —
-          this is the opposite of a streak. */}
-      <Card>
-        <View className="gap-3">
-          <Heading>{t('app:settings.cadences')}</Heading>
-          {(cadencesQuery.data ?? []).map((cadence) => (
-            <View key={cadence.id} className="flex-row items-center justify-between gap-3">
-              <View className="shrink gap-1">
-                <Body>{t(kindLabelKey(cadence.domain, cadence.kind))}</Body>
-                <Muted>{t('cadence:action.pause')}</Muted>
-              </View>
-              <Switch
-                value={cadence.enabled}
-                onValueChange={(next) =>
-                  setCadenceEnabled.mutate({ cadenceId: cadence.id, enabled: next })
-                }
-                accessibilityLabel={t(kindLabelKey(cadence.domain, cadence.kind))}
-              />
-            </View>
-          ))}
-        </View>
-      </Card>
-
-      <Card>
-        <View className="gap-4">
-          <Heading>{t('app:settings.privacy')}</Heading>
-
-          <View className="flex-row items-center justify-between gap-3">
-            <View className="shrink gap-1">
-              <Body>{t('app:settings.lock')}</Body>
-              <Muted>
-                {lockAvailable
-                  ? t('app:settings.lockDescription')
-                  : t('app:settings.lockUnavailable')}
-              </Muted>
-            </View>
-            <Switch
-              value={lockOn}
-              disabled={!lockAvailable}
-              onValueChange={(next) => void toggleLock(next)}
-              accessibilityLabel={t('app:settings.lock')}
-            />
-          </View>
-
-          <Divider />
-
-          <Field
-            label={t('app:settings.calendarLabel')}
-            hint={t('app:settings.calendarLabelHint')}
-            value={label}
-            onChangeText={setLabel}
-            onBlur={() => void commitLabel()}
-          />
-        </View>
-      </Card>
-
-      <Card>
-        <View className="gap-3">
-          <Heading>{t('app:settings.calendarAccess')}</Heading>
-          {calendarOk ? (
-            <Muted>{t('app:settings.allowed')}</Muted>
-          ) : (
-            <Button
-              label={t('app:settings.allow')}
-              variant="secondary"
-              onPress={() => void requestCalendarAccess().then(setCalendarOk)}
-            />
-          )}
-          <Divider />
-          <Heading>{t('app:settings.notificationAccess')}</Heading>
-          <Button
-            label={t('app:settings.allow')}
-            variant="secondary"
-            onPress={() => void requestNotificationPermission()}
-          />
-        </View>
-      </Card>
-
-      <Card>
-        <View className="gap-3">
-          <Heading>{t('app:settings.account')}</Heading>
-          <Muted>
-            {partner
-              ? t('app:settings.partner', { name: partnerName })
-              : t('app:settings.notPaired')}
-          </Muted>
-          <Button
-            label={t('auth:keys.approve.entry')}
-            variant="secondary"
-            onPress={() => router.push('/approve')}
-          />
-          <Button
-            label={t('app:settings.signOut')}
-            variant="secondary"
-            onPress={() => void signOut()}
-          />
-        </View>
-      </Card>
-
-      {/* Directly under the card that names your partner, because this is the
-          other half of that sentence. */}
-      <DisplayNameCard displayName={profile?.displayName ?? null} onSave={setDisplayName} />
-
-      {/* Couple-level and shared, so the same card serves both apps. Beside the
-          display name rather than among the key cards below: both are things
-          the two of you agree on, where those are about this device. */}
-      <AnniversaryCard
-        anniversaryDate={couple.anniversaryDate}
-        timeZone={couple.timezone}
-        onSet={setAnniversary}
-      />
-
       {/*
-        The invite code, and the approval that follows it, in the one place you
-        can always get back to. Before this the code was visible on exactly one
-        screen, the one the router replaces the moment you leave it. `null` once
-        there is a partner: the code cannot be redeemed while both seats are
-        taken, but leaving reopens one, so a code left circulating is a
-        liability rather than a convenience. The panel brings its own card, so
-        it sits beside the account one rather than inside it.
+        Above every group and never inside one, because it is the only thing on
+        this screen that can be urgent: a device is waiting to be let in, and a
+        partner who has to hunt for the approval behind a closed heading is a
+        partner who cannot read their own plans. It renders `null` once there is
+        a partner and nothing is waiting, which is almost always — so keeping it
+        here costs no rows in the ordinary case.
+
+        The invite code lives here too, in the one place you can always get back
+        to. Before this it was visible on exactly one screen, the one the router
+        replaces the moment you leave it.
       */}
       {session ? (
         <InvitePanel
@@ -245,24 +136,153 @@ export default function Settings() {
       ) : null}
 
       {/*
-        Both of these need the couple key — one seals it, the other reports
-        which devices hold it — and this tab is only reachable with it. The
-        router is what makes that true; `usePairedSession` is what makes it
-        loud if it ever stops being.
+        Closed, like every other group. Open it held the partner line, sign out,
+        the name field and the anniversary — some five hundred points of it —
+        which pushed the four headings below it off the screen entirely. A
+        settings screen whose own index does not fit is the problem this pass
+        exists to fix, so nothing here defaults open except the language card.
+      */}
+      <Disclosure label={t('common:settings.account')}>
+        <View className="gap-4">
+          <Card>
+            <View className="gap-3">
+              <Muted>
+                {partner
+                  ? t('common:settings.partner', { name: partnerName })
+                  : t('common:settings.notPaired')}
+              </Muted>
+              <Button
+                label={t('common:settings.signOut')}
+                variant="secondary"
+                onPress={() => void signOut()}
+              />
+            </View>
+          </Card>
+
+          <DisplayNameCard displayName={profile?.displayName ?? null} onSave={setDisplayName} />
+
+          {/* Couple-level and shared, so the same card serves both apps. Beside
+              the display name rather than among the key cards below: both are
+              things the two of you agree on, where those are about this device. */}
+          <AnniversaryCard
+            anniversaryDate={couple.anniversaryDate}
+            timeZone={couple.timezone}
+            onSet={setAnniversary}
+          />
+        </View>
+      </Disclosure>
+
+      {/* Turning one off hides its countdown and stops its reminders. The plans
+          already made under it stay. There is nothing to break by pausing —
+          this is the opposite of a streak. */}
+      <Disclosure label={t('common:settings.cadences')}>
+        <Card>
+          <View className="gap-3">
+            {(cadencesQuery.data ?? []).map((cadence) => (
+              <View key={cadence.id} className="flex-row items-center justify-between gap-3">
+                <View className="shrink gap-1">
+                  <Body>{t(kindLabelKey(cadence.domain, cadence.kind))}</Body>
+                  <Muted>{t('cadence:action.pause')}</Muted>
+                </View>
+                <Switch
+                  value={cadence.enabled}
+                  onValueChange={(next) =>
+                    setCadenceEnabled.mutate({ cadenceId: cadence.id, enabled: next })
+                  }
+                  accessibilityLabel={t(kindLabelKey(cadence.domain, cadence.kind))}
+                />
+              </View>
+            ))}
+          </View>
+        </Card>
+      </Disclosure>
+
+      <Disclosure label={t('app:settings.privacy')}>
+        <Card>
+          <View className="gap-4">
+            <View className="flex-row items-center justify-between gap-3">
+              <View className="shrink gap-1">
+                <Body>{t('app:settings.lock')}</Body>
+                <Muted>
+                  {lockAvailable
+                    ? t('app:settings.lockDescription')
+                    : t('app:settings.lockUnavailable')}
+                </Muted>
+              </View>
+              <Switch
+                value={lockOn}
+                disabled={!lockAvailable}
+                onValueChange={(next) => void toggleLock(next)}
+                accessibilityLabel={t('app:settings.lock')}
+              />
+            </View>
+
+            <Divider />
+
+            <Field
+              label={t('app:settings.calendarLabel')}
+              hint={t('app:settings.calendarLabelHint')}
+              value={label}
+              onChangeText={setLabel}
+              onBlur={() => void commitLabel()}
+            />
+          </View>
+        </Card>
+      </Disclosure>
+
+      <Disclosure label={t('common:settings.permissions')}>
+        <Card>
+          <View className="gap-3">
+            <Heading>{t('common:settings.calendarAccess')}</Heading>
+            {calendarOk ? (
+              <Muted>{t('common:settings.allowed')}</Muted>
+            ) : (
+              <Button
+                label={t('common:settings.allow')}
+                variant="secondary"
+                onPress={() => void requestCalendarAccess().then(setCalendarOk)}
+              />
+            )}
+            <Divider />
+            <Heading>{t('common:settings.notificationAccess')}</Heading>
+            <Button
+              label={t('common:settings.allow')}
+              variant="secondary"
+              onPress={() => void requestNotificationPermission()}
+            />
+          </View>
+        </Card>
+      </Disclosure>
+
+      {/*
+        Everything about which devices can read this couple's rows. All of it
+        needs the couple key — one card seals it, another reports who holds it —
+        and this tab is only reachable with it. The router is what makes that
+        true; `usePairedSession` is what makes it loud if it ever stops being.
       */}
       {session ? (
-        <>
-          <RecoveryCodeCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
-          <DeviceListCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
-        </>
+        <Disclosure label={t('common:settings.keys')}>
+          <View className="gap-4">
+            <Card>
+              <Button
+                label={t('auth:keys.approve.entry')}
+                variant="secondary"
+                onPress={() => router.push('/approve')}
+              />
+            </Card>
+            <RecoveryCodeCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+            <DeviceListCard keys={keyService} coupleId={couple.id} profileId={session.user.id} />
+            {/* Same component as the other app, so the two can never disagree
+                about what is shared. */}
+            <ConnectedAppsCard />
+          </View>
+        </Disclosure>
       ) : null}
 
-      {/* Same component as the other app, so the two can never disagree about
-          what is shared. */}
-      <ConnectedAppsCard />
-
-      {/* One pairing across both apps, so this is the same act from either —
-          and `leaveCouple` now forgets the couple key on the way out. */}
+      {/* Left in the open at the bottom, deliberately. It is the most permanent
+          control here and it takes both people; something you might reach for in
+          a bad moment should not also be something you have to hunt for.
+          `leaveCouple` forgets the couple key on the way out. */}
       <UnpairCard onUnpair={leaveCouple} />
     </Screen>
   );

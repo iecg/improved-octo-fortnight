@@ -54,5 +54,8 @@
   },
   "action": {
     "pause": "Pausar esto"
+  },
+  "list": {
+    "title": "Su ritmo"
   }
 }

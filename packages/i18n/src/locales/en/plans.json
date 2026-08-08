@@ -10,6 +10,7 @@
   "list": {
     "awaitingYou": "Waiting on you",
     "awaitingThem": "Waiting on {{name}}",
+    "needsAnswer": "Did this happen?",
     "upcoming": "Coming up",
     "history": "Earlier",
     "emptyUpcoming": "Nothing booked yet.",
@@ -32,6 +33,7 @@
   "detail": {
     "markDone": "Mark as done",
     "markSkipped": "Didn't happen",
+    "move": "Pick a new date",
     "when": "When",
     "where": "Where",
     "notes": "Notes",

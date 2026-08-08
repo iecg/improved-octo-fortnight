@@ -5,9 +5,7 @@
   },
   "tabs": {
     "today": "Ritmo",
-    "plans": "Planes",
-    "ideas": "Ideas",
-    "settings": "Ajustes"
+    "ideas": "Ideas"
   },
   "ideas": {
     "title": "Ideas",
@@ -25,13 +23,13 @@
     "fromAi": "Sugerido por un modelo"
   },
   "home": {
-    "title": "Su ritmo",
     "subtitle": "Tres compromisos, tres relojes.",
     "lastTime": "La última vez fue el {{date}}",
     "neverYet": "Aún no hay nada registrado",
     "planIt": "Planearlo",
-    "bookedFor": "Reservado para el {{date}}",
-    "upcoming": "Próximas: {{dates}}"
+    "turnYours": "Te toca reservar este",
+    "turnTheirs": "Le toca a {{name}} reservar este",
+    "bookedFor": "Reservado para el {{date}}"
   },
   "plan": {
     "title": "Planear algo",
@@ -39,7 +37,12 @@
     "titleLabel": "Cómo lo llamas",
     "titlePlaceholder": "Opcional",
     "titleHint": "Tu pareja lo ve tal como lo escribes, en el idioma en que lo escribas.",
+    "details": "Añadir un título o un lugar",
     "when": "Qué día",
+    "dayToday": "Hoy",
+    "dayTomorrow": "Mañana",
+    "dayWeekend": "Este fin de semana",
+    "dayPick": "Otro día",
     "startTime": "A partir de las",
     "howLong": "Cuánto dura",
     "hours_one": "{{count}} hora",
@@ -52,18 +55,8 @@
     "busyOption": "{{option}} — ya ocupado"
   },
   "settings": {
-    "title": "Ajustes",
-    "account": "Cuenta",
-    "partner": "Vinculado con {{name}}",
-    "notPaired": "Aún sin vincular",
-    "cadences": "Con qué frecuencia",
-    "calendarAccess": "Acceso al calendario",
-    "allow": "Permitir",
-    "allowed": "Permitido",
     "crossAppBusy": "Evitar horas ocupadas en la otra app",
-    "crossAppBusyHint": "Marca las horas que ya tienen reservadas en su otra app. Solo las horas, nunca para qué son.",
-    "notificationAccess": "Recordatorios",
-    "signOut": "Cerrar sesión"
+    "crossAppBusyHint": "Marca las horas que ya tienen reservadas en su otra app. Solo las horas, nunca para qué son."
   },
   "notification": {
     "title": "Two22",
