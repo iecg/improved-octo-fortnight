@@ -38,7 +38,7 @@ import {
 import { TWO_TWO_TWO_KINDS, kindLabelKey, type AppDomain, type PlaceProvider } from '@couple/core';
 import { hasCalendarAccess, readBusyBlocks } from '@couple/device';
 import { formatDay, formatTime } from '@couple/i18n';
-import { Body, Button, Card, Chip, Heading, Muted, Screen, Title } from '@couple/ui';
+import { Body, Button, Card, Chip, Field, Heading, Muted, Screen, Title } from '@couple/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -328,18 +328,14 @@ export default function NewPlan() {
       </Card>
 
       <Card>
-        <View className="gap-2">
-          <Heading>{t('app:plan.titleLabel')}</Heading>
-          <TextInput
-            className="min-h-12 rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink dark:border-line-dark dark:bg-surface-dark dark:text-ink-dark"
-            value={title}
-            onChangeText={setTitle}
-            placeholder={t('app:plan.titlePlaceholder')}
-            accessibilityLabel={t('app:plan.titleLabel')}
-          />
-          {/* Sets the expectation that this reaches the partner untranslated. */}
-          <Muted>{t('app:plan.titleHint')}</Muted>
-        </View>
+        {/* The hint sets the expectation that this reaches the partner untranslated. */}
+        <Field
+          label={t('app:plan.titleLabel')}
+          hint={t('app:plan.titleHint')}
+          value={title}
+          onChangeText={setTitle}
+          placeholder={t('app:plan.titlePlaceholder')}
+        />
       </Card>
 
       <Card>
