@@ -1,0 +1,15 @@
+-- Household Chores: local dev seed data
+--
+-- auth.users is Supabase-managed, so we don't seed accounts with raw SQL
+-- here. Instead, for local development:
+--
+--   1. `supabase start`
+--   2. Run the app (`npm start`) against the local instance and sign up
+--      2-3 test accounts through the normal Signup screen.
+--   3. Use those accounts' real UUIDs (Studio → Authentication → Users, or
+--      `select id, email from auth.users;`) to create a test household and
+--      a few chores of each cadence type, either through the app UI itself
+--      or with ad-hoc `insert` statements run in Studio's SQL editor.
+--
+-- This keeps seed data referencing real, working auth users instead of
+-- fabricated ones that can't actually sign in.

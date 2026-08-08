@@ -24,7 +24,8 @@
     "db:types": "supabase gen types typescript --local > packages/data/src/database.types.ts",
     "db:test": "vitest run --config vitest.rls.config.ts",
     "intimacy": "npm run start -w @couple/intimacy",
-    "two-two-two": "npm run start -w @couple/two-two-two"
+    "two-two-two": "npm run start -w @couple/two-two-two",
+    "household-chores": "npm run start -w @couple/household-chores"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
