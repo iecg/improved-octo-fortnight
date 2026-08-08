@@ -16,7 +16,7 @@ const EXPO_PUSH_BATCH_SIZE = 100;
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
 
 function todayInTimezone(timezone: string): string {
@@ -80,7 +80,10 @@ Deno.serve(async (_req) => {
       .eq('status', 'pending');
 
     if (pendingError) {
-      console.error(`Fetching pending instances failed for household ${household.id}`, pendingError);
+      console.error(
+        `Fetching pending instances failed for household ${household.id}`,
+        pendingError,
+      );
       continue;
     }
     if (!pending || pending.length === 0) continue;
@@ -131,6 +134,6 @@ Deno.serve(async (_req) => {
 
   return new Response(
     JSON.stringify({ notified: allMessages.length, staleTokensRemoved: staleTokens.length }),
-    { headers: { 'Content-Type': 'application/json' } }
+    { headers: { 'Content-Type': 'application/json' } },
   );
 });
