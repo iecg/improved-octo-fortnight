@@ -1,9 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  // The preset carries NativeWind and `darkMode`. The palette is this app's own
+  // — see `packages/ui/tokens.js` for the names every app has to define.
+  presets: [require('../../packages/ui/tailwind.preset')],
   // Shared UI components live outside the app, so the scan has to reach them.
+  // This cannot move into the preset: Tailwind lets an app's `content` replace
+  // a preset's rather than extend it. Guarded by `tests/guards/tokens.test.ts`.
   content: ['./app/**/*.{ts,tsx}', './src/**/*.{ts,tsx}', '../../packages/ui/src/**/*.{ts,tsx}'],
-  presets: [require('nativewind/preset')],
-  darkMode: 'media',
   theme: {
     extend: {
       colors: {

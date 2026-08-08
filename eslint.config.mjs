@@ -14,6 +14,9 @@ export default tseslint.config(
       '**/ios/**',
       '**/android/**',
       '**/*.config.js',
+      // Same class of file as the `*.config.js` above — CommonJS that a
+      // Tailwind config has to `require()` — but not named to match.
+      '**/tailwind.preset.js',
       // Written by the Supabase CLI while the local stack runs — it drops a
       // minified edge-runtime bundle in here. Gitignored, but flat config does
       // not read .gitignore.
